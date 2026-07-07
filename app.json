@@ -1,8 +1,12 @@
 {
   "expo": {
-    "name": "recall",
+    "name": "Recall",
     "slug": "recall",
     "version": "1.0.0",
+    "scheme": "recall",
+    "experiments": {
+      "typedRoutes": true
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,6 +24,26 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-audio",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Recall uses your photos to attach them to memories you log.",
+          "cameraPermission": "Recall uses your camera to capture photos and videos for your memories."
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Recall scans your photo library so it can place your photos on the days they were taken.",
+          "savePhotosPermission": "Recall does not need to save photos, only read them.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ]
+    ]
   }
 }
