@@ -5,7 +5,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import VoicePlayer from '../../../../src/components/VoicePlayer';
-import { dateWithOffset, getDayDetail } from '../../../../src/data';
+import { dateWithOffset } from '../../../../src/data';
+import { processMemoryIntake } from '../../../../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
@@ -93,6 +94,9 @@ function RealSource({
     setTranscribing(false);
     if (result.ok) {
       await updateMemory(voice.id, { text: result.text, words: result.words });
+      // A transcript arriving late still goes through the intake brain —
+      // polish for the Timeline, tasks/people/places routed like any log.
+      processMemoryIntake(voice.id, result.text, dateKey(new Date(voice.takenAt))).catch(() => {});
       onUpdated();
     } else {
       Alert.alert('Couldn’t transcribe', 'Try again in a moment.');
@@ -130,7 +134,9 @@ function RealSource({
             onToggle={toggle}
             onSeek={(s) => player.seekTo(s)}
             words={voice.words}
-            text={voice.text}
+            // The source always shows the verbatim transcript — the polished
+            // version of this memory lives on the Timeline.
+            text={voice.rawText ?? voice.text}
             note={voice.note}
           />
           {!voice.text && transcriptionAvailable() && (
@@ -147,35 +153,13 @@ function RealSource({
   );
 }
 
-// The seeded mock shown for demo days with no real recording — kept as a
-// simple static display since there's no actual audio file to scrub.
-function DemoSource({ offset }: { offset: number }) {
-  const detail = getDayDetail(offset);
-  const WAVE = [3, 3, 4, 3, 4, 3, 3, 4, 3, 3, 4, 3, 4, 3, 3, 10, 16, 12, 8, 4, 3, 4, 3, 3, 4, 3, 3, 4, 3, 4, 3, 3, 4, 3, 3, 5, 6, 4];
+// No voice memory logged for this day — nothing to play back.
+function EmptySource() {
   return (
-    <>
-      <Text style={styles.title}>
-        This Data was recorded by voice at {detail?.recordedAt ?? '11:57 pm'}
-      </Text>
-      <View style={styles.demoTranscript}>
-        <Text style={styles.demoTranscriptText}>
-          {detail?.transcriptPreview ?? 'Today i had my design class at 10:00 am were I stayed……'}
-        </Text>
-      </View>
-      <View style={styles.demoPlayer}>
-        <Text style={styles.demoPlayerTime}>
-          {detail?.audio.position ?? '0:02'} / {detail?.audio.duration ?? '2:49'}
-        </Text>
-        <View style={styles.demoWaveRow}>
-          {WAVE.map((h, i) => (
-            <View key={i} style={[styles.demoWaveBar, { height: h }]} />
-          ))}
-        </View>
-        <View style={styles.demoStopBtn}>
-          <View style={styles.demoStopSquare} />
-        </View>
-      </View>
-    </>
+    <View style={styles.emptyBox}>
+      <MaterialCommunityIcons name="microphone-off" size={28} color="#8B9394" />
+      <Text style={styles.emptyText}>No voice memory recorded for this day.</Text>
+    </View>
   );
 }
 
@@ -218,7 +202,7 @@ export default function SourceScreen() {
               onUpdated={reload}
             />
           ) : (
-            <DemoSource offset={offsetNum} />
+            <EmptySource />
           ))}
       </ScrollView>
     </SafeAreaView>
@@ -277,35 +261,6 @@ const styles = StyleSheet.create({
   },
   transcribeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: colors.teal },
 
-  demoTranscript: {
-    borderWidth: 1,
-    borderColor: '#BFC9CA',
-    borderRadius: 18,
-    padding: 18,
-    marginTop: 26,
-  },
-  demoTranscriptText: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 22, color: colors.teal },
-
-  demoPlayer: {
-    backgroundColor: '#CFDCDD',
-    borderRadius: 28,
-    marginTop: 28,
-    paddingTop: 36,
-    alignItems: 'center',
-  },
-  demoPlayerTime: { fontFamily: fonts.medium, fontSize: 20, color: colors.primary },
-  demoWaveRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 44, marginBottom: 40 },
-  demoWaveBar: { width: 5, borderRadius: 3, backgroundColor: colors.primary },
-  demoStopBtn: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: colors.white,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: -38,
-  },
-  demoStopSquare: { width: 26, height: 26, borderRadius: 6, backgroundColor: colors.primary },
+  emptyBox: { alignItems: 'center', marginTop: 60, gap: 12 },
+  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
 });

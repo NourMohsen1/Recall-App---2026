@@ -57,9 +57,8 @@ export default function TabsLayout() {
         <Tabs.Screen name="person/[name]" options={{ href: null }} />
         <Tabs.Screen name="place/[name]" options={{ href: null }} />
         <Tabs.Screen name="day/[offset]/index" options={{ href: null }} />
-        <Tabs.Screen name="day/[offset]/people" options={{ href: null }} />
-        <Tabs.Screen name="day/[offset]/places" options={{ href: null }} />
         <Tabs.Screen name="day/[offset]/source" options={{ href: null }} />
+        <Tabs.Screen name="day/[offset]/photos" options={{ href: null }} />
         <Tabs.Screen name="devices/index" options={{ href: null }} />
         <Tabs.Screen name="devices/glasses" options={{ href: null }} />
         <Tabs.Screen

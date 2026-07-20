@@ -27,7 +27,9 @@ import {
 } from 'expo-audio';
 import VoicePlayer from '../../src/components/VoicePlayer';
 import { MISC } from '../../src/images';
-import { TranscriptWord, persistFile, saveMemory } from '../../src/memoryLog';
+import { TranscriptWord, dateKey, persistFile, saveMemory } from '../../src/memoryLog';
+import { processMemoryIntake } from '../../src/memoryIntake';
+import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
 import {
   SpeechLanguage,
   transcribeAudio,
@@ -206,7 +208,7 @@ export default function LogVoice() {
     // this must be awaited, or the memory can end up pointing at a file
     // that gets evicted later and silently stops playing.
     const permanentUri = await persistFile(recordedUri, 'voice');
-    await saveMemory({
+    const saved = await saveMemory({
       kind: 'voice',
       audioUri: permanentUri,
       text: transcript.trim() || undefined,
@@ -216,6 +218,12 @@ export default function LogVoice() {
         ? playerStatus.duration * 1000
         : recorderState.durationMillis,
     });
+    recordCurrentLocationForDay(dateKey(new Date())).catch(() => {});
+    // The intake brain reads the transcript (plus any typed note) and routes
+    // everything: polished memory → Timeline, commitments → Tasks, people
+    // met → People, places mentioned → Places. Works in any language.
+    const spokenText = [transcript.trim(), note.trim()].filter(Boolean).join(' — ');
+    if (spokenText) processMemoryIntake(saved.id, spokenText, dateKey(new Date())).catch(() => {});
     router.back();
   };
 

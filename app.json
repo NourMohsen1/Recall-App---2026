@@ -41,9 +41,16 @@
         {
           "photosPermission": "Recall scans your photo library so it can place your photos on the days they were taken.",
           "savePhotosPermission": "Recall does not need to save photos, only read them.",
-          "isAccessMediaLocationEnabled": false
+          "isAccessMediaLocationEnabled": true
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Recall uses your location to tag where a memory happened, and to read where imported photos were taken."
+        }
+      ],
+      "expo-notifications"
     ]
   }
 }

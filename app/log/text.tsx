@@ -12,7 +12,9 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PillButton from '../../src/components/PillButton';
-import { saveMemory } from '../../src/memoryLog';
+import { processMemoryIntake } from '../../src/memoryIntake';
+import { dateKey, saveMemory } from '../../src/memoryLog';
+import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
 import { colors, fonts } from '../../src/theme';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -32,7 +34,13 @@ export default function LogText() {
     const trimmed = text.trim();
     if (!trimmed || saving) return;
     setSaving(true);
-    await saveMemory({ kind: 'text', text: trimmed });
+    const saved = await saveMemory({ kind: 'text', text: trimmed });
+    // Tag where this happened — best-effort, never blocks saving the memory.
+    recordCurrentLocationForDay(dateKey(new Date())).catch(() => {});
+    // The intake brain reads the entry and routes everything to its place:
+    // polished memory → Timeline, commitments → Tasks, people → People,
+    // mentioned places → Places.
+    processMemoryIntake(saved.id, trimmed, dateKey(new Date())).catch(() => {});
     router.back();
   };
 

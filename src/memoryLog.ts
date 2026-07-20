@@ -15,6 +15,13 @@ export type LoggedMemory = {
   takenAt: string; // ISO — when the moment happened; drives Timeline placement
   kind: 'text' | 'photo' | 'voice';
   text?: string;
+  // When AI intake polished the entry, `text` holds the cleaned memory and
+  // `rawText` keeps the verbatim words — the source screen shows the
+  // original, so nothing the user said is ever lost.
+  rawText?: string;
+  // True once the intake pass has analyzed this memory (polish + routing).
+  // Unrefined memories get swept up retroactively when the app opens.
+  refined?: boolean;
   photoUris?: string[];
   audioUri?: string;
   durationMillis?: number;

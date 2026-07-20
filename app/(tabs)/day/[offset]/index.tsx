@@ -3,14 +3,23 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { WEEKDAYS, dateWithOffset, getDayDetail, shortDate } from '../../../../src/data';
-import { placePhoto } from '../../../../src/images';
+import AnalyzingBanner from '../../../../src/components/AnalyzingBanner';
+import PeopleEditor from '../../../../src/components/PeopleEditor';
+import { WEEKDAYS, dateWithOffset, shortDate } from '../../../../src/data';
+import { useMemoryPolish } from '../../../../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
   formatClockTime,
   getMemoriesByDay,
 } from '../../../../src/memoryLog';
+import {
+  addPersonForDay,
+  getAllTaggedPeople,
+  getPeopleForDay,
+  removePersonForDay,
+} from '../../../../src/peopleTags';
+import { DetectedPlace, getPlacesForDay } from '../../../../src/placesFromPhotos';
 import { rtlIfArabic } from '../../../../src/transcription';
 import { colors, fonts } from '../../../../src/theme';
 
@@ -18,18 +27,47 @@ export default function DayDetailScreen() {
   const router = useRouter();
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
-  const detail = getDayDetail(offsetNum);
   const date = dateWithOffset(offsetNum);
 
   const [real, setReal] = useState<LoggedMemory[]>([]);
+  const [places, setPlaces] = useState<DetectedPlace[]>([]);
+  const [people, setPeople] = useState<string[]>([]);
+  const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
+  const dayKey = dateKey(dateWithOffset(offsetNum));
+  const reload = useCallback(() => {
+    const key = dateKey(dateWithOffset(offsetNum));
+    getMemoriesByDay().then((byDay) => setReal(byDay.get(key) ?? []));
+    getPlacesForDay(key).then(setPlaces);
+    getPeopleForDay(key).then(setPeople);
+    getAllTaggedPeople().then(setPeopleSuggestions);
+  }, [offsetNum]);
+
   useFocusEffect(
     useCallback(() => {
-      getMemoriesByDay().then((byDay) => setReal(byDay.get(dateKey(dateWithOffset(offsetNum))) ?? []));
-    }, [offsetNum]),
+      reload();
+    }, [reload]),
   );
+
+  // This screen previously never re-checked for unpolished memories, so a
+  // day opened straight from Tasks/People/Recap could show a raw transcript
+  // forever even after other screens had "fixed" it. Now every entry point
+  // sweeps and refreshes.
+  const analyzing = useMemoryPolish(reload);
   const realPhotoUris = real.filter((m) => m.kind === 'photo').flatMap((m) => m.photoUris ?? []);
   const entries = real.filter((m) => m.kind !== 'photo' || m.text);
   const hasVoice = real.some((m) => m.kind === 'voice');
+  const isEmpty =
+    entries.length === 0 && realPhotoUris.length === 0 && places.length === 0 && people.length === 0;
+
+  const addPerson = async (name: string) => {
+    await addPersonForDay(dayKey, name);
+    setPeople(await getPeopleForDay(dayKey));
+    setPeopleSuggestions(await getAllTaggedPeople());
+  };
+  const removePerson = async (name: string) => {
+    await removePersonForDay(dayKey, name);
+    setPeople(await getPeopleForDay(dayKey));
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -43,9 +81,11 @@ export default function DayDetailScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        {analyzing && <AnalyzingBanner />}
+
         {/* What the user actually logged that day */}
         {entries.length > 0 && (
-          <View style={[styles.segments, { marginBottom: 10 }]}>
+          <View style={styles.segments}>
             <View style={styles.spine} />
             {entries.map((m) => (
               <View key={m.id} style={styles.segment}>
@@ -91,28 +131,7 @@ export default function DayDetailScreen() {
           </View>
         )}
 
-        {detail && (
-          <View style={styles.segments}>
-            {/* Timeline spine */}
-            <View style={styles.spine} />
-            {detail.segments.map((segment) => (
-              <View key={segment.period} style={styles.segment}>
-                <View style={styles.spineDot} />
-                <View style={{ flex: 1 }}>
-                  <View style={styles.segmentHeader}>
-                    <Text style={styles.segmentTitle}>{segment.period}</Text>
-                    <View style={styles.timePill}>
-                      <Text style={styles.timePillText}>{segment.time}</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.segmentText}>{segment.text}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {(detail || hasVoice) && (
+        {hasVoice && (
           <Pressable
             style={styles.sourceBtn}
             onPress={() =>
@@ -123,32 +142,58 @@ export default function DayDetailScreen() {
           </Pressable>
         )}
 
-        {(detail || realPhotoUris.length > 0) && (
+        {realPhotoUris.length > 0 && (
           <>
             <View style={styles.divider} />
-            {/* Photos from the day — real logged photos first */}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <View style={styles.photoRow}>
-                {realPhotoUris.length > 0
-                  ? realPhotoUris.map((uri) => (
-                      <Image key={uri} source={{ uri }} style={styles.photo} resizeMode="cover" />
-                    ))
-                  : detail?.places
-                      .slice(0, 3)
-                      .map((place) => (
-                        <Image
-                          key={place.name}
-                          source={placePhoto(place.name)}
-                          style={styles.photo}
-                          resizeMode="cover"
-                        />
-                      ))}
+                {realPhotoUris.map((uri, i) => (
+                  <Pressable
+                    key={uri}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/day/[offset]/photos',
+                        params: { offset: offsetNum, start: i },
+                      })
+                    }
+                  >
+                    <Image source={{ uri }} style={styles.photo} resizeMode="cover" />
+                  </Pressable>
+                ))}
               </View>
             </ScrollView>
           </>
         )}
 
-        {!detail && entries.length === 0 && realPhotoUris.length === 0 && (
+        {places.length > 0 && (
+          <>
+            <View style={styles.divider} />
+            <Text style={styles.placesTitle}>Places</Text>
+            <View style={styles.placeGrid}>
+              {places.map((place) => (
+                <View key={`${place.label}-${place.latitude ?? 'named'}`} style={styles.placeCell}>
+                  <View style={styles.placePin}>
+                    <MaterialCommunityIcons name="map-marker" size={28} color={colors.teal} />
+                  </View>
+                  <Text numberOfLines={1} style={styles.placeLabel}>
+                    {place.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+
+        <View style={styles.divider} />
+        <Text style={styles.placesTitle}>People</Text>
+        <PeopleEditor
+          people={people}
+          suggestions={peopleSuggestions}
+          onAdd={addPerson}
+          onRemove={removePerson}
+        />
+
+        {isEmpty && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No memories recorded for this day yet.</Text>
           </View>
@@ -171,7 +216,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
   scroll: { padding: 24, paddingBottom: 140 },
 
-  segments: { position: 'relative' },
+  segments: { position: 'relative', marginBottom: 10 },
   spine: {
     position: 'absolute',
     left: 9,
@@ -231,6 +276,19 @@ const styles = StyleSheet.create({
   sourceLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
   sourceLinkText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
   noteText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#7C8586', marginTop: 6 },
+
+  placesTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111', marginBottom: 14 },
+  placeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
+  placeCell: { width: 88, alignItems: 'center' },
+  placePin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.pale,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
 
   empty: { paddingTop: 80, alignItems: 'center' },
   emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },

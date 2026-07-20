@@ -2,43 +2,32 @@ import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Link, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { BRAND, MISC, personPhoto, placePhoto } from '../../src/images';
-import { getDayDetail } from '../../src/data';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import AnalyzingBanner from '../../src/components/AnalyzingBanner';
+import { BRAND, MISC, placePhoto } from '../../src/images';
+import { useMemoryPolish } from '../../src/memoryIntake';
 import { LoggedMemory, dateKey, getMemoriesByDay } from '../../src/memoryLog';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-// A day gets a log dot when the user actually logged something that day, or
-// when demo data exists for it (the three seeded days before today).
+// A day gets a log dot only when the user actually logged something that day.
 function getWeek(loggedKeys: Set<string>) {
   const today = new Date();
   const start = new Date(today);
   start.setDate(today.getDate() - today.getDay());
-  const msPerDay = 24 * 60 * 60 * 1000;
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
-    const offset = Math.round((d.setHours(0, 0, 0, 0) - new Date(today).setHours(0, 0, 0, 0)) / msPerDay);
     return {
       letter: DAY_LETTERS[i],
       date: d.getDate(),
-      isToday: offset === 0,
-      hasLog: loggedKeys.has(dateKey(d)) || !!getDayDetail(offset),
+      isToday: d.toDateString() === today.toDateString(),
+      hasLog: loggedKeys.has(dateKey(d)),
     };
   });
 }
-
-const SUMMARY_LINES = [
-  'Web class yesterday was about midterm next week.',
-  'You met with your advisor after class at 3:25.',
-  'After college you and Josh went to 787 cafe.',
-  'You both talked about getting back to the gym next week.',
-];
-
-const PEOPLE_COLLAGE = ['Parth', 'Aboelkhir', 'Menf', 'Leo'];
 
 function PlayButton() {
   return (
@@ -57,6 +46,9 @@ export default function Home() {
     }, []),
   );
 
+  // Sweep up anything the AI hasn't polished yet, then refresh what's shown.
+  const analyzing = useMemoryPolish(useCallback(() => getMemoriesByDay().then(setByDay), []));
+
   const week = getWeek(new Set(byDay.keys()));
 
   // Yesterday's Summary prefers what the user actually logged yesterday.
@@ -71,7 +63,6 @@ export default function Home() {
     )
     .filter(Boolean) as string[];
   const usingRealSummary = yLines.length > 0;
-  const summaryLines = usingRealSummary ? yLines : SUMMARY_LINES;
 
   // The Timeline widget always reflects yesterday, from the user's own logs.
   const timelinePreview = usingRealSummary
@@ -126,29 +117,25 @@ export default function Home() {
           </Pressable>
         </Link>
 
+        {analyzing && <AnalyzingBanner />}
+
         {/* Yesterday's Summary */}
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <Text style={styles.cardTitle}>Yesterday’s Summary</Text>
             <PlayButton />
           </View>
-          {!usingRealSummary && (
-            <View style={styles.tagRow}>
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>College</Text>
-              </View>
-              <View style={styles.tag}>
-                <Text style={styles.tagText}>787 Cafe</Text>
-              </View>
-            </View>
-          )}
           <View style={{ marginTop: 10 }}>
-            {summaryLines.map((line, i) => (
-              <View key={i} style={styles.summaryLine}>
-                <View style={styles.summaryDot} />
-                <Text style={[styles.summaryText, rtlIfArabic(line)]}>{line}</Text>
-              </View>
-            ))}
+            {usingRealSummary ? (
+              yLines.map((line, i) => (
+                <View key={i} style={styles.summaryLine}>
+                  <View style={styles.summaryDot} />
+                  <Text style={[styles.summaryText, rtlIfArabic(line)]}>{line}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.summaryEmpty}>Nothing logged yesterday yet.</Text>
+            )}
           </View>
         </View>
 
@@ -173,15 +160,8 @@ export default function Home() {
           </Link>
           <Link href="/people" asChild>
             <Pressable style={styles.shortcut}>
-              <View style={[styles.shortcutImage, styles.collage]}>
-                {PEOPLE_COLLAGE.map((name) => (
-                  <Image
-                    key={name}
-                    source={personPhoto(name)}
-                    style={styles.collageCell}
-                    resizeMode="cover"
-                  />
-                ))}
+              <View style={[styles.shortcutImage, styles.peopleTile]}>
+                <MaterialCommunityIcons name="account-group" size={44} color={colors.white} />
               </View>
               <Text style={styles.shortcutLabel}>People</Text>
             </Pressable>
@@ -288,14 +268,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tagRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  tag: {
-    backgroundColor: colors.pale,
-    borderRadius: 6,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-  },
-  tagText: { fontFamily: fonts.medium, fontSize: 13, color: colors.ink },
   summaryLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 7 },
   summaryDot: {
     width: 6,
@@ -305,6 +277,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
   },
   summaryText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#7C8586' },
+  summaryEmpty: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
 
   shortcutRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
   shortcut: { alignItems: 'center', width: 110 },
@@ -316,7 +289,10 @@ const styles = StyleSheet.create({
     borderColor: colors.white,
     overflow: 'hidden',
   },
-  collage: { flexDirection: 'row', flexWrap: 'wrap' },
-  collageCell: { width: '50%', height: '50%' },
+  peopleTile: {
+    backgroundColor: colors.teal,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   shortcutLabel: { fontFamily: fonts.regular, fontSize: 14, color: colors.ink, marginTop: 8 },
 });

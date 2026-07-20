@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as MediaLibrary from 'expo-media-library';
 import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
+import { recordLocationForDay } from './placesFromPhotos';
 
 // Bulk-imports photos from the device's library into the Timeline, grouped
 // onto the day they were actually taken. Bounded by a date window (the user
@@ -36,7 +37,10 @@ export async function importRecentPhotos(
   const importedIds = await getImportedIds();
 
   // Group newly-found photos by the day they were taken.
-  const byDay = new Map<string, { uri: string; creationTime: number }[]>();
+  const byDay = new Map<
+    string,
+    { uri: string; creationTime: number; location?: { latitude: number; longitude: number } }[]
+  >();
   let scanned = 0;
   let after: string | undefined;
 
@@ -52,13 +56,20 @@ export async function importRecentPhotos(
     const fresh = page.assets.filter((a) => !importedIds.has(a.id));
     // Resolve a directly-renderable URI for each asset (iOS returns ph://
     // from the list query, which needs resolving to a usable local path).
+    // This also carries the photo's embedded GPS, when present, which is
+    // how imported photos populate "real" Places for their day.
     const resolved = await Promise.all(
       fresh.map(async (a) => {
         try {
           const info = await MediaLibrary.getAssetInfoAsync(a.id);
-          return { id: a.id, uri: info.localUri ?? a.uri, creationTime: a.creationTime };
+          return {
+            id: a.id,
+            uri: info.localUri ?? a.uri,
+            creationTime: a.creationTime,
+            location: info.location,
+          };
         } catch {
-          return { id: a.id, uri: a.uri, creationTime: a.creationTime };
+          return { id: a.id, uri: a.uri, creationTime: a.creationTime, location: undefined };
         }
       }),
     );
@@ -69,6 +80,9 @@ export async function importRecentPhotos(
       if (bucket) bucket.push(item);
       else byDay.set(key, [item]);
       importedIds.add(item.id);
+      if (item.location) {
+        recordLocationForDay(key, item.location.latitude, item.location.longitude).catch(() => {});
+      }
     }
 
     scanned += page.assets.length;

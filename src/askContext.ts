@@ -1,11 +1,13 @@
-import { PEOPLE, PLACES, TASKS, WEEKDAYS, dateWithOffset, getDayDetail } from './data';
+import { PLACES, WEEKDAYS } from './data';
 import { getLoggedMemories } from './memoryLog';
+import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
+import { formatDueTime, getTasks } from './tasks';
 
 // Builds the text the AI reads before answering — everything Recall knows
-// about the user: what they logged (real), the seeded demo days, and the
-// People/Places/Tasks directories. Kept as plain dated text rather than a
-// vector index: personal memory logs are small enough to stuff directly into
-// the prompt, and plain text is easier for the model to cite accurately from.
+// about the user: what they logged (real), and the People/Places/Tasks
+// directories. Kept as plain dated text rather than a vector index: personal
+// memory logs are small enough to stuff directly into the prompt, and plain
+// text is easier for the model to cite accurately from.
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -43,34 +45,41 @@ export async function buildMemoryContext(): Promise<string> {
     sections.push(`Memories the user has logged:\n${lines.join('\n')}`);
   }
 
-  // Seeded demo days (offsets -1, -2, -3) so the assistant can answer about
-  // them too while the app is still mostly demo content.
-  const demoLines: string[] = [];
-  for (const offset of [-1, -2, -3]) {
-    const detail = getDayDetail(offset);
-    if (!detail) continue;
-    const d = dateWithOffset(offset);
-    demoLines.push(`- [${longDate(d)} (${isoDate(d)})] ${detail.bullets.join(' ')}`);
+  // People directory — real people the user tagged on their days, so the
+  // assistant can resolve "when did I last see X" / "who was I with".
+  const people = await getPeopleSummaries();
+  if (people.length > 0) {
+    const personMeta = await getAllPersonMeta();
+    const peopleLines = people.map((p) => {
+      const meta = personMeta[p.name];
+      const who = meta?.descriptor ? ` (${meta.descriptor})` : '';
+      const notes =
+        meta && meta.mentions.length > 0
+          ? ` Notes: ${meta.mentions
+              .slice(0, 5)
+              .map((m) => `[${m.day}] ${m.text}`)
+              .join(' | ')}`
+          : '';
+      return `- ${p.name}${who}: seen together on ${p.days.length} day(s); last on ${p.lastSeenDay}; days: ${p.days.join(', ')}.${notes}`;
+    });
+    sections.push(`People the user has tagged in their days:\n${peopleLines.join('\n')}`);
   }
-  if (demoLines.length > 0) {
-    sections.push(`Sample logged days:\n${demoLines.join('\n')}`);
-  }
-
-  // People directory — lets the assistant resolve "who is X" / "who did I meet at Y".
-  const peopleLines = PEOPLE.map(
-    (p) => `- ${p.name} (${p.relation}): ${p.lastSeen} Tags: ${p.tags.join(', ')}`,
-  );
-  sections.push(`People the user knows:\n${peopleLines.join('\n')}`);
 
   // Places directory.
   const placeLines = PLACES.map((p) => `- ${p.name}`);
   sections.push(`Places the user frequents:\n${placeLines.join('\n')}`);
 
-  // Tasks, in case the user asks about to-dos.
-  const taskLines = TASKS.map(
-    (t) => `- ${t.title} (${t.done ? 'done' : 'not done'}), due ${t.month} ${t.day} at ${t.time}: ${t.description}`,
-  );
-  sections.push(`Tasks:\n${taskLines.join('\n')}`);
+  // Tasks, in case the user asks about to-dos — real ones only.
+  const tasks = await getTasks();
+  if (tasks.length > 0) {
+    const taskLines = tasks.map((t) => {
+      const due = t.dueDate
+        ? `, due ${t.dueDate}${t.dueTime ? ` at ${formatDueTime(t.dueTime)}` : ''}`
+        : '';
+      return `- ${t.title} (${t.done ? 'done' : 'not done'})${due}`;
+    });
+    sections.push(`Tasks:\n${taskLines.join('\n')}`);
+  }
 
   return sections.join('\n\n');
 }

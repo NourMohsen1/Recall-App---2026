@@ -15,7 +15,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import PillButton from '../../src/components/PillButton';
 import { ICONS } from '../../src/images';
+import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, persistFile, saveMemory } from '../../src/memoryLog';
+import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
 import { colors, fonts } from '../../src/theme';
 
 type Picked = { uri: string; takenAt: Date };
@@ -104,14 +106,21 @@ export default function LogPhoto() {
       if (bucket) bucket.push(permanent);
       else groups.set(key, [permanent]);
     }
-    for (const group of groups.values()) {
+    const today = dateKey(new Date());
+    for (const [key, group] of groups) {
       const earliest = group.reduce((a, b) => (a.takenAt <= b.takenAt ? a : b));
-      await saveMemory({
+      const saved = await saveMemory({
         kind: 'photo',
         photoUris: group.map((g) => g.uri),
         text: caption.trim() || undefined,
         takenAt: earliest.takenAt,
       });
+      // Only tag live location for photos taken today — an old picked photo
+      // doesn't mean the user is standing where it was taken right now.
+      if (key === today) recordCurrentLocationForDay(key).catch(() => {});
+      // The caption goes through the same intake brain as any logging —
+      // routed against the day the photos were taken, not today.
+      if (caption.trim()) processMemoryIntake(saved.id, caption.trim(), key).catch(() => {});
     }
     router.back();
   };

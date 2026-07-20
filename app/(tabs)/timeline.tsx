@@ -6,15 +6,11 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
-import PhotoTile, { TILE_SIZE } from '../../src/components/PhotoTile';
-import { PERSON_PLACEHOLDER, PLACE_PLACEHOLDER, personPhoto, placePhoto } from '../../src/images';
-import {
-  MONTHS_SHORT,
-  WEEKDAYS,
-  dateWithOffset,
-  getDayDetail,
-  shortDate,
-} from '../../src/data';
+import AnalyzingBanner from '../../src/components/AnalyzingBanner';
+import PeopleEditor from '../../src/components/PeopleEditor';
+import PhotoTile from '../../src/components/PhotoTile';
+import { MONTHS_SHORT, WEEKDAYS, dateWithOffset, shortDate } from '../../src/data';
+import { useMemoryPolish } from '../../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
@@ -22,6 +18,13 @@ import {
   getMemoriesByDay,
 } from '../../src/memoryLog';
 import { Topic, TopicItem, TopicKey, getDayFeed, getInterestTopics, swapTopic } from '../../src/onThisDay';
+import {
+  addPersonForDay,
+  getAllTaggedPeople,
+  getPeopleForDay,
+  removePersonForDay,
+} from '../../src/peopleTags';
+import { DetectedPlace, getPlacesForDay } from '../../src/placesFromPhotos';
 import { rtlIfArabic } from '../../src/transcription';
 import TopicSwapSheet from '../../src/components/TopicSwapSheet';
 import { colors, fonts } from '../../src/theme';
@@ -149,22 +152,6 @@ function Elbow({ from, to, axis }: { from: Point; to: Point; axis: 'v' | 'h' }) 
   );
 }
 
-// Smart Icon Reminder — small floating visual cue on the canvas.
-function Sir({ x, y, icon }: { x: number; y: number; icon: string }) {
-  return (
-    <View style={[styles.sir, { left: x, top: y }]}>
-      <MaterialCommunityIcons name={icon as any} size={18} color={colors.primary} />
-    </View>
-  );
-}
-
-function MiniPlay() {
-  return (
-    <View style={styles.miniPlay}>
-      <Ionicons name="play" size={14} color={colors.white} style={{ marginLeft: 1 }} />
-    </View>
-  );
-}
 
 
 const MAX_SCALE = 2.5;
@@ -259,14 +246,42 @@ export default function Timeline() {
 
   // Re-read logged memories whenever the screen regains focus so a memory
   // saved from the "+" button shows up immediately.
+  const [places, setPlaces] = useState<DetectedPlace[]>([]);
+  const [people, setPeople] = useState<string[]>([]);
+  const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
+  const reloadDay = useCallback(() => {
+    const key = dateKey(dateWithOffset(selected));
+    getMemoriesByDay().then(setByDay);
+    getPlacesForDay(key).then(setPlaces);
+    getPeopleForDay(key).then(setPeople);
+  }, [selected]);
+
   useFocusEffect(
     useCallback(() => {
+      const key = dateKey(dateWithOffset(selected));
       getMemoriesByDay().then(setByDay);
       getInterestTopics().then(setOtdTopics);
-    }, []),
+      getPlacesForDay(key).then(setPlaces);
+      getPeopleForDay(key).then(setPeople);
+      getAllTaggedPeople().then(setPeopleSuggestions);
+    }, [selected]),
   );
 
-  const detail = getDayDetail(selected);
+  // Sweep up any memory the AI hasn't polished/routed yet (older logs, or
+  // ones whose analysis failed) and refresh what's on screen when it does.
+  const analyzing = useMemoryPolish(reloadDay);
+
+  const dayKey = dateKey(dateWithOffset(selected));
+  const addPerson = async (name: string) => {
+    await addPersonForDay(dayKey, name);
+    setPeople(await getPeopleForDay(dayKey));
+    setPeopleSuggestions(await getAllTaggedPeople());
+  };
+  const removePerson = async (name: string) => {
+    await removePersonForDay(dayKey, name);
+    setPeople(await getPeopleForDay(dayKey));
+  };
+
   const date = dateWithOffset(selected);
   const weekday = WEEKDAYS[date.getDay()];
 
@@ -322,20 +337,20 @@ export default function Timeline() {
   if (realBullets.length === 0 && voices.length > 0) {
     realBullets.push('Voice memory — no transcript yet.');
   }
-  const bullets = realBullets.length > 0 ? realBullets : detail?.bullets ?? [];
+  const bullets = realBullets;
 
   const latestVoice = voices[voices.length - 1];
   const recordedLine = latestVoice
     ? `Recorded by voice on ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} at ${formatClockTime(new Date(latestVoice.takenAt))}`
-    : detail
-      ? `Recorded by voice on ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} at ${detail.recordedAt}`
-      : null;
+    : null;
 
   const latestPhotoMemory = photoMemories[photoMemories.length - 1];
   const showDayCard = bullets.length > 0 || !!latestVoice;
-  const showPhotoLib = realPhotoUris.length > 0 || !!detail;
+  const showPhotoLib = realPhotoUris.length > 0;
+  const showPlaces = places.length > 0;
+  const showPeople = people.length > 0;
   const hasContent =
-    showDayCard || realPhotoUris.length > 0 || !!detail || (!otdFuture && otdTopics.length > 0);
+    showDayCard || showPhotoLib || showPlaces || showPeople || (!otdFuture && otdTopics.length > 0);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -347,6 +362,14 @@ export default function Timeline() {
         </Pressable>
         <Text style={styles.headerTitle}>Timeline</Text>
       </View>
+
+      {/* Floats above the pannable canvas so it's visible regardless of
+          scroll/zoom position */}
+      {analyzing && (
+        <View style={styles.analyzingFloat}>
+          <AnalyzingBanner />
+        </View>
+      )}
 
       <View style={styles.bodyRow}>
         {/* Date rail */}
@@ -384,82 +407,64 @@ export default function Timeline() {
 
               {hasContent ? (
                 <>
-                  {/* Smart Icon Reminders belong to the rich demo layout */}
-                  {detail && (
-                    <>
-                      <Sir x={150} y={26} icon="camera" />
-                      <Sir x={352} y={96} icon="sync" />
-                      <Sir x={56} y={716} icon="receipt" />
-                      <Sir x={566} y={668} icon="pill" />
-                    </>
-                  )}
-
                   {/* Connectors — anchored to card-edge midpoints once measured */}
-                  {detail && showDayCard && cardH.people && (
-                    <Elbow
-                      axis="v"
-                      from={{ x: CARD_POS.people.x + CARD_POS.people.w / 2, y: CARD_POS.people.y + cardH.people }}
-                      to={{ x: CARD_POS.day.x + CARD_POS.day.w / 2, y: CARD_POS.day.y }}
-                    />
-                  )}
-                  {detail && showPhotoLib && cardH.photo && (
+                  {showPhotoLib && showPlaces && cardH.photo && (
                     <Elbow
                       axis="v"
                       from={{ x: CARD_POS.photo.x + CARD_POS.photo.w / 2, y: CARD_POS.photo.y + cardH.photo }}
                       to={{ x: CARD_POS.places.x + CARD_POS.places.w / 2, y: CARD_POS.places.y }}
                     />
                   )}
-                  {detail && showDayCard && cardH.day && cardH.places && (
+                  {showDayCard && showPlaces && cardH.day && cardH.places && (
                     <Elbow
                       axis="h"
                       from={{ x: CARD_POS.day.x + CARD_POS.day.w, y: CARD_POS.day.y + cardH.day / 2 }}
                       to={{ x: CARD_POS.places.x, y: CARD_POS.places.y + cardH.places / 2 }}
                     />
                   )}
-                  {detail && showDayCard && cardH.day && (
+                  {showDayCard && cardH.day && (
                     <Elbow
                       axis="v"
                       from={{ x: CARD_POS.day.x + CARD_POS.day.w / 2, y: CARD_POS.day.y + cardH.day }}
                       to={{ x: CARD_POS.otd.x + CARD_POS.otd.w / 2, y: CARD_POS.otd.y }}
                     />
                   )}
+                  {showPeople && showDayCard && cardH.people && (
+                    <Elbow
+                      axis="v"
+                      from={{ x: CARD_POS.people.x + CARD_POS.people.w / 2, y: CARD_POS.people.y + cardH.people }}
+                      to={{ x: CARD_POS.day.x + CARD_POS.day.w / 2, y: CARD_POS.day.y }}
+                    />
+                  )}
 
-                  {/* People card (demo data only for now) */}
-                  {detail && (
-                    <Pressable
+                  {/* People card — names the user has manually tagged for
+                      this day (no face recognition; a fast, correctable habit
+                      instead). Only appears once someone has been tagged. */}
+                  {showPeople && (
+                    <View
                       onLayout={measure('people')}
                       style={[
                         styles.card,
                         { left: CARD_POS.people.x, top: CARD_POS.people.y, width: CARD_POS.people.w },
                       ]}
-                      onPress={() =>
-                        router.push({
-                          pathname: '/day/[offset]/people',
-                          params: { offset: selected },
-                        })
-                      }
                     >
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>People</Text>
-                        <View style={styles.actionsRow}>
-                          <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                          <MiniPlay />
-                        </View>
+                        <MaterialCommunityIcons name="account-multiple-outline" size={22} color={colors.primary} />
                       </View>
-                      <View style={styles.avatarRow}>
-                        {detail.people.map((p) => (
-                          <Image
-                            key={p.name}
-                            source={p.hasPhoto ? personPhoto(p.name) : PERSON_PLACEHOLDER}
-                            style={styles.avatar}
-                            resizeMode="cover"
-                          />
-                        ))}
+                      <View style={{ marginTop: 12 }}>
+                        <PeopleEditor
+                          people={people}
+                          suggestions={peopleSuggestions}
+                          onAdd={addPerson}
+                          onRemove={removePerson}
+                          pinSize={48}
+                        />
                       </View>
-                    </Pressable>
+                    </View>
                   )}
 
-                  {/* Photo Library card — real logged photos take priority */}
+                  {/* Photo Library card — only appears when real photos are logged */}
                   {showPhotoLib && (
                     <View
                       onLayout={measure('photo')}
@@ -476,25 +481,30 @@ export default function Timeline() {
                           color={colors.primary}
                         />
                       </View>
-                      <View style={styles.thumbRow}>
-                        {realPhotoUris.length > 0 ? (
-                          realPhotoUris
-                            .slice(0, 3)
-                            .map((uri) => <PhotoTile key={uri} source={{ uri }} />)
-                        ) : (
-                          <>
-                            <PhotoTile source={placePhoto('Soccer Roof')} />
-                            <PhotoTile source={placePhoto('787 Coffee')} />
-                            <PhotoTile source={placePhoto('College')} />
-                          </>
-                        )}
-                      </View>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.thumbRow}
+                      >
+                        {realPhotoUris.map((uri, i) => (
+                          <Pressable
+                            key={uri}
+                            onPress={() =>
+                              router.push({
+                                pathname: '/day/[offset]/photos',
+                                params: { offset: selected, start: i },
+                              })
+                            }
+                          >
+                            <PhotoTile source={{ uri }} />
+                          </Pressable>
+                        ))}
+                      </ScrollView>
                       <View style={styles.syncedRow}>
                         <Ionicons name="link" size={14} color="#8B9394" />
                         <Text style={styles.syncedText}>
-                          {latestPhotoMemory
-                            ? `Added on ${shortDate(new Date(latestPhotoMemory.createdAt))} at ${formatClockTime(new Date(latestPhotoMemory.createdAt))}`
-                            : `Synced on ${shortDate(date)} at 4:39 pm`}
+                          Added on {shortDate(new Date(latestPhotoMemory!.createdAt))} at{' '}
+                          {formatClockTime(new Date(latestPhotoMemory!.createdAt))}
                         </Text>
                       </View>
                     </View>
@@ -551,41 +561,34 @@ export default function Timeline() {
                     </Pressable>
                   )}
 
-                  {/* Places card */}
-                  {detail && (
-                  <Pressable
-                    onLayout={measure('places')}
-                    style={[
-                      styles.card,
-                      { left: CARD_POS.places.x, top: CARD_POS.places.y, width: CARD_POS.places.w },
-                    ]}
-                    onPress={() =>
-                      router.push({
-                        pathname: '/day/[offset]/places',
-                        params: { offset: selected },
-                      })
-                    }
-                  >
-                    <View style={styles.cardHeaderRow}>
-                      <Text style={styles.cardTitle}>Places</Text>
-                      <View style={styles.actionsRow}>
-                        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
-                        <MiniPlay />
+                  {/* Places card — derived from where the day's photos were
+                      actually taken (or live location when logging manually).
+                      Only appears once a real place has been detected. */}
+                  {showPlaces && (
+                    <View
+                      onLayout={measure('places')}
+                      style={[
+                        styles.card,
+                        { left: CARD_POS.places.x, top: CARD_POS.places.y, width: CARD_POS.places.w },
+                      ]}
+                    >
+                      <View style={styles.cardHeaderRow}>
+                        <Text style={styles.cardTitle}>Places</Text>
+                        <MaterialCommunityIcons name="map-marker-outline" size={22} color={colors.primary} />
+                      </View>
+                      <View style={styles.placeGrid}>
+                        {places.slice(0, 6).map((place) => (
+                          <View key={`${place.label}-${place.latitude ?? 'named'}`} style={styles.placeCell}>
+                            <View style={styles.placePin}>
+                              <MaterialCommunityIcons name="map-marker" size={30} color={colors.teal} />
+                            </View>
+                            <Text numberOfLines={1} style={styles.placeCellLabel}>
+                              {place.label}
+                            </Text>
+                          </View>
+                        ))}
                       </View>
                     </View>
-                    <View style={styles.placeGrid}>
-                      {detail?.places.slice(0, 6).map((place) => (
-                        <View key={place.name} style={styles.placeCell}>
-                          <PhotoTile
-                            source={place.hasPhoto ? placePhoto(place.name) : PLACE_PLACEHOLDER}
-                          />
-                          <Text numberOfLines={1} style={styles.placeCellLabel}>
-                            {place.name}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  </Pressable>
                   )}
 
                   {/* On This Day card — live topics, horizontally swipeable,
@@ -667,6 +670,7 @@ const styles = StyleSheet.create({
   },
   back: { position: 'absolute', left: 20, top: 20 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#22292A' },
+  analyzingFloat: { position: 'absolute', top: 76, left: 16, zIndex: 10 },
 
   bodyRow: { flex: 1, flexDirection: 'row', backgroundColor: colors.white },
   viewport: { flex: 1, overflow: 'hidden' },
@@ -701,18 +705,6 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     backgroundColor: colors.accent,
   },
-  sir: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#DCE6E7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#B9C9CB',
-  },
-
   card: {
     position: 'absolute',
     backgroundColor: colors.white,
@@ -726,25 +718,6 @@ const styles = StyleSheet.create({
   },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardTitle: { fontFamily: fonts.medium, fontSize: 16, color: '#2B2B2B' },
-  actionsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  miniPlay: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
-  avatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    overflow: 'hidden',
-    backgroundColor: colors.slate,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   thumbRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   syncedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
   syncedText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
@@ -783,8 +756,16 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 14,
   },
-  placeCell: { width: TILE_SIZE, alignItems: 'center' },
-  placeCellLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 4 },
+  placeCell: { width: 88, alignItems: 'center' },
+  placePin: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.pale,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeCellLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
 
   otdCardHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
   otdScrollContent: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 6, gap: 12 },

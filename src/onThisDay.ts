@@ -24,6 +24,7 @@ export type TopicItem = {
   headline: string;
   summary: string;
   live: boolean; // true when fetched from the internet, false for seeded demo
+  image?: string; // direct URL to a related news photo, when the search found one
 };
 
 const ALL_TOPICS: Record<string, Topic> = {
@@ -128,6 +129,36 @@ export async function swapTopic(outgoing: TopicKey, incoming: TopicKey): Promise
   return next;
 }
 
+// ---- Per-topic taste: what the user actually cares about inside a topic ----
+// Free text like "Premier League, Real Madrid, Formula 1" — steers what the
+// web search looks for so Sports means *their* sports, not sports in general.
+
+const INTERESTS_KEY = 'otdTopicInterests';
+
+export async function getTopicInterests(): Promise<Partial<Record<TopicKey, string>>> {
+  try {
+    const raw = await AsyncStorage.getItem(INTERESTS_KEY);
+    return raw ? (JSON.parse(raw) as Partial<Record<TopicKey, string>>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export async function setTopicInterest(key: TopicKey, text: string): Promise<void> {
+  const all = await getTopicInterests();
+  const trimmed = text.trim();
+  if (trimmed) all[key] = trimmed;
+  else delete all[key];
+  await AsyncStorage.setItem(INTERESTS_KEY, JSON.stringify(all));
+}
+
+// Tiny stable hash so caches invalidate when the user's taste text changes.
+function tinyHash(s: string): string {
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+  return Math.abs(h).toString(36);
+}
+
 // ---- Seeded fallback content (used when the internet fetch is unavailable) ----
 
 const FALLBACKS: Record<TopicKey, { headline: string; summary: string }[]> = {
@@ -210,15 +241,80 @@ const MONTH_NAMES = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
-async function fetchFromInternet(date: Date, topics: Topic[]): Promise<TopicItem[] | null> {
+// Search models sometimes decorate output with markdown bold, links, and
+// citation URLs — strip all of it down to plain readable text.
+function cleanText(s: string): string {
+  return s
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // [label](url) → label
+    .replace(/\(?https?:\/\/\S+\)?/g, '') // bare URLs
+    .replace(/\(\s*[a-z0-9-]+(\.[a-z0-9-]+)+\s*\)/gi, '') // (source.com) citations
+    .replace(/\*\*/g, '')
+    .replace(/\(\s*\)/g, '') // empty parens left behind
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+// Cached items may predate the cleaner (or a stricter version of it).
+function cleanItem(i: TopicItem): TopicItem {
+  return { ...i, headline: cleanText(i.headline), summary: cleanText(i.summary) };
+}
+
+// Models hallucinate image URLs, but they cite article URLs accurately —
+// so we fetch the article and read its real og:image (the photo shown when
+// the article is shared). Best-effort with a short timeout; native has no
+// CORS so this works well on device.
+async function ogImage(articleUrl: unknown): Promise<string | undefined> {
+  if (typeof articleUrl !== 'string' || !/^https:\/\/\S+$/.test(articleUrl.trim())) {
+    return undefined;
+  }
+  if (/example\.com/i.test(articleUrl)) return undefined;
+  try {
+    const res = (await Promise.race([
+      fetch(articleUrl.trim(), { headers: { Accept: 'text/html' } }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+    ])) as Response;
+    if (!res.ok) return undefined;
+    const html = await res.text();
+    const m =
+      html.match(/property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ??
+      html.match(/content=["']([^"']+)["'][^>]*property=["']og:image["']/i) ??
+      html.match(/name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
+    const url = m?.[1];
+    return url && /^https:\/\//.test(url) ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Resolve article URLs → real photos for a batch of items, in parallel.
+async function withImages<T extends { source?: unknown }>(
+  items: (T & TopicItem)[],
+): Promise<TopicItem[]> {
+  return Promise.all(
+    items.map(async (i) => {
+      const image = await ogImage(i.source);
+      const { source: _source, ...item } = i;
+      return { ...item, image };
+    }),
+  );
+}
+
+async function fetchFromInternet(
+  date: Date,
+  topics: Topic[],
+  interests: Partial<Record<TopicKey, string>>,
+): Promise<TopicItem[] | null> {
   const key = apiKey();
   if (!key) return null;
 
   const dateLabel = `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   const topicLines = topics
-    .map((t) => `- "${t.key}": ${t.query}`)
+    .map((t) => {
+      const taste = interests[t.key];
+      return `- "${t.key}": ${t.query}${taste ? ` — the user especially cares about: ${taste}; prefer events about those, but if that date has none, give the most notable general event for the topic instead (never report "no events")` : ''}`;
+    })
     .join('\n');
-  const prompt = `Search the web for what happened on ${dateLabel} (or the closest coverage of that date) for each topic below. For each topic give one real event from that date.\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<topic key>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>"}]}`;
+  const prompt = `Search the web for what happened on ${dateLabel} (or the closest coverage of that date) for each topic below. For each topic give one real event from that date.\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<topic key>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -239,22 +335,24 @@ async function fetchFromInternet(date: Date, topics: Topic[]): Promise<TopicItem
     const match = content.match(/\{[\s\S]*\}/);
     if (!match) return null;
     const parsed = JSON.parse(match[0]) as {
-      items?: { topic?: string; headline?: string; summary?: string }[];
+      items?: { topic?: string; headline?: string; summary?: string; source?: string | null }[];
     };
     if (!parsed.items?.length) return null;
 
-    return topics.map((t) => {
+    const mapped = topics.map((t) => {
       const found = parsed.items!.find((i) => i.topic === t.key && i.headline);
       return found
         ? {
             topic: t.key,
             label: t.label,
-            headline: found.headline!,
-            summary: found.summary ?? '',
+            headline: cleanText(found.headline!),
+            summary: cleanText(found.summary ?? ''),
+            source: found.source,
             live: true,
           }
-        : { ...fallbackFeed(date, [t])[0] };
+        : { ...fallbackFeed(date, [t])[0], source: undefined };
     });
+    return withImages(mapped);
   } catch {
     return null;
   }
@@ -264,31 +362,125 @@ async function fetchFromInternet(date: Date, topics: Topic[]): Promise<TopicItem
 
 const CACHE_PREFIX = 'otdFeed-';
 
+// Signature of "what would change the results" — topic mix plus the user's
+// per-topic taste text. A cache from a different signature is stale.
+function feedSignature(topics: Topic[], interests: Partial<Record<TopicKey, string>>): string {
+  return tinyHash(topics.map((t) => `${t.key}:${interests[t.key] ?? ''}`).join('|'));
+}
+
 export async function getDayFeed(date: Date, topics: Topic[]): Promise<TopicItem[]> {
+  const interests = await getTopicInterests();
+  const sig = feedSignature(topics, interests);
   const cacheId = `${CACHE_PREFIX}${dateKey(date)}`;
   try {
     const cached = await AsyncStorage.getItem(cacheId);
     if (cached) {
-      const parsed = JSON.parse(cached) as { items: TopicItem[] };
-      // Only reuse the cache when it covers the user's current topics and
-      // contains live data (fallback content is cheap to regenerate).
+      const parsed = JSON.parse(cached) as { items: TopicItem[]; sig?: string };
+      // Only reuse the cache when it matches the user's current topics AND
+      // taste (fallback content is cheap to regenerate).
       if (
+        parsed.sig === sig &&
         parsed.items.some((i) => i.live) &&
         topics.every((t) => parsed.items.some((i) => i.topic === t.key))
       ) {
-        return topics.map(
-          (t) => parsed.items.find((i) => i.topic === t.key) ?? fallbackFeed(date, [t])[0],
-        );
+        return topics.map((t) => {
+          const found = parsed.items.find((i) => i.topic === t.key);
+          return found ? cleanItem(found) : fallbackFeed(date, [t])[0];
+        });
       }
     }
   } catch {
     // fall through to fetch
   }
 
-  const live = await fetchFromInternet(date, topics);
+  const live = await fetchFromInternet(date, topics, interests);
   if (live) {
-    AsyncStorage.setItem(cacheId, JSON.stringify({ items: live })).catch(() => {});
+    AsyncStorage.setItem(cacheId, JSON.stringify({ items: live, sig })).catch(() => {});
     return live;
   }
   return fallbackFeed(date, topics);
+}
+
+// ---- Expanded topic: several events from one topic on one day ----
+
+const EVENTS_CACHE_PREFIX = 'otdEvents-';
+const EVENTS_COUNT = 4;
+
+// Up to 4 real events for a single topic on a given day, steered by the
+// user's taste text — powers the expanded, swipeable view of a topic card.
+export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicItem[]> {
+  const interests = await getTopicInterests();
+  const taste = interests[topic.key] ?? '';
+  const cacheId = `${EVENTS_CACHE_PREFIX}${dateKey(date)}-${topic.key}-${tinyHash(taste)}`;
+
+  try {
+    const cached = await AsyncStorage.getItem(cacheId);
+    if (cached) {
+      const parsed = JSON.parse(cached) as { items: TopicItem[] };
+      if (parsed.items.length > 0) return parsed.items.map(cleanItem);
+    }
+  } catch {
+    // fall through to fetch
+  }
+
+  const key = apiKey();
+  if (key) {
+    const dateLabel = `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+    const prompt = `Search the web for ${EVENTS_COUNT} DISTINCT real events that happened on ${dateLabel} (or the closest coverage of that date) in this topic: ${topic.query}.${
+      taste ? ` The user especially cares about: ${taste} — lead with events about those, then fill the rest with other notable ones from the same topic (never report "no events").` : ''
+    } Aim for exactly ${EVENTS_COUNT} items covering different competitions, artists, or angles — return fewer only if that date genuinely had fewer. No URLs or citations in the headline/summary text.\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
+
+    try {
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${key}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini-search-preview',
+          // The expanded view is fetched one topic at a time, so it can
+          // afford a wider search than the multi-topic day feed.
+          web_search_options: { search_context_size: 'medium' },
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        const content: string = json.choices?.[0]?.message?.content ?? '';
+        const match = content.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]) as {
+            items?: { headline?: string; summary?: string; source?: string | null }[];
+          };
+          const mapped = (parsed.items ?? [])
+            .filter((i) => i.headline)
+            .slice(0, EVENTS_COUNT)
+            .map((i) => ({
+              topic: topic.key,
+              label: topic.label,
+              headline: cleanText(i.headline!),
+              summary: cleanText(i.summary ?? ''),
+              source: i.source,
+              live: true,
+            }));
+          if (mapped.length > 0) {
+            const items = await withImages(mapped);
+            AsyncStorage.setItem(cacheId, JSON.stringify({ items })).catch(() => {});
+            return items;
+          }
+        }
+      }
+    } catch {
+      // fall through to fallback
+    }
+  }
+
+  // Offline/no-credits fallback: the topic's seeded items.
+  return FALLBACKS[topic.key].map((f) => ({
+    topic: topic.key,
+    label: topic.label,
+    ...f,
+    live: false,
+  }));
 }
