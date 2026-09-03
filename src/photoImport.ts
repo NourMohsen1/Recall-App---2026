@@ -24,6 +24,45 @@ const IMPORTED_IDS_KEY = 'importedPhotoAssetIds';
 const META_BACKFILL_DONE_KEY = 'photoMetaBackfillDone_v2';
 const PAGE_SIZE = 100;
 
+// How many photos we ask the OS about at once.
+//
+// This used to be the whole page (100) via a single Promise.all, which is
+// what crashed the app mid-sync on larger libraries: each
+// getAssetInfoAsync resolves a full-resolution image, so a hundred of them
+// in flight together is enough memory pressure for iOS to kill the process
+// outright (no JS error, the app just closes). A small window is barely
+// slower in practice and keeps peak memory flat.
+const INFO_CONCURRENCY = 6;
+
+// Never let getAssetInfoAsync pull an iCloud original down over the
+// network. It defaults to true, so on a library whose photos are offloaded
+// to iCloud — the common case on a phone that's low on space — a sync was
+// silently downloading full-size originals for every single photo. That's
+// both the main source of the memory pressure above and enormously slow.
+// Without the download we may not get a localUri for cloud-only assets,
+// which is fine: the ph:// asset URI is still renderable.
+const ASSET_INFO_OPTIONS = { shouldDownloadFromNetwork: false } as const;
+
+// Runs an async mapper over items a few at a time, instead of all at once.
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  mapper: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = [];
+  for (let i = 0; i < items.length; i += limit) {
+    const slice = items.slice(i, i + limit);
+    results.push(...(await Promise.all(slice.map(mapper))));
+  }
+  return results;
+}
+
+type PhotoEntry = {
+  uri: string;
+  creationTime: number;
+  location?: { latitude: number; longitude: number } | null;
+};
+
 export type ImportProgress = { scanned: number; imported: number };
 export type ImportResult = { imported: number; days: number };
 
@@ -73,10 +112,9 @@ export async function backfillPhotoMeta(
 
       // Every asset in the window, not just ones missing from importedIds —
       // that's the whole point of a backfill.
-      await Promise.all(
-        page.assets.map(async (a) => {
+      await mapWithConcurrency(page.assets, INFO_CONCURRENCY, async (a) => {
           try {
-            const info = await MediaLibrary.getAssetInfoAsync(a.id);
+            const info = await MediaLibrary.getAssetInfoAsync(a.id, ASSET_INFO_OPTIONS);
             const uri = info.localUri ?? a.uri;
             const already = existingMeta[uri];
             if (already?.source && already?.takenAt) return; // fully labeled already
@@ -93,8 +131,12 @@ export async function backfillPhotoMeta(
           } catch {
             // Skip what we can't resolve — never block the rest of the scan.
           }
-        }),
-      );
+      });
+
+      // Flush each page rather than holding a whole library's worth of
+      // entries until the end — if the process is killed mid-sync, the
+      // pages already scanned stay saved instead of being lost.
+      await setPhotoMetaBatch(entries.splice(0, entries.length));
 
       scanned += page.assets.length;
       onProgress?.({ scanned });
@@ -121,15 +163,12 @@ export async function importRecentPhotos(
   const createdAfter = Date.now() - days * 24 * 60 * 60 * 1000;
   const importedIds = await getImportedIds();
 
-  // Group newly-found photos by the day they were taken.
-  const byDay = new Map<
-    string,
-    { uri: string; creationTime: number; location?: { latitude: number; longitude: number } }[]
-  >();
-  // Every detected screenshot / saved-from-app label, written in one batch
-  // at the end so a large import doesn't do hundreds of tiny AsyncStorage
-  // writes.
-  const photoMetaEntries: [string, PhotoMeta][] = [];
+  // Each page is scanned, filed onto its days, and marked done as a unit —
+  // nothing is held across the whole library. That keeps peak memory flat
+  // on a big sync, and means a sync that's interrupted keeps everything it
+  // already committed and resumes from there rather than starting over.
+  let importedCount = 0;
+  const allDays = new Set<string>();
   let scanned = 0;
   let after: string | undefined;
 
@@ -147,10 +186,9 @@ export async function importRecentPhotos(
     // from the list query, which needs resolving to a usable local path).
     // This also carries the photo's embedded GPS, when present, which is
     // how imported photos populate "real" Places for their day.
-    const resolved = await Promise.all(
-      fresh.map(async (a) => {
+    const resolved = await mapWithConcurrency(fresh, INFO_CONCURRENCY, async (a) => {
         try {
-          const info = await MediaLibrary.getAssetInfoAsync(a.id);
+          const info = await MediaLibrary.getAssetInfoAsync(a.id, ASSET_INFO_OPTIONS);
           const uri = info.localUri ?? a.uri;
           const source = detectPhotoSource({
             filename: info.filename ?? a.filename,
@@ -168,24 +206,47 @@ export async function importRecentPhotos(
           const source = detectPhotoSource({ filename: a.filename, mediaSubtypes: a.mediaSubtypes });
           return { id: a.id, uri: a.uri, creationTime: a.creationTime, location: undefined, source: source?.key };
         }
-      }),
-    );
+    });
+
+    // One location per day, not per photo. This used to fire an
+    // un-awaited recordLocationForDay() for EVERY photo with GPS, which on
+    // a big sync meant hundreds of overlapping read-modify-write cycles
+    // against the same storage key — a lost-update race that also piled up
+    // unresolved promises. One awaited write per distinct day instead.
+    const dayLocations = new Map<string, { latitude: number; longitude: number }>();
+    const pageByDay = new Map<string, PhotoEntry[]>();
+    const pageMeta: [string, PhotoMeta][] = [];
 
     for (const item of resolved) {
       const key = dateKey(new Date(item.creationTime));
-      const bucket = byDay.get(key);
+      const bucket = pageByDay.get(key);
       if (bucket) bucket.push(item);
-      else byDay.set(key, [item]);
-      importedIds.add(item.id);
-      if (item.location) {
-        recordLocationForDay(key, item.location.latitude, item.location.longitude).catch(() => {});
-      }
+      else pageByDay.set(key, [item]);
+      allDays.add(key);
+      if (item.location && !dayLocations.has(key)) dayLocations.set(key, item.location);
       // Always record the capture time (drives the assumed-memory feature's
       // day sequencing); the source label only when one was detected.
       const meta: PhotoMeta = { takenAt: item.creationTime };
       if (item.source) meta.source = item.source;
-      photoMetaEntries.push([item.uri, meta]);
+      pageMeta.push([item.uri, meta]);
     }
+
+    for (const [key, loc] of dayLocations) {
+      try {
+        await recordLocationForDay(key, loc.latitude, loc.longitude);
+      } catch {
+        // A place we couldn't record is never worth failing the sync over.
+      }
+    }
+
+    // Commit the page: meta first, then the day memories, and only then
+    // mark these assets imported. That order matters — marking them first
+    // would let an interrupted sync skip photos forever that never
+    // actually made it onto a day.
+    await setPhotoMetaBatch(pageMeta);
+    importedCount += await fileDayPhotos(pageByDay);
+    for (const item of resolved) importedIds.add(item.id);
+    await saveImportedIds(importedIds);
 
     scanned += page.assets.length;
     onProgress?.({ scanned, imported: importedIds.size });
@@ -194,15 +255,19 @@ export async function importRecentPhotos(
     after = page.endCursor;
   }
 
-  await setPhotoMetaBatch(photoMetaEntries);
+  return { imported: importedCount, days: allDays.size };
+}
 
-  if (byDay.size === 0) {
-    return { imported: 0, days: 0 };
-  }
-
-  // Merge into any existing photo memory for that day, or create a new one.
+// Files one page's worth of photos onto their days — merging into that
+// day's existing photo memory when there is one, creating it when there
+// isn't. Kept separate from the scan loop so each page can be committed on
+// its own.
+async function fileDayPhotos(
+  byDay: Map<string, PhotoEntry[]>,
+): Promise<number> {
+  if (byDay.size === 0) return 0;
   const existing = await getLoggedMemories();
-  let importedCount = 0;
+  let count = 0;
   for (const [key, items] of byDay) {
     const earliest = items.reduce((a, b) => (a.creationTime <= b.creationTime ? a : b));
     const uris = items.map((i) => i.uri);
@@ -220,9 +285,7 @@ export async function importRecentPhotos(
         takenAt: new Date(earliest.creationTime),
       });
     }
-    importedCount += uris.length;
+    count += uris.length;
   }
-
-  await saveImportedIds(importedIds);
-  return { imported: importedCount, days: byDay.size };
+  return count;
 }

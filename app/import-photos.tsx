@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PillButton from '../src/components/PillButton';
+import { holdBackgroundAnalysis } from '../src/assumedMemory';
 import { runPhotoAnalysisNow } from '../src/photoAnalysisQueue';
 import {
   ImportProgress,
@@ -43,6 +44,11 @@ export default function ImportPhotos() {
 
     setPhase('scanning');
     setProgress({ scanned: 0, imported: 0 });
+    // Photo analysis decodes images, and the sync is already the most
+    // memory-hungry thing the app does — running both at once was part of
+    // what got the app killed mid-sync. Analysis stands down until the
+    // scan is finished, then picks up with everything that just arrived.
+    const releaseAnalysisHold = holdBackgroundAnalysis();
     try {
       // One-time-only: labels any photo imported before source detection
       // existed. A no-op on every run after the first.
@@ -57,6 +63,8 @@ export default function ImportPhotos() {
       runPhotoAnalysisNow();
     } catch {
       setPhase('error');
+    } finally {
+      releaseAnalysisHold();
     }
   };
 
