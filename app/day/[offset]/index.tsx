@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../../src/components/PeopleEditor';
+import PhotoImage from '../../../src/components/PhotoImage';
 import {
   AssumedMemory,
   assumedMemoryAvailable,
@@ -276,7 +277,7 @@ export default function DayDetailScreen() {
                       })
                     }
                   >
-                    <Image source={{ uri }} style={styles.photo} resizeMode="cover" />
+                    <PhotoImage uri={uri} style={styles.photo} />
                   </Pressable>
                 ))}
               </View>

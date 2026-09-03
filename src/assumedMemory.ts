@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { LoggedMemory, dateKey, getLoggedMemories } from './memoryLog';
 import { getAllPhotoSources, getAllPhotoTimestamps } from './photoMeta';
+import { resolvePhotoUri } from './photoUri';
 
 // "Assumed Memory" — when a day has photos but the app can only guess what
 // actually happened, this reconstructs a plausible, clearly-speculative
@@ -225,7 +226,14 @@ Your job now is to COMPLEMENT it, not replace it: use the photos to fill in what
 
 async function toDataUri(uri: string): Promise<string | null> {
   try {
-    const result = await manipulateAsync(uri, [{ resize: { width: RESIZE_WIDTH } }], {
+    // A photo whose original is still in iCloud is stored as an OS asset
+    // reference, which the manipulator can't read — resolve it to a real
+    // file first. This is why analysis quietly produced nothing for older
+    // days (the ones most likely to be offloaded) while recent days worked.
+    const readable = await resolvePhotoUri(uri);
+    if (!readable) return null;
+
+    const result = await manipulateAsync(readable, [{ resize: { width: RESIZE_WIDTH } }], {
       compress: 0.5,
       format: SaveFormat.JPEG,
       base64: true,

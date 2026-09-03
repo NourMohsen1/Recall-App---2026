@@ -14,6 +14,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../src/components/AnalyzingBanner';
+import PhotoImage from '../src/components/PhotoImage';
 import ScreenHeader from '../src/components/ScreenHeader';
 import TopicActionSheet from '../src/components/TopicActionSheet';
 import TopicInterestSheet from '../src/components/TopicInterestSheet';
@@ -137,7 +138,7 @@ function MemoryCard({
         ) : (
           <>
             {content.photoUri ? (
-              <Image source={{ uri: content.photoUri }} style={styles.photo} resizeMode="cover" />
+              <PhotoImage uri={content.photoUri} style={styles.photo} />
             ) : (
               <View style={styles.emptyPhoto} />
             )}

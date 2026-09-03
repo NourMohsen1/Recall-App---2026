@@ -14,6 +14,15 @@ export type PhotoMeta = {
   source?: AnySourceKey | 'other';
   customLabel?: string;
   takenAt?: number;
+  // The OS asset id this photo came from, when it was imported from the
+  // library. Kept because a photo whose original lives in iCloud has no
+  // usable file path until it's actually fetched — the id is what lets
+  // src/photoUri.ts resolve one on demand, for just the photo being
+  // looked at. See the note there.
+  assetId?: string;
+  // A file path resolved from assetId, cached once so the same photo isn't
+  // re-fetched every time it's shown.
+  localUri?: string;
 };
 
 const PHOTO_META_KEY = 'photoMeta';

@@ -117,17 +117,19 @@ export async function backfillPhotoMeta(
             const info = await MediaLibrary.getAssetInfoAsync(a.id, ASSET_INFO_OPTIONS);
             const uri = info.localUri ?? a.uri;
             const already = existingMeta[uri];
-            if (already?.source && already?.takenAt) return; // fully labeled already
+            // Also needs an assetId now, so a photo labelled by an earlier
+            // version still gets one recorded on this pass.
+            if (already?.takenAt && already?.assetId) return;
             const source = detectPhotoSource({
               filename: info.filename ?? a.filename,
               mediaSubtypes: info.mediaSubtypes ?? a.mediaSubtypes,
               exif: info.exif,
             });
             const takenAt = info.creationTime ?? a.creationTime;
-            const meta: PhotoMeta = { ...already };
+            const meta: PhotoMeta = { ...already, assetId: a.id };
             if (source) meta.source = source.key;
             if (takenAt) meta.takenAt = takenAt;
-            if (meta.source || meta.takenAt) entries.push([uri, meta]);
+            entries.push([uri, meta]);
           } catch {
             // Skip what we can't resolve — never block the rest of the scan.
           }
@@ -225,8 +227,10 @@ export async function importRecentPhotos(
       allDays.add(key);
       if (item.location && !dayLocations.has(key)) dayLocations.set(key, item.location);
       // Always record the capture time (drives the assumed-memory feature's
-      // day sequencing); the source label only when one was detected.
-      const meta: PhotoMeta = { takenAt: item.creationTime };
+      // day sequencing) and the asset id (lets src/photoUri.ts fetch a real
+      // file path later for photos whose original is still in iCloud); the
+      // source label only when one was detected.
+      const meta: PhotoMeta = { takenAt: item.creationTime, assetId: item.id };
       if (item.source) meta.source = item.source;
       pageMeta.push([item.uri, meta]);
     }

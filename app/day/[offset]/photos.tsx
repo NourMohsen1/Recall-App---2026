@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   FlatList,
-  Image,
   LayoutChangeEvent,
   Pressable,
   StyleSheet,
@@ -14,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import PhotoSourceSheet from '../../../src/components/PhotoSourceSheet';
 import { dateWithOffset } from '../../../src/data';
 import { dateKey, getMemoriesByDay } from '../../../src/memoryLog';
+import PhotoImage from '../../../src/components/PhotoImage';
 import { PhotoMeta, clearPhotoMeta, getAllPhotoMeta, setPhotoMeta } from '../../../src/photoMeta';
 import { SOURCE_LABEL_STYLES } from '../../../src/photoSource';
 import { colors, fonts } from '../../../src/theme';
@@ -127,8 +127,8 @@ export default function PhotoViewer() {
             }}
             renderItem={({ item }) => (
               <View style={{ width: area.width, height: area.height, alignItems: 'center', justifyContent: 'center' }}>
-                <Image
-                  source={{ uri: item }}
+                <PhotoImage
+                  uri={item}
                   style={{ width: area.width, height: area.height }}
                   resizeMode="contain"
                 />
@@ -152,10 +152,9 @@ export default function PhotoViewer() {
             contentContainerStyle={styles.thumbStripContent}
             renderItem={({ item, index: i }) => (
               <Pressable onPress={() => jumpTo(i)}>
-                <Image
-                  source={{ uri: item }}
+                <PhotoImage
+                  uri={item}
                   style={[styles.thumb, i === index && styles.thumbActive]}
-                  resizeMode="cover"
                 />
               </Pressable>
             )}
