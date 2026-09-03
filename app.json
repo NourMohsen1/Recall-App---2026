@@ -50,7 +50,9 @@
           "locationAlwaysAndWhenInUsePermission": "Recall uses your location to tag where a memory happened, and to read where imported photos were taken."
         }
       ],
-      "expo-notifications"
+      "expo-notifications",
+      "expo-image",
+      "expo-asset"
     ]
   }
 }
