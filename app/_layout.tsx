@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -7,6 +8,7 @@ import {
   Poppins_600SemiBold,
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
+import { startPhotoAnalysis } from '../src/photoAnalysisQueue';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -15,6 +17,12 @@ export default function RootLayout() {
     Poppins_600SemiBold,
     Poppins_700Bold,
   });
+
+  // Photo analysis runs as a background job from app start — never
+  // triggered by, or waited on by, any screen the user is looking at.
+  useEffect(() => {
+    startPhotoAnalysis();
+  }, []);
 
   if (!fontsLoaded) {
     return null;

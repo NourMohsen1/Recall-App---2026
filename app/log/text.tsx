@@ -8,7 +8,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PillButton from '../../src/components/PillButton';
@@ -16,6 +15,7 @@ import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, saveMemory } from '../../src/memoryLog';
 import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
 import { colors, fonts } from '../../src/theme';
+import { useReturnTo } from '../../src/useReturnTo';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -26,7 +26,7 @@ function todayLabel() {
 }
 
 export default function LogText() {
-  const router = useRouter();
+  const returnTo = useReturnTo();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -41,13 +41,13 @@ export default function LogText() {
     // polished memory → Timeline, commitments → Tasks, people → People,
     // mentioned places → Places.
     processMemoryIntake(saved.id, trimmed, dateKey(new Date())).catch(() => {});
-    router.back();
+    returnTo();
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        <Pressable onPress={returnTo} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>New Memory</Text>

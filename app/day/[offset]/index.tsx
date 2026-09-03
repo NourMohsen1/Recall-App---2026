@@ -1,27 +1,39 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import AnalyzingBanner from '../../../../src/components/AnalyzingBanner';
-import PeopleEditor from '../../../../src/components/PeopleEditor';
-import { WEEKDAYS, dateWithOffset, shortDate } from '../../../../src/data';
-import { useMemoryPolish } from '../../../../src/memoryIntake';
+import AnalyzingBanner from '../../../src/components/AnalyzingBanner';
+import PeopleEditor from '../../../src/components/PeopleEditor';
+import {
+  AssumedMemory,
+  assumedMemoryAvailable,
+  dayLoggedText,
+  dismissAssumedMemory,
+  getAssumedMemory,
+  getCachedAssumedMemory,
+  onAssumedMemoryUpdated,
+  isAssumedMemoryDismissed,
+  translateAssumedMemory,
+} from '../../../src/assumedMemory';
+import { WEEKDAYS, dateWithOffset, shortDate } from '../../../src/data';
+import { useMemoryPolish } from '../../../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
   formatClockTime,
   getMemoriesByDay,
-} from '../../../../src/memoryLog';
+} from '../../../src/memoryLog';
 import {
   addPersonForDay,
   getAllTaggedPeople,
   getPeopleForDay,
   removePersonForDay,
-} from '../../../../src/peopleTags';
-import { DetectedPlace, getPlacesForDay } from '../../../../src/placesFromPhotos';
-import { rtlIfArabic } from '../../../../src/transcription';
-import { colors, fonts } from '../../../../src/theme';
+} from '../../../src/peopleTags';
+import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
+import { DetectedPlace, getPlacesForDay } from '../../../src/placesFromPhotos';
+import { rtlIfArabic } from '../../../src/transcription';
+import { colors, fonts } from '../../../src/theme';
 
 export default function DayDetailScreen() {
   const router = useRouter();
@@ -69,10 +81,117 @@ export default function DayDetailScreen() {
     setPeople(await getPeopleForDay(dayKey));
   };
 
+  // Assumed Memory — the same floating card from the Timeline canvas,
+  // maximized: its own section here, styled distinctly (dashed/tinted) so
+  // it never reads as part of what the user actually logged above it. When
+  // there IS a real logged account, it's handed in as context so the AI
+  // fills gaps around it instead of repeating it.
+  // Shared helper, so this screen computes the same cache signature as the
+  // Timeline and the background pass (they used to differ, which made each
+  // one regenerate the others' analysis).
+  const loggedTextForAssumed = dayLoggedText(real);
+  const [assumedMemory, setAssumedMemory] = useState<AssumedMemory | null>(null);
+  const [assumedDismissed, setAssumedDismissed] = useState(false);
+  // See the same state on Timeline for what each value means — 'failed'
+  // specifically is what lets this screen offer a manual retry instead of
+  // just showing nothing when a real attempt came back empty.
+  const [assumedStatus, setAssumedStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const [assumedLang, setAssumedLang] = useState<'en' | 'ar'>('en');
+  const [translating, setTranslating] = useState(false);
+  const photoUrisKey = realPhotoUris.join('|');
+
+  const fetchAssumed = useCallback(
+    async (targetDay: string, uris: string[], loggedText: string) => {
+      if (uris.length === 0 || !assumedMemoryAvailable()) {
+        setAssumedStatus('idle');
+        return;
+      }
+      setAssumedStatus('loading');
+      const timestamps = await getPhotoTimestamps(uris);
+      const sources = await getAllPhotoSources();
+      const photos = uris
+        .filter((uri) => timestamps[uri])
+        .map((uri) => ({ uri, takenAt: timestamps[uri], source: sources[uri] }));
+      if (photos.length === 0) {
+        setAssumedStatus('idle');
+        return;
+      }
+      const record = await getAssumedMemory(targetDay, photos, loggedText || undefined);
+      if (targetDay !== dayKeyRef.current) return;
+      if (!record) {
+        setAssumedStatus('failed');
+        return;
+      }
+      const dismissed = await isAssumedMemoryDismissed(targetDay, record.signature);
+      if (targetDay !== dayKeyRef.current) return;
+      setAssumedMemory(record);
+      setAssumedDismissed(dismissed);
+      setAssumedStatus('ready');
+    },
+    [],
+  );
+
+  const dayKeyRef = useRef(dayKey);
+  dayKeyRef.current = dayKey;
+
+  useEffect(() => {
+    setAssumedMemory(null);
+    setAssumedDismissed(false);
+    setAssumedStatus('idle');
+    setAssumedLang('en');
+    fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayKey, photoUrisKey, loggedTextForAssumed]);
+
+  const retryAssumed = () => fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+
+
+  // A day analyzed by the background pass appears here on its own — no
+  // need to tap the day to make it show up.
+  useEffect(() => {
+    return onAssumedMemoryUpdated(async (updatedDay) => {
+      if (updatedDay !== dayKey) return;
+      const record = await getCachedAssumedMemory(updatedDay);
+      if (!record) return;
+      setAssumedMemory(record);
+      setAssumedDismissed(await isAssumedMemoryDismissed(updatedDay, record.signature));
+    });
+  }, [dayKey]);
+
+  const dismissAssumed = () => {
+    if (!assumedMemory) return;
+    setAssumedDismissed(true);
+    dismissAssumedMemory(dayKey, assumedMemory.signature);
+  };
+
+  const toggleAssumedLang = async () => {
+    if (!assumedMemory) return;
+    if (assumedLang === 'ar') {
+      setAssumedLang('en');
+      return;
+    }
+    if (assumedMemory.translations?.ar) {
+      setAssumedLang('ar');
+      return;
+    }
+    setTranslating(true);
+    const translated = await translateAssumedMemory(dayKey, assumedMemory, 'ar');
+    setTranslating(false);
+    if (!translated) return;
+    setAssumedMemory((prev) =>
+      prev ? { ...prev, translations: { ...prev.translations, ar: translated } } : prev,
+    );
+    setAssumedLang('ar');
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        {/* Day Detail is pushed onto the root Stack from inside the Tabs
+            navigator (usually Timeline) — plain back()/canGoBack() looks
+            right but doesn't restore which tab was active, landing on Home
+            instead. An explicit dismissTo target sidesteps that. */}
+        <Pressable onPress={() => router.dismissTo('/timeline')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>
@@ -193,6 +312,65 @@ export default function DayDetailScreen() {
           onRemove={removePerson}
         />
 
+        {/* Assumed Memory, maximized — deliberately its own section, well
+            below the real logged content, dashed/tinted so it never reads
+            as part of what the user actually wrote above. */}
+        {assumedMemory && !assumedDismissed && (
+          <>
+            <View style={styles.divider} />
+            <View style={styles.assumedCard}>
+              <View style={styles.assumedHeaderRow}>
+                <View style={styles.assumedTitleRow}>
+                  <Ionicons name="sparkles-outline" size={18} color={colors.teal} />
+                  <Text style={styles.assumedTitle}>Assumed Memory</Text>
+                </View>
+                <Pressable hitSlop={10} onPress={dismissAssumed}>
+                  <Ionicons name="close" size={18} color="#9AA4A5" />
+                </Pressable>
+              </View>
+              <Text style={styles.assumedSub}>The AI's best guess from this day's photos</Text>
+              <Text
+                style={[
+                  styles.assumedText,
+                  assumedLang === 'ar' && rtlIfArabic(assumedMemory.translations?.ar),
+                ]}
+              >
+                {assumedLang === 'ar' && assumedMemory.translations?.ar
+                  ? assumedMemory.translations.ar
+                  : assumedMemory.summary}
+              </Text>
+              <Pressable
+                style={styles.assumedTranslateBtn}
+                onPress={toggleAssumedLang}
+                disabled={translating}
+              >
+                <Ionicons name="language-outline" size={14} color={colors.teal} />
+                <Text style={styles.assumedTranslateText}>
+                  {translating ? 'Translating…' : assumedLang === 'ar' ? 'Show original' : 'Translate to Arabic'}
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        )}
+
+        {assumedStatus === 'failed' && (
+          <>
+            <View style={styles.divider} />
+            <Pressable
+              style={[styles.assumedCard, styles.assumedCardFailed]}
+              onPress={retryAssumed}
+            >
+              <View style={styles.assumedTitleRow}>
+                <Ionicons name="refresh" size={18} color="#8B9394" />
+                <Text style={styles.assumedTitle}>Assumed Memory</Text>
+              </View>
+              <Text style={styles.assumedSub}>
+                Couldn't analyze this day's photos yet — tap to try again
+              </Text>
+            </Pressable>
+          </>
+        )}
+
         {isEmpty && (
           <View style={styles.empty}>
             <Text style={styles.emptyText}>No memories recorded for this day yet.</Text>
@@ -292,4 +470,38 @@ const styles = StyleSheet.create({
 
   empty: { paddingTop: 80, alignItems: 'center' },
   emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+
+  // Assumed Memory — same dashed/tinted treatment as the Timeline mini
+  // card, so it reads as the same feature, just maximized.
+  assumedCard: {
+    backgroundColor: colors.pale,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.slate,
+    padding: 18,
+  },
+  assumedCardFailed: { backgroundColor: '#F5F5F5', borderColor: '#D5DBDB' },
+  assumedHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  assumedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  assumedTitle: { fontFamily: fonts.medium, fontSize: 16, color: colors.primary },
+  assumedSub: { fontFamily: fonts.regular, fontSize: 12, color: '#5B7377', marginTop: 2 },
+  assumedText: {
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 21,
+    color: '#324547',
+    marginTop: 12,
+  },
+  assumedTranslateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#C7D6D8',
+  },
+  assumedTranslateText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
 });

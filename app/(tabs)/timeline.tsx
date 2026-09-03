@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Image, LayoutChangeEvent, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Image,
+  LayoutAnimation,
+  LayoutChangeEvent,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -9,8 +20,28 @@ import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
 import PhotoTile from '../../src/components/PhotoTile';
+import {
+  AssumedMemory,
+  assumedMemoryAvailable,
+  dayLoggedText,
+  dismissAssumedMemory,
+  getAssumedMemory,
+  getCachedAssumedMemory,
+  onAssumedMemoryUpdated,
+  translateAssumedMemory,
+  isAssumedMemoryDismissed,
+} from '../../src/assumedMemory';
 import { MONTHS_SHORT, WEEKDAYS, dateWithOffset, shortDate } from '../../src/data';
 import { useMemoryPolish } from '../../src/memoryIntake';
+import { MonthBucket, buildMonthBuckets, buildPastYears, buildYearMonths } from '../../src/monthBuckets';
+import { getAllPhotoSources, getPhotoTimestamps } from '../../src/photoMeta';
+
+// Smooth, native-driven expand/collapse for the rail — one line before each
+// toggle's setState instead of hand-rolled height animations.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+const animateRail = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 import {
   LoggedMemory,
   dateKey,
@@ -83,8 +114,38 @@ function MiniTopicCard({
   );
 }
 
-// Rail shows a few future days then back into the past.
-const RAIL_OFFSETS = Array.from({ length: 34 }, (_, i) => 3 - i);
+// Rail shows a few future days, then the current month expanded day-by-day,
+// then a year of prior months collapsed into tappable squares.
+const FUTURE_OFFSETS = [3, 2, 1];
+
+// One rail day cell — used for the near-future days and every day inside an
+// expanded month.
+function DayCell({
+  offset,
+  isSelected,
+  onPress,
+}: {
+  offset: number;
+  isSelected: boolean;
+  onPress: () => void;
+}) {
+  const d = dateWithOffset(offset);
+  return (
+    <Pressable onPress={onPress} style={[styles.railCell, isSelected && styles.railCellSelected]}>
+      {isSelected && (
+        <View style={styles.railWeekdayWrap}>
+          <Text numberOfLines={1} style={styles.railWeekday}>
+            {WEEKDAYS[d.getDay()].slice(0, 3).toUpperCase()}
+          </Text>
+        </View>
+      )}
+      <View style={{ alignItems: 'center' }}>
+        <Text style={styles.railMonth}>{MONTHS_SHORT[d.getMonth()]}</Text>
+        <Text style={styles.railDay}>{String(d.getDate()).padStart(2, '0')}</Text>
+      </View>
+    </Pressable>
+  );
+}
 
 // Fixed-size 2D canvas the user can pan around, like a map.
 const CANVAS_W = 920;
@@ -111,6 +172,9 @@ const CARD_POS = {
   day: { x: 30, y: 330, w: 340 },
   places: { x: 470, y: 330, w: 410 },
   otd: { x: 180, y: 780, w: 400 },
+  // Deliberately unconnected — this is a floating AI guess, not part of the
+  // people/day/places/otd chain of real logged content.
+  assumed: { x: 610, y: 780, w: 290 },
 } as const;
 
 type Point = { x: number; y: number };
@@ -161,6 +225,34 @@ export default function Timeline() {
   const router = useRouter();
   const [selected, setSelected] = useState(0);
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
+
+  // The current calendar year's months, current month expanded by default,
+  // the rest collapsed into tappable tiles — then whole prior years
+  // collapse into single tiles until opened.
+  const monthBuckets = useMemo(() => buildMonthBuckets(), []);
+  const pastYears = useMemo(() => buildPastYears(), []);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
+    () => new Set(monthBuckets[0] ? [monthBuckets[0].key] : []),
+  );
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
+  const toggleMonth = (key: string) => {
+    animateRail();
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const toggleYear = (year: number) => {
+    animateRail();
+    setExpandedYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(year)) next.delete(year);
+      else next.add(year);
+      return next;
+    });
+  };
 
   // Measured card heights, used to anchor connectors to edge midpoints.
   const [cardH, setCardH] = useState<Record<string, number>>({});
@@ -325,6 +417,122 @@ export default function Timeline() {
   const voices = real.filter((m) => m.kind === 'voice');
   const photoMemories = real.filter((m) => m.kind === 'photo');
   const realPhotoUris = photoMemories.flatMap((m) => m.photoUris ?? []);
+  // What the user already wrote/said themselves, if anything — handed to
+  // the assumed-memory analysis so it complements rather than duplicates.
+  // Derived through the shared helper so this screen, the Day screen and
+  // the background pass all produce the same cache signature.
+  const loggedTextForAssumed = dayLoggedText(real);
+
+  // Assumed Memory — a floating, read-only AI guess at the day built from
+  // its photos alone, for whichever day is currently selected. Lazy: only
+  // the day actually open gets analyzed (never the whole photo library),
+  // and results are cached per day inside assumedMemory.ts so reopening a
+  // day already seen costs nothing.
+  const [assumedMemory, setAssumedMemory] = useState<AssumedMemory | null>(null);
+  const [assumedDismissed, setAssumedDismissed] = useState(false);
+  // 'idle' — nothing to show (no photos, or feature unavailable).
+  // 'loading' — a fetch for this exact day is in flight.
+  // 'ready' — assumedMemory holds the result.
+  // 'failed' — a real attempt was made and came back with nothing (rate
+  // limited, offline, etc.) — distinct from "hasn't been tried yet" so the
+  // card can offer a retry instead of just silently showing nothing.
+  const [assumedStatus, setAssumedStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  // 'en' shows the original; any other code shows that cached translation
+  // once fetched. Arabic only for now — see ASSUMED_MEMORY_LANGUAGES.
+  const [assumedLang, setAssumedLang] = useState<'en' | 'ar'>('en');
+  const [translating, setTranslating] = useState(false);
+  const photoUrisKey = realPhotoUris.join('|');
+
+  // One fetch attempt for the currently-selected day — pulled out of the
+  // effect below so the retry button can call the exact same logic on
+  // demand instead of only ever running automatically.
+  const fetchAssumed = useCallback(
+    async (targetDay: string, uris: string[], loggedText: string) => {
+      if (uris.length === 0 || !assumedMemoryAvailable()) {
+        setAssumedStatus('idle');
+        return;
+      }
+      setAssumedStatus('loading');
+      const timestamps = await getPhotoTimestamps(uris);
+      const sources = await getAllPhotoSources();
+      const photos = uris
+        .filter((uri) => timestamps[uri])
+        .map((uri) => ({ uri, takenAt: timestamps[uri], source: sources[uri] }));
+      if (photos.length === 0) {
+        setAssumedStatus('idle');
+        return;
+      }
+      const record = await getAssumedMemory(targetDay, photos, loggedText || undefined);
+      // The user may have moved to a different day while this was in
+      // flight — never let a stale response paint over what's now shown.
+      if (targetDay !== dayKeyRef.current) return;
+      if (!record) {
+        setAssumedStatus('failed');
+        return;
+      }
+      const dismissed = await isAssumedMemoryDismissed(targetDay, record.signature);
+      if (targetDay !== dayKeyRef.current) return;
+      setAssumedMemory(record);
+      setAssumedDismissed(dismissed);
+      setAssumedStatus('ready');
+    },
+    [],
+  );
+
+  const dayKeyRef = useRef(dayKey);
+  dayKeyRef.current = dayKey;
+
+  useEffect(() => {
+    setAssumedMemory(null);
+    setAssumedDismissed(false);
+    setAssumedStatus('idle');
+    setAssumedLang('en');
+    fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayKey, photoUrisKey, loggedTextForAssumed]);
+
+  const retryAssumed = () => fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+
+
+  // A day analyzed by the background pass appears here on its own — no
+  // need to tap the day to make it show up.
+  useEffect(() => {
+    return onAssumedMemoryUpdated(async (updatedDay) => {
+      if (updatedDay !== dayKey) return;
+      const record = await getCachedAssumedMemory(updatedDay);
+      if (!record) return;
+      setAssumedMemory(record);
+      setAssumedDismissed(await isAssumedMemoryDismissed(updatedDay, record.signature));
+    });
+  }, [dayKey]);
+
+  const dismissAssumed = () => {
+    if (!assumedMemory) return;
+    setAssumedDismissed(true);
+    dismissAssumedMemory(dayKey, assumedMemory.signature);
+  };
+
+  // Toggles between the original and the Arabic translation, fetching (and
+  // caching, inside assumedMemory.ts) the translation only the first time.
+  const toggleAssumedLang = async () => {
+    if (!assumedMemory) return;
+    if (assumedLang === 'ar') {
+      setAssumedLang('en');
+      return;
+    }
+    if (assumedMemory.translations?.ar) {
+      setAssumedLang('ar');
+      return;
+    }
+    setTranslating(true);
+    const translated = await translateAssumedMemory(dayKey, assumedMemory, 'ar');
+    setTranslating(false);
+    if (!translated) return;
+    setAssumedMemory((prev) =>
+      prev ? { ...prev, translations: { ...prev.translations, ar: translated } } : prev,
+    );
+    setAssumedLang('ar');
+  };
   const photoCaptions = photoMemories.map((m) => m.text).filter(Boolean) as string[];
 
   // Voice transcripts read like any other note on the day card.
@@ -352,6 +560,56 @@ export default function Timeline() {
   const hasContent =
     showDayCard || showPhotoLib || showPlaces || showPeople || (!otdFuture && otdTopics.length > 0);
 
+  // One flat rail tile — a month (or, nested inside an opened year, still a
+  // month) collapsed to its label, or expanded into a small header plus its
+  // day cells. Reused for the current year's list and for any year opened
+  // below it, so both read as the same rail. The live current month skips
+  // the header entirely — it's always open and isn't a "past month" you'd
+  // ever collapse, so the dropdown affordance would be meaningless there.
+  const renderMonthBucket = (bucket: MonthBucket, isCurrent = false) => {
+    if (isCurrent) {
+      return (
+        <View key={bucket.key}>
+          {bucket.offsets.map((offset) => (
+            <DayCell
+              key={offset}
+              offset={offset}
+              isSelected={offset === selected}
+              onPress={() => setSelected(offset)}
+            />
+          ))}
+        </View>
+      );
+    }
+
+    const isExpanded = expandedMonths.has(bucket.key);
+
+    if (!isExpanded) {
+      return (
+        <Pressable key={bucket.key} onPress={() => toggleMonth(bucket.key)} style={styles.railCell}>
+          <Text style={styles.railTileLabel}>{bucket.label}</Text>
+        </Pressable>
+      );
+    }
+
+    return (
+      <View key={bucket.key}>
+        <Pressable onPress={() => toggleMonth(bucket.key)} style={styles.railHeaderRow}>
+          <Text style={styles.railHeaderText}>{bucket.label}</Text>
+          <Ionicons name="chevron-down" size={13} color="#8B9394" />
+        </Pressable>
+        {bucket.offsets.map((offset) => (
+          <DayCell
+            key={offset}
+            offset={offset}
+            isSelected={offset === selected}
+            onPress={() => setSelected(offset)}
+          />
+        ))}
+      </View>
+    );
+  };
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -372,29 +630,39 @@ export default function Timeline() {
       )}
 
       <View style={styles.bodyRow}>
-        {/* Date rail */}
+        {/* Date rail — near-future days, current month expanded, then a
+            year of prior months collapsed into squares until tapped open */}
         <ScrollView style={styles.rail} showsVerticalScrollIndicator={false}>
-          {RAIL_OFFSETS.map((offset) => {
-            const d = dateWithOffset(offset);
-            const isSelected = offset === selected;
+          {FUTURE_OFFSETS.map((offset) => (
+            <DayCell
+              key={offset}
+              offset={offset}
+              isSelected={offset === selected}
+              onPress={() => setSelected(offset)}
+            />
+          ))}
+
+          {monthBuckets.map((bucket, i) => renderMonthBucket(bucket, i === 0))}
+
+          {pastYears.map((year) => {
+            const isExpanded = expandedYears.has(year);
+
+            if (!isExpanded) {
+              return (
+                <Pressable key={year} onPress={() => toggleYear(year)} style={styles.railCell}>
+                  <Text style={styles.railTileLabel}>{year}</Text>
+                </Pressable>
+              );
+            }
+
             return (
-              <Pressable
-                key={offset}
-                onPress={() => setSelected(offset)}
-                style={[styles.railCell, isSelected && styles.railCellSelected]}
-              >
-                {isSelected && (
-                  <View style={styles.railWeekdayWrap}>
-                    <Text numberOfLines={1} style={styles.railWeekday}>
-                      {WEEKDAYS[d.getDay()].slice(0, 3).toUpperCase()}
-                    </Text>
-                  </View>
-                )}
-                <View style={{ alignItems: 'center' }}>
-                  <Text style={styles.railMonth}>{MONTHS_SHORT[d.getMonth()]}</Text>
-                  <Text style={styles.railDay}>{String(d.getDate()).padStart(2, '0')}</Text>
-                </View>
-              </Pressable>
+              <View key={year}>
+                <Pressable onPress={() => toggleYear(year)} style={styles.railHeaderRow}>
+                  <Text style={styles.railHeaderText}>{year}</Text>
+                  <Ionicons name="chevron-down" size={13} color="#8B9394" />
+                </Pressable>
+                {buildYearMonths(year).map((bucket) => renderMonthBucket(bucket))}
+              </View>
             );
           })}
         </ScrollView>
@@ -627,6 +895,77 @@ export default function Timeline() {
                       </ScrollView>
                     </View>
                   )}
+
+                  {/* Assumed Memory — floating on purpose (no connector): an
+                      AI guess built only from the day's photos, never the
+                      user's real logged account. Dismissible; never
+                      promoted into the real Day memory. */}
+                  {assumedMemory && !assumedDismissed && (
+                    <Pressable
+                      style={[
+                        styles.assumedCard,
+                        { left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w },
+                      ]}
+                      onPress={() =>
+                        router.push(`/day/${selected}` as Parameters<typeof router.push>[0])
+                      }
+                    >
+                      <View style={styles.cardHeaderRow}>
+                        <View style={styles.assumedTitleRow}>
+                          <Ionicons name="sparkles-outline" size={16} color={colors.teal} />
+                          <Text style={styles.assumedTitle}>Assumed Memory</Text>
+                        </View>
+                        <Pressable hitSlop={10} onPress={dismissAssumed}>
+                          <Ionicons name="close" size={16} color="#9AA4A5" />
+                        </Pressable>
+                      </View>
+                      <Text style={styles.assumedSub}>The AI's best guess from this day's photos</Text>
+                      <Text
+                        style={[
+                          styles.assumedText,
+                          assumedLang === 'ar' && rtlIfArabic(assumedMemory.translations?.ar),
+                        ]}
+                      >
+                        {assumedLang === 'ar' && assumedMemory.translations?.ar
+                          ? assumedMemory.translations.ar
+                          : assumedMemory.summary}
+                      </Text>
+                      <Pressable
+                        style={styles.assumedTranslateBtn}
+                        onPress={toggleAssumedLang}
+                        disabled={translating}
+                      >
+                        <Ionicons name="language-outline" size={13} color={colors.teal} />
+                        <Text style={styles.assumedTranslateText}>
+                          {translating ? 'Translating…' : assumedLang === 'ar' ? 'Show original' : 'Translate to Arabic'}
+                        </Text>
+                      </Pressable>
+                    </Pressable>
+                  )}
+
+                  {/* A real attempt was made and came back with nothing —
+                      rate limited, offline, whatever. Distinct from "hasn't
+                      been tried yet" (which shows no card at all): this one
+                      offers a manual retry instead of leaving the day
+                      looking like analysis will never arrive. */}
+                  {assumedStatus === 'failed' && (
+                    <Pressable
+                      style={[
+                        styles.assumedCard,
+                        styles.assumedCardFailed,
+                        { left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w },
+                      ]}
+                      onPress={retryAssumed}
+                    >
+                      <View style={styles.assumedTitleRow}>
+                        <Ionicons name="refresh" size={16} color="#8B9394" />
+                        <Text style={styles.assumedTitle}>Assumed Memory</Text>
+                      </View>
+                      <Text style={styles.assumedSub}>
+                        Couldn't analyze this day's photos yet — tap to try again
+                      </Text>
+                    </Pressable>
+                  )}
                 </>
               ) : (
                 <Pressable
@@ -676,6 +1015,7 @@ const styles = StyleSheet.create({
   viewport: { flex: 1, overflow: 'hidden' },
   rail: { width: 88, backgroundColor: colors.white, flexGrow: 0 },
   railCell: {
+    minHeight: 70,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -696,6 +1036,21 @@ const styles = StyleSheet.create({
   railWeekday: { fontFamily: fonts.semiBold, fontSize: 11, color: '#22292A' },
   railMonth: { fontFamily: fonts.semiBold, fontSize: 13, color: '#22292A', lineHeight: 17 },
   railDay: { fontFamily: fonts.bold, fontSize: 22, color: '#22292A', lineHeight: 26 },
+
+  // Collapsed month/year — same flat tile as a day cell, just a centered
+  // label, so the whole rail reads as one continuous list.
+  railTileLabel: { fontFamily: fonts.bold, fontSize: 15, color: '#000000' },
+
+  // Expanded month/year — a small, quiet divider (no tint, no border) that
+  // sits between the rail cells above and below it.
+  railHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+  },
+  railHeaderText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#8B9394', letterSpacing: 0.3 },
 
   dash: { position: 'absolute', borderColor: colors.accent, borderStyle: 'dashed' },
   dashDot: {
@@ -768,6 +1123,40 @@ const styles = StyleSheet.create({
   placeCellLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
 
   otdCardHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
+
+  // Assumed Memory — a dashed border and tinted fill mark it as distinct
+  // from the solid-white "real" cards around it: a guess, not a record.
+  assumedCard: {
+    position: 'absolute',
+    backgroundColor: colors.pale,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.slate,
+    padding: 14,
+  },
+  assumedCardFailed: { backgroundColor: '#F0F0F0', borderColor: '#C9CDCE' },
+  assumedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  assumedTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.primary },
+  assumedSub: { fontFamily: fonts.regular, fontSize: 11, color: '#5B7377', marginTop: 2 },
+  assumedText: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#324547',
+    marginTop: 10,
+  },
+  assumedTranslateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    marginTop: 10,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#C7D6D8',
+  },
+  assumedTranslateText: { fontFamily: fonts.medium, fontSize: 11, color: colors.teal },
   otdScrollContent: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 6, gap: 12 },
   miniTopicCard: {
     width: 204,

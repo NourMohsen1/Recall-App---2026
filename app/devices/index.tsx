@@ -2,10 +2,10 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import PillButton from '../../../src/components/PillButton';
-import ScreenHeader from '../../../src/components/ScreenHeader';
-import { MISC } from '../../../src/images';
-import { colors, fonts } from '../../../src/theme';
+import PillButton from '../../src/components/PillButton';
+import ScreenHeader from '../../src/components/ScreenHeader';
+import { MISC } from '../../src/images';
+import { colors, fonts } from '../../src/theme';
 
 export default function Devices() {
   const router = useRouter();

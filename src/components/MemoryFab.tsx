@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { ICONS, MISC } from '../images';
 import { colors, fonts } from '../theme';
 
@@ -15,6 +15,10 @@ const ACTIONS = [
 
 export default function MemoryFab() {
   const router = useRouter();
+  // The FAB is visible on every tab, so the logging screen it opens needs to
+  // know which tab to return to when it's done — plain back() lands on Home
+  // regardless of where you actually were (see day/[offset]/index.tsx).
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -35,7 +39,7 @@ export default function MemoryFab() {
 
   const pick = (href: any) => {
     setOpen(false);
-    animateTo(0, () => router.push(href));
+    animateTo(0, () => router.push({ pathname: href, params: { from: pathname } }));
   };
 
   const backdropOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });

@@ -4,9 +4,9 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
-import VoicePlayer from '../../../../src/components/VoicePlayer';
-import { dateWithOffset } from '../../../../src/data';
-import { processMemoryIntake } from '../../../../src/memoryIntake';
+import VoicePlayer from '../../../src/components/VoicePlayer';
+import { dateWithOffset } from '../../../src/data';
+import { processMemoryIntake } from '../../../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
@@ -14,9 +14,9 @@ import {
   formatClockTime,
   getMemoriesByDay,
   updateMemory,
-} from '../../../../src/memoryLog';
-import { transcribeAudio, transcriptionAvailable } from '../../../../src/transcription';
-import { colors, fonts } from '../../../../src/theme';
+} from '../../../src/memoryLog';
+import { transcribeAudio, transcriptionAvailable } from '../../../src/transcription';
+import { colors, fonts } from '../../../src/theme';
 
 function Header({ onBack }: { onBack: () => void }) {
   return (
@@ -185,9 +185,14 @@ export default function SourceScreen() {
     }, [reload]),
   );
 
+  // Pushed onto the root Stack from Day Detail (or Timeline's waveform
+  // icon) — always for this exact day, so that's the reliable, explicit
+  // place to return to. See the note in day/[offset]/index.tsx.
+  const backToDay = () => router.dismissTo(`/day/${offsetNum}` as Parameters<typeof router.dismissTo>[0]);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Header onBack={() => router.back()} />
+      <Header onBack={backToDay} />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.waveBadge}>
           <MaterialCommunityIcons name="waveform" size={40} color={colors.primary} />
@@ -198,7 +203,7 @@ export default function SourceScreen() {
             <RealSource
               key={voice.id}
               voice={voice}
-              onRemoved={() => router.back()}
+              onRemoved={backToDay}
               onUpdated={reload}
             />
           ) : (

@@ -3,8 +3,8 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { WEEKDAYS } from '../../../src/data';
-import { LoggedMemory, getMemoriesByDay } from '../../../src/memoryLog';
+import { WEEKDAYS } from '../../src/data';
+import { LoggedMemory, getMemoriesByDay } from '../../src/memoryLog';
 import {
   PersonMeta,
   PersonSummary,
@@ -14,10 +14,10 @@ import {
   lastSeenLabel,
   removePersonEverywhere,
   verifyPerson,
-} from '../../../src/peopleTags';
-import { DetectedPlace, getAllDayPlaces } from '../../../src/placesFromPhotos';
-import { rtlIfArabic } from '../../../src/transcription';
-import { colors, fonts } from '../../../src/theme';
+} from '../../src/peopleTags';
+import { DetectedPlace, getAllDayPlaces } from '../../src/placesFromPhotos';
+import { rtlIfArabic } from '../../src/transcription';
+import { colors, fonts } from '../../src/theme';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -85,7 +85,7 @@ export default function PersonProfile() {
   const removePerson = async () => {
     if (!name) return;
     await removePersonEverywhere(name);
-    router.back();
+    router.dismissTo('/people');
   };
 
   // The most recent day together drives the "quick recap" block.
@@ -100,7 +100,9 @@ export default function PersonProfile() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        {/* Primary entry is the People list — explicit target for the same
+            reason noted in day/[offset]/index.tsx. */}
+        <Pressable onPress={() => router.dismissTo('/people')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>

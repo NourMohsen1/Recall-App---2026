@@ -77,7 +77,7 @@ export default function TaskEdit() {
     if (!id) return;
     getTask(id).then((task) => {
       if (!task) {
-        router.back();
+        router.dismissTo('/tasks');
         return;
       }
       setTitle(task.title);
@@ -112,8 +112,10 @@ export default function TaskEdit() {
       // A time only means something when there's a date and the reminder is on.
       dueTime: dueDate && remind ? wheelTime() : undefined,
     });
-    if (router.canGoBack()) router.back();
-    else router.replace('/tasks');
+    // Always opened from the Tasks tab — an explicit target instead of
+    // back()/canGoBack(), which don't reliably restore the active tab (see
+    // day/[offset]/index.tsx for why).
+    router.dismissTo('/tasks');
   };
 
   const remove = () => {
@@ -125,8 +127,7 @@ export default function TaskEdit() {
         style: 'destructive',
         onPress: async () => {
           await deleteTask(id);
-          if (router.canGoBack()) router.back();
-          else router.replace('/tasks');
+          router.dismissTo('/tasks');
         },
       },
     ]);
@@ -140,7 +141,7 @@ export default function TaskEdit() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Cancel · title · Save — like the alarm editor */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
+        <Pressable onPress={() => router.dismissTo('/tasks')} hitSlop={10}>
           <Text style={styles.headerAction}>Cancel</Text>
         </Pressable>
         <Text style={styles.headerTitle}>Edit Task</Text>

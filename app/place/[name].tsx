@@ -2,9 +2,9 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { placeDetail } from '../../../src/data';
-import { placePhoto } from '../../../src/images';
-import { colors, fonts } from '../../../src/theme';
+import { placeDetail } from '../../src/data';
+import { placePhoto } from '../../src/images';
+import { colors, fonts } from '../../src/theme';
 
 export default function PlaceProfile() {
   const router = useRouter();
@@ -15,7 +15,9 @@ export default function PlaceProfile() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        {/* Primary entry is the Places list — explicit target for the same
+            reason noted in day/[offset]/index.tsx. */}
+        <Pressable onPress={() => router.dismissTo('/places')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>

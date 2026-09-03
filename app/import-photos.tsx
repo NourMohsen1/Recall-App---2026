@@ -1,23 +1,27 @@
 import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PillButton from '../src/components/PillButton';
-import { ImportProgress, importRecentPhotos, requestLibraryPermission } from '../src/photoImport';
+import { runPhotoAnalysisNow } from '../src/photoAnalysisQueue';
+import {
+  ImportProgress,
+  backfillPhotoMeta,
+  importRecentPhotos,
+  requestLibraryPermission,
+} from '../src/photoImport';
 import { colors, fonts } from '../src/theme';
 
-const PERIODS = [
-  { days: 10, label: 'Last 10 days' },
-  { days: 20, label: 'Last 20 days' },
-  { days: 30, label: 'Last 30 days' },
-];
+// Matches the Timeline's own "at least a year back" window — one flat sync
+// window instead of asking the user to pick a day count.
+const SYNC_DAYS = 365;
 
 type Phase = 'idle' | 'scanning' | 'done' | 'error';
 
 export default function ImportPhotos() {
   const router = useRouter();
-  const [selectedDays, setSelectedDays] = useState(10);
+  const [syncOn, setSyncOn] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState<ImportProgress>({ scanned: 0, imported: 0 });
   const [result, setResult] = useState<{ imported: number; days: number } | null>(null);
@@ -25,6 +29,7 @@ export default function ImportPhotos() {
   const runImport = async () => {
     const granted = await requestLibraryPermission();
     if (!granted) {
+      setSyncOn(false);
       Alert.alert(
         'Photo access needed',
         'Allow photo library access in Settings so Recall can import your photos.',
@@ -39,12 +44,28 @@ export default function ImportPhotos() {
     setPhase('scanning');
     setProgress({ scanned: 0, imported: 0 });
     try {
-      const res = await importRecentPhotos(selectedDays, setProgress);
+      // One-time-only: labels any photo imported before source detection
+      // existed. A no-op on every run after the first.
+      await backfillPhotoMeta(SYNC_DAYS, ({ scanned }) => setProgress({ scanned, imported: 0 }));
+      const res = await importRecentPhotos(SYNC_DAYS, setProgress);
       setResult(res);
       setPhase('done');
+      // Analyzes every day of photos it hasn't seen yet so the Ask chatbot
+      // has the whole year available, not just days the user happens to
+      // open. Deliberately not awaited — this can take a while on a big
+      // library, and there's nothing on this screen for it to update.
+      runPhotoAnalysisNow();
     } catch {
       setPhase('error');
     }
+  };
+
+  // The toggle IS the trigger: flipping it on starts the sync immediately.
+  // Flipping it off before/after a sync is just a visual reset — there's no
+  // import to undo, so it's harmless either way.
+  const handleToggle = (value: boolean) => {
+    setSyncOn(value);
+    if (value && phase !== 'scanning') runImport();
   };
 
   const reset = () => {
@@ -55,7 +76,9 @@ export default function ImportPhotos() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        {/* Only ever opened from Profile — explicit target for the same
+            reason noted in day/[offset]/index.tsx. */}
+        <Pressable onPress={() => router.dismissTo('/profile')} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Import Photos</Text>
@@ -74,32 +97,23 @@ export default function ImportPhotos() {
 
         {phase === 'idle' && (
           <>
-            <Text style={styles.sectionLabel}>How far back?</Text>
-            <View style={styles.periodRow}>
-              {PERIODS.map((p) => (
-                <Pressable
-                  key={p.days}
-                  style={[styles.periodChip, selectedDays === p.days && styles.periodChipActive]}
-                  onPress={() => setSelectedDays(p.days)}
-                >
-                  <Text
-                    style={[
-                      styles.periodText,
-                      selectedDays === p.days && styles.periodTextActive,
-                    ]}
-                  >
-                    {p.label}
-                  </Text>
-                </Pressable>
-              ))}
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleTitle}>Sync photos</Text>
+                <Text style={styles.toggleSubtitle}>Imports everything from the last 12 months</Text>
+              </View>
+              <Switch
+                value={syncOn}
+                onValueChange={handleToggle}
+                trackColor={{ false: '#DCE0E0', true: colors.accent }}
+                thumbColor={colors.white}
+              />
             </View>
 
             <Text style={styles.hint}>
-              Keeping this bounded is intentional — a shorter window scans faster and keeps the
-              app responsive. You can always run it again later to bring in more.
+              A full year the first time may take a moment — after that, running it again only
+              picks up what's new.
             </Text>
-
-            <PillButton label="Import Photos" onPress={runImport} style={styles.cta} />
           </>
         )}
 
@@ -123,10 +137,10 @@ export default function ImportPhotos() {
             <Text style={styles.statusDetail}>
               {result.imported > 0
                 ? 'Check your Timeline to see them on their original days.'
-                : 'No new photos found in that window.'}
+                : 'No new photos found in the last 12 months.'}
             </Text>
             <View style={styles.doneRow}>
-              <PillButton label="Import again" variant="ghost" onPress={reset} style={styles.doneBtn} />
+              <PillButton label="Sync again" variant="ghost" onPress={runImport} style={styles.doneBtn} />
               <PillButton
                 label="Go to Timeline"
                 onPress={() => router.replace('/timeline')}
@@ -186,25 +200,19 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 
-  sectionLabel: {
-    alignSelf: 'flex-start',
-    fontFamily: fonts.semiBold,
-    fontSize: 15,
-    color: '#1B1B1B',
-    marginTop: 32,
-    marginBottom: 12,
-  },
-  periodRow: { alignSelf: 'stretch', gap: 10 },
-  periodChip: {
-    borderWidth: 1.5,
-    borderColor: '#DCE6E7',
-    borderRadius: 14,
-    paddingVertical: 14,
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    backgroundColor: colors.pale,
+    borderRadius: 18,
+    paddingVertical: 16,
     paddingHorizontal: 18,
+    marginTop: 32,
+    gap: 12,
   },
-  periodChipActive: { borderColor: colors.accent, backgroundColor: colors.pale },
-  periodText: { fontFamily: fonts.medium, fontSize: 15, color: '#2B2B2B' },
-  periodTextActive: { color: colors.primary, fontFamily: fonts.semiBold },
+  toggleTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#1B1B1B' },
+  toggleSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: '#5B6364', marginTop: 2 },
 
   hint: {
     fontFamily: fonts.regular,
@@ -214,7 +222,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
-  cta: { alignSelf: 'stretch', marginTop: 24 },
 
   statusBox: { alignItems: 'center', marginTop: 40, gap: 8 },
   statusTitle: {

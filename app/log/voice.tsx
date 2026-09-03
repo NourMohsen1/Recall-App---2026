@@ -13,7 +13,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -35,6 +34,7 @@ import {
   transcribeAudio,
   transcriptionAvailable,
 } from '../../src/transcription';
+import { useReturnTo } from '../../src/useReturnTo';
 import { colors, fonts } from '../../src/theme';
 
 function formatTime(ms: number) {
@@ -99,7 +99,7 @@ function LiveWaveform({ active }: { active: boolean }) {
 }
 
 export default function LogVoice() {
-  const router = useRouter();
+  const returnTo = useReturnTo();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 200);
   const [phase, setPhase] = useState<'idle' | 'recording' | 'review'>('idle');
@@ -112,7 +112,9 @@ export default function LogVoice() {
   const [transcript, setTranscript] = useState('');
   const [words, setWords] = useState<TranscriptWord[]>([]);
   const [transcribing, setTranscribing] = useState(false);
-  const [transcribeError, setTranscribeError] = useState<'failed' | 'no-credits' | null>(null);
+  const [transcribeError, setTranscribeError] = useState<
+    'failed' | 'no-credits' | 'rate-limited' | null
+  >(null);
   const canTranscribe = transcriptionAvailable();
 
   // A manually-typed note the user can attach regardless of whether
@@ -160,6 +162,8 @@ export default function LogVoice() {
       setWords(result.words);
     } else if (result.reason === 'no-credits') {
       setTranscribeError('no-credits');
+    } else if (result.reason === 'rate-limited') {
+      setTranscribeError('rate-limited');
     } else if (result.reason === 'failed') {
       setTranscribeError('failed');
     }
@@ -224,7 +228,7 @@ export default function LogVoice() {
     // met → People, places mentioned → Places. Works in any language.
     const spokenText = [transcript.trim(), note.trim()].filter(Boolean).join(' — ');
     if (spokenText) processMemoryIntake(saved.id, spokenText, dateKey(new Date())).catch(() => {});
-    router.back();
+    returnTo();
   };
 
   const togglePlayback = () => {
@@ -243,7 +247,7 @@ export default function LogVoice() {
       <View style={styles.background} />
       <SafeAreaView style={styles.fill} edges={['top']}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+          <Pressable onPress={() => returnTo()} hitSlop={12} style={styles.back}>
             <Ionicons name="close" size={26} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle}>Talk to Recall</Text>
@@ -309,6 +313,12 @@ export default function LogVoice() {
                     Your OpenAI account has no credits yet — add a prepaid balance at
                     platform.openai.com → Billing.
                   </Text>
+                ) : transcribeError === 'rate-limited' ? (
+                  <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
+                    <Text style={styles.errorHint}>
+                      Sending requests a bit too fast — tap to try again in a moment.
+                    </Text>
+                  </Pressable>
                 ) : transcribeError === 'failed' ? (
                   <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
                     <Text style={styles.errorHint}>Couldn’t transcribe — tap to try again.</Text>

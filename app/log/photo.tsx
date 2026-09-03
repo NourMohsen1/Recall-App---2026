@@ -9,7 +9,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,10 +16,13 @@ import PillButton from '../../src/components/PillButton';
 import { ICONS } from '../../src/images';
 import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, persistFile, saveMemory } from '../../src/memoryLog';
+import { setPhotoMetaBatch, PhotoMeta } from '../../src/photoMeta';
+import { detectPhotoSource } from '../../src/photoSource';
 import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
 import { colors, fonts } from '../../src/theme';
+import { useReturnTo } from '../../src/useReturnTo';
 
-type Picked = { uri: string; takenAt: Date };
+type Picked = { uri: string; takenAt: Date; source?: PhotoMeta['source'] };
 
 // EXIF timestamps look like "2026:07:02 14:31:08" (local time of the shot).
 // iOS sometimes nests them under "{Exif}". Fall back to "now" when missing.
@@ -51,7 +53,7 @@ function dayLabel(d: Date) {
 }
 
 export default function LogPhoto() {
-  const router = useRouter();
+  const returnTo = useReturnTo();
   const [picked, setPicked] = useState<Picked[]>([]);
   const [caption, setCaption] = useState('');
   const [saving, setSaving] = useState(false);
@@ -59,7 +61,14 @@ export default function LogPhoto() {
   const addAssets = (assets: ImagePicker.ImagePickerAsset[]) => {
     setPicked((prev) => [
       ...prev,
-      ...assets.map((a) => ({ uri: a.uri, takenAt: takenAtFromAsset(a) })),
+      ...assets.map((a) => ({
+        uri: a.uri,
+        takenAt: takenAtFromAsset(a),
+        // The picker has no PHAsset mediaSubtypes, so screenshot detection
+        // here relies on filename only — still catches Android's
+        // "Screenshot_..." convention and iOS's rare literal-named ones.
+        source: detectPhotoSource({ filename: a.fileName, exif: a.exif })?.key,
+      })),
     ]);
   };
 
@@ -99,13 +108,18 @@ export default function LogPhoto() {
     // Copy files out of the volatile picker cache, then group by the day the
     // photo was taken — each group becomes its own memory on that date.
     const groups = new Map<string, Picked[]>();
+    const photoMetaEntries: [string, PhotoMeta][] = [];
     for (const p of picked) {
       const permanent = { ...p, uri: await persistFile(p.uri, 'photo') };
       const key = dateKey(p.takenAt);
       const bucket = groups.get(key);
       if (bucket) bucket.push(permanent);
       else groups.set(key, [permanent]);
+      const meta: PhotoMeta = { takenAt: permanent.takenAt.getTime() };
+      if (permanent.source) meta.source = permanent.source;
+      photoMetaEntries.push([permanent.uri, meta]);
     }
+    await setPhotoMetaBatch(photoMetaEntries);
     const today = dateKey(new Date());
     for (const [key, group] of groups) {
       const earliest = group.reduce((a, b) => (a.takenAt <= b.takenAt ? a : b));
@@ -122,7 +136,7 @@ export default function LogPhoto() {
       // routed against the day the photos were taken, not today.
       if (caption.trim()) processMemoryIntake(saved.id, caption.trim(), key).catch(() => {});
     }
-    router.back();
+    returnTo();
   };
 
   // Preview of where the photos will land, grouped by day taken.
@@ -137,7 +151,7 @@ export default function LogPhoto() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        <Pressable onPress={() => returnTo()} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Add Photos</Text>

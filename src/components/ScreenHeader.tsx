@@ -4,13 +4,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
 
 // White page header with a teal back arrow and centered title,
-// used by People / Places / On This Day / Tasks.
-export default function ScreenHeader({ title }: { title: string }) {
+// used by People / Places / On This Day / Recap.
+//
+// `backTo` names this screen's known primary entry point (e.g. "/home").
+// Plain `router.back()`/`canGoBack()` looks right but isn't reliable here:
+// this screen is pushed onto the root Stack from *inside* the bottom Tabs
+// navigator, and Expo Router's implicit back-resolution doesn't restore
+// which tab was active — it lands on the tab bar's first tab instead. An
+// explicit `dismissTo` sidesteps that entirely.
+export default function ScreenHeader({
+  title,
+  backTo = '/home',
+}: {
+  title: string;
+  backTo?: string;
+}) {
   const router = useRouter();
   return (
     <View style={styles.header}>
       <Pressable
-        onPress={() => (router.canGoBack() ? router.back() : router.push('/home'))}
+        onPress={() => router.dismissTo(backTo as Parameters<typeof router.dismissTo>[0])}
         hitSlop={12}
         style={styles.back}
       >

@@ -3,17 +3,17 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import AnalyzingBanner from '../../src/components/AnalyzingBanner';
-import ScreenHeader from '../../src/components/ScreenHeader';
-import { MONTHS_SHORT } from '../../src/data';
-import { useMemoryPolish } from '../../src/memoryIntake';
+import AnalyzingBanner from '../src/components/AnalyzingBanner';
+import ScreenHeader from '../src/components/ScreenHeader';
+import { MONTHS_SHORT } from '../src/data';
+import { useMemoryPolish } from '../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
   formatClockTime,
   getLoggedMemories,
-} from '../../src/memoryLog';
-import { colors, fonts } from '../../src/theme';
+} from '../src/memoryLog';
+import { colors, fonts } from '../src/theme';
 
 const PERIODS = ['Today', 'Weekly', 'Monthly', 'Yearly'] as const;
 type Period = (typeof PERIODS)[number];

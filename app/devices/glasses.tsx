@@ -1,8 +1,8 @@
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import ScreenHeader from '../../../src/components/ScreenHeader';
-import { MISC } from '../../../src/images';
-import { colors, fonts } from '../../../src/theme';
+import ScreenHeader from '../../src/components/ScreenHeader';
+import { MISC } from '../../src/images';
+import { colors, fonts } from '../../src/theme';
 
 export default function GlassesDetail() {
   return (

@@ -14,13 +14,42 @@ export type TranscriptWord = { word: string; start: number; end: number };
 
 export type TranscriptionResult =
   | { ok: true; text: string; words: TranscriptWord[] }
-  | { ok: false; reason: 'no-key' | 'no-credits' | 'failed' };
+  // 'rate-limited': too many requests too fast, transient — distinct from
+  // 'no-credits' (the account actually ran out of prepaid balance). Both
+  // are HTTP 429; only the response body tells them apart.
+  | { ok: false; reason: 'no-key' | 'no-credits' | 'rate-limited' | 'failed' };
 
 const API_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
 function apiKey(): string | undefined {
   const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
   return key && key.trim().length > 10 ? key.trim() : undefined;
+}
+
+async function readErrorReason(res: Response): Promise<'no-credits' | 'rate-limited' | 'failed'> {
+  if (res.status !== 429) return 'failed';
+  try {
+    const json = await res.json();
+    // OpenAI signals "out of money" in more than one shape, and getting
+    // this wrong is genuinely harmful: it told the user "you're sending
+    // questions too fast" for days when the real problem was an exhausted
+    // balance, so nobody looked at billing. Check BOTH fields and match
+    // any quota/credit/billing wording rather than one exact string.
+    //   type: "insufficient_quota", code: "credit_balance_exhausted"
+    //   type: "insufficient_quota", code: "insufficient_quota"
+    const signal = [json?.error?.type, json?.error?.code, json?.error?.message]
+      .filter((v) => typeof v === 'string')
+      .join(' ')
+      .toLowerCase();
+    const outOfCredits =
+      signal.includes('insufficient_quota') ||
+      signal.includes('credit_balance_exhausted') ||
+      signal.includes('no credits remaining') ||
+      signal.includes('billing');
+    return outOfCredits ? 'no-credits' : 'rate-limited';
+  } catch {
+    return 'rate-limited';
+  }
 }
 
 export function transcriptionAvailable(): boolean {
@@ -60,7 +89,7 @@ export async function transcribeAudio(
       headers: { Authorization: `Bearer ${key}` },
       body: form,
     });
-    if (res.status === 429) return { ok: false, reason: 'no-credits' };
+    if (res.status === 429) return { ok: false, reason: await readErrorReason(res) };
     if (!res.ok) return { ok: false, reason: 'failed' };
     const json = (await res.json()) as {
       text?: string;

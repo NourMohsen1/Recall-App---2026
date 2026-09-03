@@ -86,14 +86,16 @@ export default function LogTask() {
       // Parser unavailable or found nothing — save the words as-is.
       await addTask({ title: trimmed, source: 'manual' });
     }
-    if (router.canGoBack()) router.back();
-    else router.replace('/tasks');
+    // Always opened from the Tasks tab — an explicit target instead of
+    // back()/canGoBack(), which don't reliably restore the active tab (see
+    // day/[offset]/index.tsx for why).
+    router.dismissTo('/tasks');
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+        <Pressable onPress={() => router.dismissTo('/tasks')} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>New Task</Text>

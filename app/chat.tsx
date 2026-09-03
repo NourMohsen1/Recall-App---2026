@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   RecordingPresets,
@@ -24,17 +24,21 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
-import { AskResult, ChatTurn, Reference, askAvailable, askMemory } from '../../src/askAI';
-import { MISC, placePhoto } from '../../src/images';
-import { avatarTint } from '../../src/peopleTags';
-import { speakText, stopSpeaking } from '../../src/speech';
-import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../../src/transcription';
-import { colors, fonts } from '../../src/theme';
+import { AskResult, ChatTurn, Reference, Source, askAvailable, askMemory } from '../src/askAI';
+import { holdBackgroundAnalysis } from '../src/assumedMemory';
+import { MISC, placePhoto } from '../src/images';
+import { avatarTint } from '../src/peopleTags';
+import { speakText, stopSpeaking } from '../src/speech';
+import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../src/transcription';
+import { colors, fonts } from '../src/theme';
 
 type Message = {
   role: 'user' | 'ai';
   text: string;
   reference?: Reference | null;
+  // The day(s) this answer came from — shown under every answer so it's
+  // always checkable, and tappable straight through to that day's photos.
+  sources?: Source[];
   error?: boolean;
   spoken?: boolean; // asked by voice — shows a small mic mark on the bubble
   // Tap-to-answer replies for the AI's clarifying question ("Yes, that's
@@ -55,6 +59,9 @@ function errorText(reason: Exclude<AskResult, { ok: true }>['reason']) {
   }
   if (reason === 'no-credits') {
     return 'Your OpenAI account has no credits yet — add a prepaid balance at platform.openai.com → Billing.';
+  }
+  if (reason === 'rate-limited') {
+    return 'Sending questions a bit too fast — give it a few seconds and try again.';
   }
   return 'Something went wrong reaching your memory. Try again in a moment.';
 }
@@ -86,6 +93,79 @@ function MessageAppear({ children }: { children: React.ReactNode }) {
     >
       {children}
     </Animated.View>
+  );
+}
+
+// Playful, on-brand status line that cycles while a real answer is being
+// put together — the "sending too fast" wait got longer once retries were
+// added for resilience, so this keeps that wait from feeling dead. Purely
+// cosmetic: it has no idea what the request is actually doing.
+const THINKING_PHRASES = [
+  'Checking your hippocampus…',
+  'Scanning your neocortex…',
+  'Tracing a memory pathway…',
+  'Flipping through your timeline…',
+  'Cross-referencing your photos…',
+  'Piecing it together…',
+  'Following a hunch…',
+  'Digging through the archive…',
+  'Rewinding the tape…',
+  'Consulting your visual cortex…',
+  'Joining a few dots…',
+  'Shaking the memory tree…',
+  'Reading between the frames…',
+  'Asking your long-term storage…',
+  'Untangling last week…',
+  'Dusting off the old files…',
+];
+
+// Fisher-Yates — a fresh order every time the wait happens, so a slow
+// answer doesn't replay the exact same sequence it did last time.
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// Only appears once an answer is actually taking a moment — a fast reply
+// shows plain dots and never flashes a phrase the user can't finish
+// reading.
+const PHRASE_DELAY_MS = 1200;
+
+function ThinkingStatus() {
+  const order = useRef(shuffled(THINKING_PHRASES)).current;
+  const [idx, setIdx] = useState(-1); // -1 = dots only, nothing written yet
+  const fade = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const start = setTimeout(() => setIdx(0), PHRASE_DELAY_MS);
+    const cycle = setInterval(() => {
+      setIdx((i) => (i < 0 ? i : (i + 1) % order.length));
+    }, PHRASE_DELAY_MS + 1700);
+    return () => {
+      clearTimeout(start);
+      clearInterval(cycle);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (idx < 0) return;
+    fade.setValue(0);
+    Animated.timing(fade, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+  }, [idx]);
+
+  return (
+    <View style={styles.thinkingRow}>
+      <TypingDots />
+      {idx >= 0 && (
+        <Animated.Text style={[styles.thinkingText, { opacity: fade }]}>
+          {order[idx]}
+        </Animated.Text>
+      )}
+    </View>
   );
 }
 
@@ -251,21 +331,43 @@ function ReferenceCard({ reference }: { reference: Reference }) {
     );
   }
 
-  const offset = dayOffsetFromIso(reference.date);
+  return null;
+}
+
+// Where the answer came from — shown under EVERY answer that used a day, so
+// it's always checkable without asking. Each row opens that day, where the
+// photos the guess came from are visible.
+function SourceList({ sources }: { sources: Source[] }) {
+  const router = useRouter();
+  if (sources.length === 0) return null;
+
   return (
-    <Pressable
-      style={styles.cardRow}
-      onPress={() => router.push(`/day/${offset}` as Parameters<typeof router.push>[0])}
-    >
-      <View style={[styles.cardAvatar, styles.cardAvatarIcon]}>
-        <MaterialCommunityIcons name="calendar-outline" size={22} color={colors.white} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{reference.label}</Text>
-        <Text style={styles.cardBullet}>Tap to view that day</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.pale} />
-    </Pressable>
+    <View style={styles.sourceBlock}>
+      {sources.map((s) => (
+        <Pressable
+          key={s.date}
+          style={styles.sourceRowBtn}
+          onPress={() =>
+            router.push(
+              `/day/${dayOffsetFromIso(s.date)}` as Parameters<typeof router.push>[0],
+            )
+          }
+        >
+          <Ionicons
+            name={s.kind === 'photoAnalysis' ? 'sparkles' : 'document-text-outline'}
+            size={12}
+            color={colors.accent}
+          />
+          <Text style={styles.sourceRowLabel}>
+            {s.label}
+            <Text style={styles.sourceRowKind}>
+              {s.kind === 'photoAnalysis' ? '  ·  from photo analysis' : '  ·  you logged this'}
+            </Text>
+          </Text>
+          <Ionicons name="chevron-forward" size={13} color="rgba(255,255,255,0.4)" />
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
@@ -291,6 +393,16 @@ export default function Chat() {
 
   // Nothing keeps talking after the user leaves the screen.
   useEffect(() => () => stopSpeaking(), []);
+
+  // Photo analysis is NOT triggered from here any more — it runs on app
+  // start and right after a photo sync (see src/photoAnalysisQueue.ts).
+  //
+  // Stronger than that: while this screen is open, background analysis is
+  // halted outright. Answering the user's questions is the whole point of
+  // the app, and it shares one tokens-per-minute budget with the analysis
+  // pass — so for as long as they're in here, the budget is entirely
+  // theirs. The pass picks up exactly where it left off on the way out.
+  useEffect(() => holdBackgroundAnalysis(), []);
 
   const speakAnswer = (idx: number, text: string) => {
     setSpeakingIdx(idx);
@@ -342,6 +454,7 @@ export default function Chat() {
           role: 'ai',
           text: result.answer,
           reference: result.reference,
+          sources: result.sources,
           suggestions: result.suggestions,
         },
       ]);
@@ -413,7 +526,9 @@ export default function Chat() {
       />
       <SafeAreaView style={styles.fill} edges={['top']}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+          {/* Pushed from Home's chat pill — explicit target for the same
+              reason noted in day/[offset]/index.tsx. */}
+          <Pressable onPress={() => router.dismissTo('/home')} hitSlop={12} style={styles.back}>
             <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle}>Ask</Text>
@@ -478,6 +593,7 @@ export default function Chat() {
                       >
                         <Text style={[styles.bubbleText, rtlIfArabic(m.text)]}>{m.text}</Text>
                         {m.reference && <ReferenceCard reference={m.reference} />}
+                        {m.sources && m.sources.length > 0 && <SourceList sources={m.sources} />}
                         {/* Hear this answer — your memory reads it out loud */}
                         {!m.error && (
                           <Pressable
@@ -545,7 +661,7 @@ export default function Chat() {
                   <View style={styles.aiRow}>
                     <Image source={MISC.brain3d} style={{ width: 48, height: 48 }} resizeMode="contain" />
                     <View style={styles.aiBubble}>
-                      <TypingDots />
+                      <ThinkingStatus />
                     </View>
                   </View>
                 </MessageAppear>
@@ -617,6 +733,27 @@ const styles = StyleSheet.create({
   header: { paddingVertical: 16, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 18 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 24, color: colors.white },
+  // Source days under an answer — always present, always tappable.
+  sourceBlock: {
+    marginTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.18)',
+    paddingTop: 8,
+    gap: 2,
+  },
+  sourceRowBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingVertical: 5,
+  },
+  sourceRowLabel: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  sourceRowKind: { fontFamily: fonts.regular, color: 'rgba(255,255,255,0.55)' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
   promptRow: {
@@ -701,6 +838,8 @@ const styles = StyleSheet.create({
   spokenText: { fontFamily: fonts.medium, fontSize: 11, color: colors.accent },
 
   typingRow: { flexDirection: 'row', gap: 5, paddingVertical: 4 },
+  thinkingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 2 },
+  thinkingText: { fontFamily: fonts.regular, fontSize: 13, color: 'rgba(255,255,255,0.65)' },
   typingDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.pale },
 
   speakBtn: {
@@ -753,7 +892,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   cardAvatarIcon: { backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
+  cardAvatarAssumed: { backgroundColor: colors.teal },
   cardAvatarInitials: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.white },
+  sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 3 },
+  sourceRowText: { fontFamily: fonts.medium, fontSize: 11, color: colors.accent },
   cardTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.white, marginBottom: 3 },
   cardBullet: { fontFamily: fonts.regular, fontSize: 13, color: colors.pale, lineHeight: 20 },
 

@@ -3,8 +3,8 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Link, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import ScreenHeader from '../../src/components/ScreenHeader';
-import { LoggedMemory, getMemoriesByDay } from '../../src/memoryLog';
+import ScreenHeader from '../src/components/ScreenHeader';
+import { LoggedMemory, getMemoriesByDay } from '../src/memoryLog';
 import {
   PersonMeta,
   PersonSummary,
@@ -12,10 +12,10 @@ import {
   getAllPersonMeta,
   getPeopleSummaries,
   lastSeenLabel,
-} from '../../src/peopleTags';
-import { DetectedPlace, getAllDayPlaces } from '../../src/placesFromPhotos';
-import { rtlIfArabic } from '../../src/transcription';
-import { colors, fonts } from '../../src/theme';
+} from '../src/peopleTags';
+import { DetectedPlace, getAllDayPlaces } from '../src/placesFromPhotos';
+import { rtlIfArabic } from '../src/transcription';
+import { colors, fonts } from '../src/theme';
 
 function initials(name: string) {
   return name

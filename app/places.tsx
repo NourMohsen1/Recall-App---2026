@@ -1,12 +1,12 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Link } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import FilterPill from '../../src/components/FilterPill';
-import PhotoTile, { TILE_SIZE } from '../../src/components/PhotoTile';
-import ScreenHeader from '../../src/components/ScreenHeader';
-import { PLACES } from '../../src/data';
-import { PLACE_PLACEHOLDER, placePhoto } from '../../src/images';
-import { colors, fonts } from '../../src/theme';
+import FilterPill from '../src/components/FilterPill';
+import PhotoTile, { TILE_SIZE } from '../src/components/PhotoTile';
+import ScreenHeader from '../src/components/ScreenHeader';
+import { PLACES } from '../src/data';
+import { PLACE_PLACEHOLDER, placePhoto } from '../src/images';
+import { colors, fonts } from '../src/theme';
 
 export default function Places() {
   return (

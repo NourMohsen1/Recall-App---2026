@@ -48,19 +48,6 @@ export default function TabsLayout() {
             tabBarIcon: ({ color }) => <TabIcon source={ICONS.tasks} color={color} />,
           }}
         />
-        {/* Pages that keep the tab bar visible but aren't tab buttons */}
-        <Tabs.Screen name="people" options={{ href: null }} />
-        <Tabs.Screen name="places" options={{ href: null }} />
-        <Tabs.Screen name="on-this-day" options={{ href: null }} />
-        <Tabs.Screen name="chat" options={{ href: null }} />
-        <Tabs.Screen name="recap" options={{ href: null }} />
-        <Tabs.Screen name="person/[name]" options={{ href: null }} />
-        <Tabs.Screen name="place/[name]" options={{ href: null }} />
-        <Tabs.Screen name="day/[offset]/index" options={{ href: null }} />
-        <Tabs.Screen name="day/[offset]/source" options={{ href: null }} />
-        <Tabs.Screen name="day/[offset]/photos" options={{ href: null }} />
-        <Tabs.Screen name="devices/index" options={{ href: null }} />
-        <Tabs.Screen name="devices/glasses" options={{ href: null }} />
         <Tabs.Screen
           name="profile"
           options={{

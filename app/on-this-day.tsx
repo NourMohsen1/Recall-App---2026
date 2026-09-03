@@ -1,20 +1,37 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Image,
+  LayoutAnimation,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  UIManager,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import AnalyzingBanner from '../../src/components/AnalyzingBanner';
-import ScreenHeader from '../../src/components/ScreenHeader';
-import TopicActionSheet from '../../src/components/TopicActionSheet';
-import TopicInterestSheet from '../../src/components/TopicInterestSheet';
-import TopicSwapSheet from '../../src/components/TopicSwapSheet';
-import { placePhoto } from '../../src/images';
-import { useMemoryPolish } from '../../src/memoryIntake';
+import AnalyzingBanner from '../src/components/AnalyzingBanner';
+import ScreenHeader from '../src/components/ScreenHeader';
+import TopicActionSheet from '../src/components/TopicActionSheet';
+import TopicInterestSheet from '../src/components/TopicInterestSheet';
+import TopicSwapSheet from '../src/components/TopicSwapSheet';
+import { placePhoto } from '../src/images';
+import { useMemoryPolish } from '../src/memoryIntake';
+import { MonthBucket, buildMonthBuckets, buildPastYears, buildYearMonths } from '../src/monthBuckets';
+
+// Same smooth expand/collapse as the Timeline rail.
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+const animateList = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 import {
   LoggedMemory,
   dateKey,
   getMemoriesByDay,
-} from '../../src/memoryLog';
+} from '../src/memoryLog';
 import {
   Topic,
   TopicItem,
@@ -25,14 +42,16 @@ import {
   getTopicInterests,
   setTopicInterest,
   swapTopic,
-} from '../../src/onThisDay';
-import { rtlIfArabic } from '../../src/transcription';
-import { colors, fonts } from '../../src/theme';
+} from '../src/onThisDay';
+import { rtlIfArabic } from '../src/transcription';
+import { colors, fonts } from '../src/theme';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-// Future days first (top), then today, then back into the past — like the mock.
-const OFFSETS = Array.from({ length: 14 }, (_, i) => 4 - i);
+// Future days first (top), then today, then back into the past — same
+// year-back structure as the Timeline rail: current month expanded
+// day-by-day, then 11 prior months collapsed into tappable banners.
+const FUTURE_OFFSETS = [4, 3, 2, 1];
 
 const CARD_W = 250;
 const CARD_GAP = 12;
@@ -317,6 +336,53 @@ export default function OnThisDay() {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [eventsByKey, setEventsByKey] = useState<Record<string, TopicItem[]>>({});
 
+  // The current calendar year's months, current month expanded by default,
+  // the rest collapsed into tappable banners — then whole prior years
+  // collapse into a single banner apiece, same model as the Timeline rail.
+  const monthBuckets = useMemo(() => buildMonthBuckets(), []);
+  const pastYears = useMemo(() => buildPastYears(), []);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(
+    () => new Set(monthBuckets[0] ? [monthBuckets[0].key] : []),
+  );
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
+  const toggleMonth = (key: string) => {
+    animateList();
+    setExpandedMonths((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+  const toggleYear = (year: number) => {
+    animateList();
+    setExpandedYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(year)) next.delete(year);
+      else next.add(year);
+      return next;
+    });
+  };
+
+  // Months belonging to any opened past year, appended to the current
+  // year's list so one fetch effect covers both.
+  const openYearMonths = useMemo(
+    () => Array.from(expandedYears).flatMap((y) => buildYearMonths(y)),
+    [expandedYears],
+  );
+
+  // Only days actually rendered (future + whichever months are expanded)
+  // ever get their web feed fetched — a collapsed month costs nothing until
+  // the user opens it.
+  const visibleOffsets = useMemo(
+    () => [
+      ...FUTURE_OFFSETS,
+      ...monthBuckets.filter((b) => expandedMonths.has(b.key)).flatMap((b) => b.offsets),
+      ...openYearMonths.filter((b) => expandedMonths.has(b.key)).flatMap((b) => b.offsets),
+    ],
+    [monthBuckets, expandedMonths, openYearMonths],
+  );
+
   useFocusEffect(
     useCallback(() => {
       getMemoriesByDay().then(setByDay);
@@ -366,25 +432,121 @@ export default function OnThisDay() {
     });
   };
 
-  // Fetch each past day's feed sequentially (cache makes revisits instant).
+  // Fetch each visible past day's feed sequentially (cache makes revisits
+  // instant). Re-runs when a collapsed month is opened, so expanding a year
+  // never means fetching a year — only what's actually on screen.
   useEffect(() => {
     if (topics.length === 0) return;
     let cancelled = false;
     (async () => {
       setLoadingFeeds(true);
-      for (const offset of OFFSETS) {
+      for (const offset of visibleOffsets) {
         if (offset > 0) continue;
         const date = dateFor(offset);
+        const key = dateKey(date);
+        if (feeds[key]) continue; // already fetched/cached
         const items = await getDayFeed(date, topics);
         if (cancelled) return;
-        setFeeds((prev) => ({ ...prev, [dateKey(date)]: items }));
+        setFeeds((prev) => ({ ...prev, [key]: items }));
       }
       if (!cancelled) setLoadingFeeds(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [topics]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topics, visibleOffsets]);
+
+  // One full day row — used for the near-future days and every day inside
+  // an expanded month.
+  const renderDayRow = (offset: number) => {
+    const date = dateFor(offset);
+    const key = dateKey(date);
+    const isToday = offset === 0;
+    const future = offset > 0;
+    const real = byDay.get(key) ?? [];
+    const feed = feeds[key];
+
+    return (
+      <View key={offset} style={[styles.row, isToday && styles.rowToday]}>
+        <View style={styles.dateCol}>
+          <Text style={[styles.month, isToday && styles.dateToday]}>{MONTHS[date.getMonth()]}</Text>
+          <Text style={[styles.day, isToday && styles.dateToday]}>
+            {String(date.getDate()).padStart(2, '0')}
+          </Text>
+        </View>
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={CARD_W + CARD_GAP}
+          decelerationRate="fast"
+          contentContainerStyle={{ gap: CARD_GAP, paddingRight: 16 }}
+        >
+          <MemoryCard offset={offset} real={real} future={future} />
+          {topics.map((t) => {
+            const expandKey = `${key}:${t.key}`;
+            return (
+              <TopicCard
+                key={t.key}
+                label={t.label}
+                topicKey={t.key}
+                item={feed?.find((i) => i.topic === t.key)}
+                future={future}
+                loading={!future && !feed && loadingFeeds}
+                expanded={expandedKeys.has(expandKey)}
+                events={eventsByKey[expandKey]}
+                interest={interests[t.key]}
+                onMenu={() => setActionTarget({ topic: t, date })}
+                onToggleExpand={() => toggleExpand(date, t)}
+                onTune={() => setTuneTarget(t)}
+              />
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // One collapsible month banner — reused for the current year's list and
+  // for whichever prior years are opened below it. The live current month
+  // skips the banner/header entirely — it's always open and isn't a "past
+  // month" you'd ever collapse, so the dropdown affordance is meaningless
+  // there.
+  const renderMonthBanner = (bucket: MonthBucket, isCurrent = false) => {
+    if (isCurrent) {
+      return <View key={bucket.key}>{bucket.offsets.map(renderDayRow)}</View>;
+    }
+
+    const isExpanded = expandedMonths.has(bucket.key);
+
+    if (!isExpanded) {
+      return (
+        <Pressable key={bucket.key} onPress={() => toggleMonth(bucket.key)} style={styles.monthBanner}>
+          <View style={styles.monthBannerIcon}>
+            <MaterialCommunityIcons name="calendar-month-outline" size={22} color={colors.teal} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.monthBannerLabel}>{bucket.label}</Text>
+            <Text style={styles.monthBannerSub}>
+              {bucket.offsets.length} day{bucket.offsets.length === 1 ? '' : 's'} — tap to explore
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#B9BEBF" />
+        </Pressable>
+      );
+    }
+
+    return (
+      <View key={bucket.key}>
+        <Pressable onPress={() => toggleMonth(bucket.key)} style={styles.monthHeaderRow}>
+          <Text style={styles.monthHeaderText}>{bucket.label}</Text>
+          <Ionicons name="chevron-up" size={16} color="#5B6364" />
+        </Pressable>
+        {bucket.offsets.map(renderDayRow)}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -395,53 +557,35 @@ export default function OnThisDay() {
         </View>
       )}
       <ScrollView contentContainerStyle={{ paddingBottom: 120 }}>
-        {OFFSETS.map((offset) => {
-          const date = dateFor(offset);
-          const key = dateKey(date);
-          const isToday = offset === 0;
-          const future = offset > 0;
-          const real = byDay.get(key) ?? [];
-          const feed = feeds[key];
+        {FUTURE_OFFSETS.map(renderDayRow)}
+
+        {monthBuckets.map((bucket, i) => renderMonthBanner(bucket, i === 0))}
+
+        {pastYears.map((year) => {
+          const isExpanded = expandedYears.has(year);
+
+          if (!isExpanded) {
+            return (
+              <Pressable key={year} onPress={() => toggleYear(year)} style={styles.monthBanner}>
+                <View style={styles.monthBannerIcon}>
+                  <MaterialCommunityIcons name="calendar-outline" size={22} color={colors.teal} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.monthBannerLabel}>{year}</Text>
+                  <Text style={styles.monthBannerSub}>a full year — tap to explore</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#B9BEBF" />
+              </Pressable>
+            );
+          }
 
           return (
-            <View key={offset} style={[styles.row, isToday && styles.rowToday]}>
-              <View style={styles.dateCol}>
-                <Text style={[styles.month, isToday && styles.dateToday]}>
-                  {MONTHS[date.getMonth()]}
-                </Text>
-                <Text style={[styles.day, isToday && styles.dateToday]}>
-                  {String(date.getDate()).padStart(2, '0')}
-                </Text>
-              </View>
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                snapToInterval={CARD_W + CARD_GAP}
-                decelerationRate="fast"
-                contentContainerStyle={{ gap: CARD_GAP, paddingRight: 16 }}
-              >
-                <MemoryCard offset={offset} real={real} future={future} />
-                {topics.map((t) => {
-                  const expandKey = `${key}:${t.key}`;
-                  return (
-                    <TopicCard
-                      key={t.key}
-                      label={t.label}
-                      topicKey={t.key}
-                      item={feed?.find((i) => i.topic === t.key)}
-                      future={future}
-                      loading={!future && !feed && loadingFeeds}
-                      expanded={expandedKeys.has(expandKey)}
-                      events={eventsByKey[expandKey]}
-                      interest={interests[t.key]}
-                      onMenu={() => setActionTarget({ topic: t, date })}
-                      onToggleExpand={() => toggleExpand(date, t)}
-                      onTune={() => setTuneTarget(t)}
-                    />
-                  );
-                })}
-              </ScrollView>
+            <View key={year}>
+              <Pressable onPress={() => toggleYear(year)} style={styles.monthHeaderRow}>
+                <Text style={styles.monthHeaderText}>{year}</Text>
+                <Ionicons name="chevron-up" size={16} color="#5B6364" />
+              </Pressable>
+              {buildYearMonths(year).map((bucket) => renderMonthBanner(bucket))}
             </View>
           );
         })}
@@ -506,6 +650,41 @@ const styles = StyleSheet.create({
   month: { fontFamily: fonts.bold, fontSize: 18, color: colors.primary, lineHeight: 22 },
   day: { fontFamily: fonts.bold, fontSize: 32, color: colors.primary, lineHeight: 38 },
   dateToday: { color: colors.white },
+
+  // Collapsed month — a full-width banner instead of the rail's small
+  // square, since this page is one column rather than a side strip.
+  monthBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EFF3F3',
+  },
+  monthBannerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: colors.pale,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monthBannerLabel: { fontFamily: fonts.bold, fontSize: 16, color: colors.primary },
+  monthBannerSub: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
+
+  monthHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: '#F7F8F8',
+    borderBottomWidth: 1,
+    borderBottomColor: '#EDEFEF',
+  },
+  monthHeaderText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#5B6364', letterSpacing: 0.3 },
 
   card: {
     width: CARD_W,
