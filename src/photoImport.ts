@@ -1,5 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as MediaLibrary from 'expo-media-library';
+// SDK 56 made the redesigned ("next") media-library API the package's
+// default entry. That one calls requireNativeModule() at import time and
+// ships no web implementation, so merely importing it crashed the app on
+// web. The classic API this file uses now lives on the /legacy subpath —
+// same arrangement as expo-file-system/legacy elsewhere in the project —
+// and it binds to the module that does have a web shim.
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';

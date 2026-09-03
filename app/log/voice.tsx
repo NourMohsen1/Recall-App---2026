@@ -391,7 +391,18 @@ export default function LogVoice() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  background: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.ink },
+  // Written out rather than spreading a StyleSheet helper: RN 0.85 removed
+  // `absoluteFillObject`, and its `absoluteFill` is a plain object on
+  // native but a compiled style on react-native-web — so spreading either
+  // one silently loses the positioning on one of the two platforms.
+  background: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: colors.ink,
+  },
   header: { paddingVertical: 16, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 18 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },

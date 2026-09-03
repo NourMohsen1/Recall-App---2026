@@ -1,10 +1,13 @@
 import { Tabs } from 'expo-router';
-import { Image, StyleSheet, View } from 'react-native';
+import { ColorValue, Image, StyleSheet, View } from 'react-native';
 import MemoryFab from '../../src/components/MemoryFab';
 import { ICONS } from '../../src/images';
 import { colors, fonts } from '../../src/theme';
 
-function TabIcon({ source, color }: { source: any; color: string }) {
+// `color` is whatever the tab bar hands us, which is a ColorValue — it can
+// be a platform color object, not just a string. Image's tintColor accepts
+// the same type, so this just matches the caller instead of narrowing it.
+function TabIcon({ source, color }: { source: any; color: ColorValue }) {
   return (
     <Image source={source} style={{ width: 26, height: 26 }} tintColor={color} resizeMode="contain" />
   );

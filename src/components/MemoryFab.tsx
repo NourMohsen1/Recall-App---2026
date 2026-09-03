@@ -90,8 +90,15 @@ export default function MemoryFab() {
 const FAB_BOTTOM = 64;
 
 const styles = StyleSheet.create({
+  // See the note in app/log/voice.tsx — neither absoluteFill nor
+  // absoluteFillObject is safe to spread across both native and web after
+  // RN 0.85, so the four properties are written out.
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
     backgroundColor: 'rgba(8,17,18,0.35)',
   },
   fab: {
