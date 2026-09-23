@@ -26,6 +26,14 @@ import {
 } from 'expo-audio';
 import { AskResult, ChatTurn, Reference, Source, askAvailable, askMemory } from '../src/askAI';
 import { holdBackgroundAnalysis } from '../src/assumedMemory';
+import ChatSidebar from '../src/components/ChatSidebar';
+import {
+  deleteSession,
+  getMessages,
+  newSessionId,
+  resumableSession,
+  saveSession,
+} from '../src/chatSessions';
 import { MISC, placePhoto } from '../src/images';
 import { avatarTint } from '../src/peopleTags';
 import { speakText, stopSpeaking } from '../src/speech';
@@ -376,6 +384,9 @@ type VoiceState = 'idle' | 'recording' | 'transcribing';
 export default function Chat() {
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState('');
   const [thinking, setThinking] = useState(false);
   const historyRef = useRef<ChatTurn[]>([]);
@@ -432,6 +443,70 @@ export default function Chat() {
   // is in — a spoken thread keeps answering out loud.
   const lastQuestionWasSpoken =
     [...messages].reverse().find((m) => m.role === 'user')?.spoken ?? false;
+
+  // Loading and saving the conversation.
+  //
+  // Nothing here waits on the user: the thread is written after each
+  // exchange, so closing the app mid-answer keeps everything already said.
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      const resumable = await resumableSession();
+      if (!live) return;
+      if (resumable) {
+        const saved = await getMessages(resumable.id);
+        if (!live) return;
+        setSessionId(resumable.id);
+        setMessages(saved);
+        // The AI's own short-term memory has to be rebuilt too, or a resumed
+        // thread would answer follow-ups with no idea what came before.
+        historyRef.current = saved
+          .filter((m) => !m.error)
+          .map<ChatTurn>((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }))
+          .slice(-10);
+      } else {
+        setSessionId(newSessionId());
+      }
+      setSessionLoaded(true);
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionLoaded || !sessionId || messages.length === 0) return;
+    saveSession(sessionId, messages).catch(() => {});
+  }, [messages, sessionId, sessionLoaded]);
+
+  const startNewChat = () => {
+    stopSpeaking();
+    setSpeakingIdx(null);
+    setSessionId(newSessionId());
+    setMessages([]);
+    historyRef.current = [];
+    setSidebarOpen(false);
+  };
+
+  const openSession = async (id: string) => {
+    stopSpeaking();
+    setSpeakingIdx(null);
+    const saved = await getMessages(id);
+    setSessionId(id);
+    setMessages(saved);
+    historyRef.current = saved
+      .filter((m) => !m.error)
+      .map<ChatTurn>((m) => ({ role: m.role === 'user' ? 'user' : 'assistant', text: m.text }))
+      .slice(-10);
+    setSidebarOpen(false);
+  };
+
+  const removeSession = async (id: string) => {
+    await deleteSession(id);
+    // Deleting the thread you're looking at leaves you on a clean one rather
+    // than staring at messages that no longer exist anywhere.
+    if (id === sessionId) startNewChat();
+  };
 
   const ask = async (text: string, spoken = false) => {
     stopSpeaking();
@@ -532,6 +607,16 @@ export default function Chat() {
             <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle}>Ask</Text>
+          <View style={styles.headerRight}>
+            {messages.length > 0 && (
+              <Pressable onPress={startNewChat} hitSlop={10}>
+                <Ionicons name="create-outline" size={24} color={colors.white} />
+              </Pressable>
+            )}
+            <Pressable onPress={() => setSidebarOpen(true)} hitSlop={10}>
+              <Ionicons name="menu" size={26} color={colors.white} />
+            </Pressable>
+          </View>
         </View>
 
         <KeyboardAvoidingView
@@ -723,6 +808,14 @@ export default function Chat() {
             </View>
           )}
         </KeyboardAvoidingView>
+        <ChatSidebar
+          visible={sidebarOpen}
+          currentId={sessionId}
+          onOpen={openSession}
+          onNewChat={startNewChat}
+          onDelete={removeSession}
+          onClose={() => setSidebarOpen(false)}
+        />
       </SafeAreaView>
     </View>
   );
@@ -732,6 +825,7 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   header: { paddingVertical: 16, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 18 },
+  headerRight: { position: 'absolute', right: 20, top: 14, flexDirection: 'row', alignItems: 'center', gap: 16 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 24, color: colors.white },
   // Source days under an answer — always present, always tappable.
   sourceBlock: {

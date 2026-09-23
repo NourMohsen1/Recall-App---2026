@@ -324,7 +324,7 @@ async function fetchFromInternet(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini-search-preview',
+        model: 'gpt-5-search-api',
         web_search_options: { search_context_size: 'low' },
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -438,7 +438,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini-search-preview',
+          model: 'gpt-5-search-api',
           // The expanded view is fetched one topic at a time, so it can
           // afford a wider search than the multi-topic day feed.
           web_search_options: { search_context_size: 'medium' },

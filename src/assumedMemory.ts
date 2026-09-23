@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { LoggedMemory, dateKey, getLoggedMemories } from './memoryLog';
 import { getAllPhotoSources, getAllPhotoTimestamps } from './photoMeta';
+import { chatCompletion, textProviders, visionAvailable, visionProviders } from './aiProviders';
 import { resolvePhotoUri } from './photoUri';
 
 // "Assumed Memory" — when a day has photos but the app can only guess what
@@ -12,30 +13,8 @@ import { resolvePhotoUri } from './photoUri';
 // memory (see memoryLog.ts), it's just the AI's best guess floating
 // alongside it on the Timeline.
 
-function apiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
 export function assumedMemoryAvailable(): boolean {
-  return !!apiKey();
-}
-
-function deepseekKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
-// Text-only calls (translation here) prefer DeepSeek when it's configured —
-// far cheaper, and OpenAI-compatible so it's a drop-in swap. Photo analysis
-// stays on OpenAI unconditionally (generate(), below) since it needs actual
-// vision support, which DeepSeek's stable API doesn't offer.
-function textProvider(): { url: string; key: string; model: string } | null {
-  const ds = deepseekKey();
-  if (ds) return { url: 'https://api.deepseek.com/chat/completions', key: ds, model: 'deepseek-chat' };
-  const oa = apiKey();
-  if (oa) return { url: 'https://api.openai.com/v1/chat/completions', key: oa, model: 'gpt-4o-mini' };
-  return null;
+  return visionAvailable();
 }
 
 // The day's own words, as one string — what the analysis is given as
@@ -249,8 +228,8 @@ async function toDataUri(uri: string): Promise<string | null> {
 }
 
 async function generate(photos: TimedPhoto[], loggedText?: string): Promise<string | null> {
-  const key = apiKey();
-  if (!key) return null;
+  const providers = visionProviders();
+  if (providers.length === 0) return null;
 
   const chosen = dedupeAndCap(photos);
   if (chosen.length === 0) return null;
@@ -281,27 +260,20 @@ async function generate(photos: TimedPhoto[], loggedText?: string): Promise<stri
     ? BASE_PROMPT + LOGGED_TEXT_ADDENDUM.replace('{{loggedText}}', loggedText)
     : BASE_PROMPT;
 
+  // Cheapest capable provider first, OpenAI behind it — see aiProviders.ts.
+  const result = await chatCompletion(providers, (model) => ({
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content },
+    ],
+    response_format: { type: 'json_object' },
+    temperature: 0.5,
+  }));
+  if (!result.ok) return null;
+
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content },
-        ],
-        response_format: { type: 'json_object' },
-        temperature: 0.5,
-      }),
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const raw: string = json.choices?.[0]?.message?.content ?? '';
-    const parsed = JSON.parse(raw) as { summary?: string };
+    const parsed = JSON.parse(result.content) as { summary?: string };
     return parsed.summary?.trim() || null;
   } catch {
     return null;
@@ -520,6 +492,14 @@ export async function backfillAssumedMemories(onProgress?: (done: number, total:
     }
     pending.sort((a, b) => b.day.localeCompare(a.day)); // newest first
 
+    // Days a question just asked about jump the queue. Older days
+    // otherwise sit at the back of a newest-first queue paced at one every
+    // six seconds, which for a day in February means the user would be
+    // waiting a very long time for an answer about it.
+    if (prioritized.size > 0) {
+      pending.sort((a, b) => Number(prioritized.has(b.day)) - Number(prioritized.has(a.day)));
+    }
+
     let analyzed = 0;
     for (const { day, photos, loggedText } of pending) {
       // Step aside for a live question rather than racing it — poll
@@ -547,6 +527,90 @@ export async function backfillAssumedMemories(onProgress?: (done: number, total:
   }
 }
 
+// Days that a live question pointed at, so the background pass reaches
+// them before the rest of its newest-first queue. Bounded — this is a
+// nudge, not a second queue.
+const prioritized = new Set<string>();
+
+export function prioritizeDays(days: string[]): void {
+  for (const day of days) prioritized.add(day);
+  // Keep only the most recently requested handful, so a long session's
+  // worth of questions doesn't end up prioritising everything (which
+  // prioritises nothing).
+  while (prioritized.size > 12) prioritized.delete(prioritized.values().next().value as string);
+}
+
+// How many days one question is allowed to analyze on the spot. A question
+// about a single day (the usual case) is worth the few seconds; a question
+// spanning a whole month is not — those days get prioritized in the
+// background pass instead, and the answer says the photos aren't read yet.
+const MAX_ON_DEMAND_DAYS = 2;
+
+// Reads the photos for specific days RIGHT NOW, rather than waiting for the
+// background pass to reach them.
+//
+// This is what makes a question about an old day work at all. The
+// background pass goes newest-first, so a day from February is hundreds of
+// days down the queue; without this, "what did I do on the first day of
+// Ramadan?" could only ever answer "there are photos but I haven't read
+// them yet" — for weeks. Now the day the question is about gets read
+// immediately, and the answer is a real one.
+//
+// Returns how many days it actually analyzed. Deliberately quiet: a day it
+// can't do (no photos, already fresh, no API credit) is simply skipped, and
+// the caller carries on and answers with whatever exists.
+export async function analyzeDaysNow(
+  days: string[],
+  max = MAX_ON_DEMAND_DAYS,
+): Promise<number> {
+  if (!assumedMemoryAvailable() || days.length === 0) return 0;
+
+  // Nudge the background pass regardless of what we manage to do here, so
+  // anything skipped below still gets picked up soon rather than never.
+  prioritizeDays(days);
+
+  const wanted = new Set(days);
+  const all = await getLoggedMemories();
+  const byDay = new Map<string, LoggedMemory[]>();
+  for (const m of all) {
+    const key = dateKey(new Date(m.takenAt));
+    if (!wanted.has(key)) continue;
+    const bucket = byDay.get(key) ?? [];
+    bucket.push(m);
+    byDay.set(key, bucket);
+  }
+  if (byDay.size === 0) return 0;
+
+  const allTimestamps = await getAllPhotoTimestamps();
+  const allSources = await getAllPhotoSources();
+
+  const todo: { day: string; photos: TimedPhoto[]; loggedText?: string }[] = [];
+  for (const [day, memories] of byDay) {
+    const uris = memories.flatMap((m) => (m.kind === 'photo' ? (m.photoUris ?? []) : []));
+    const photos = uris
+      .filter((u) => allTimestamps[u])
+      .map((u) => ({ uri: u, takenAt: allTimestamps[u], source: allSources[u] }));
+    if (photos.length === 0) continue;
+    const loggedText = dayLoggedText(memories) || undefined;
+    if (isFresh(await readCache(day), signatureOf(photos, loggedText))) continue;
+    todo.push({ day, photos, loggedText });
+  }
+  if (todo.length === 0) return 0;
+
+  // The caller's order is the priority order — it knows which day the
+  // question was actually about and which are just the days either side,
+  // and that distinction is the whole point when only `max` get done.
+  const rank = new Map(days.map((day, i) => [day, i]));
+  todo.sort((a, b) => (rank.get(a.day) ?? 999) - (rank.get(b.day) ?? 999));
+
+  let analyzed = 0;
+  for (const { day, photos, loggedText } of todo.slice(0, max)) {
+    const record = await getAssumedMemory(day, photos, loggedText);
+    if (record) analyzed += 1;
+  }
+  return analyzed;
+}
+
 // Translates a day's assumed-memory summary into the given language,
 // caching the result on that same record — so tapping "Translate" only
 // ever costs one call per day per language, no matter how many times the
@@ -560,45 +624,33 @@ export async function translateAssumedMemory(
   const cached = record.translations?.[lang];
   if (cached) return cached;
 
-  const provider = textProvider();
   const language = ASSUMED_MEMORY_LANGUAGES[lang];
-  if (!provider || !language) return null;
+  if (!language) return null;
 
-  try {
-    const res = await fetch(provider.url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${provider.key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: provider.model,
-        messages: [
-          {
-            role: 'system',
-            content: `Translate the user's message into ${language.instruction}
+  const result = await chatCompletion(textProviders(), (model) => ({
+    model,
+    messages: [
+      {
+        role: 'system',
+        content: `Translate the user's message into ${language.instruction}
 
 Keep it the same length and just as direct — don't add mood words, adjectives or flourishes that aren't in the original. Respond with ONLY the translated text, nothing else.`,
-          },
-          { role: 'user', content: record.summary },
-        ],
-        temperature: 0.2,
-      }),
-    });
-    if (!res.ok) return null;
-    const json = await res.json();
-    const translated: string = (json.choices?.[0]?.message?.content ?? '').trim();
-    if (!translated) return null;
+      },
+      { role: 'user', content: record.summary },
+    ],
+    temperature: 0.2,
+  }));
+  if (!result.ok) return null;
 
-    const updated: AssumedMemory = {
-      ...record,
-      translations: { ...record.translations, [lang]: translated },
-    };
-    await writeCache(dayKey, updated);
-    return translated;
-  } catch {
-    return null;
-  }
+  const translated = result.content.trim();
+  if (!translated) return null;
+
+  const updated: AssumedMemory = {
+    ...record,
+    translations: { ...record.translations, [lang]: translated },
+  };
+  await writeCache(dayKey, updated);
+  return translated;
 }
 
 // Dismissing hides the card for that exact photo set — if new photos land

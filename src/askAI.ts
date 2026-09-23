@@ -1,17 +1,37 @@
-import { QueryPlan, buildMemoryContext } from './askContext';
-import { pauseBackgroundAnalysis } from './assumedMemory';
+import { Provider, textProviders } from './aiProviders';
+import { QueryPlan, buildMemoryContext, focusDaysOf } from './askContext';
+import { analyzeDaysNow, pauseBackgroundAnalysis, prioritizeDays } from './assumedMemory';
 import { WEEKDAYS } from './data';
+import {
+  ResolvedEvent,
+  daysOfEvent,
+  eventFocusDays,
+  matchLocalEvents,
+  mergeEvents,
+  resolveUnknownEvents,
+} from './worldEvents';
 
 // Real AI answers for the Ask page, grounded in the user's actual memory
-// log. Reuses the same OpenAI key already set up for voice transcription —
-// one key, no extra account needed.
+// log. Runs on whichever text provider aiProviders.ts puts first — DeepSeek
+// when configured, OpenAI otherwise.
 //
-// Answering happens in two steps:
-//   1. planQuery()  — tiny call that resolves which days the question is
+// Answering happens in four steps:
+//   1. matchLocalEvents() — free, offline: does the question name a
+//      real-world event with a known date (Ramadan, Eid, a national day)?
+//   2. planQuery() — tiny call that resolves which days the question is
 //      about and what to search for, in English (the user often writes in
 //      Arabic or franco-Arabic, which would never match English summaries).
-//   2. askMemory()  — the real answer, against a context that was built
-//      AROUND that plan rather than dumping the whole year in and hoping.
+//      It also dates any other real-world event it recognises, and flags
+//      the ones it isn't sure about for a web lookup.
+//   3. analyzeDaysNow() — if the day the question landed on has photos
+//      nobody has read yet, read them now rather than answering "I haven't
+//      looked at those".
+//   4. askMemory() — the real answer, against a context built AROUND all
+//      of that rather than dumping the whole year in and hoping.
+//
+// Step 1 and 2 exist because a question about a real event is unanswerable
+// until the event becomes a date: the memory log has the photos from the
+// first day of Ramadan, but it has never heard the word "Ramadan".
 
 export type ChatTurn = { role: 'user' | 'assistant'; text: string };
 
@@ -40,28 +60,12 @@ export type AskResult =
   // response body tells them apart (see readErrorReason below).
   | { ok: false; reason: 'no-key' | 'no-credits' | 'rate-limited' | 'failed' };
 
-function openAiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
-function deepseekKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
-// Ask is text-only, so it can run on either provider. DeepSeek is preferred
-// when configured: it's far cheaper per question, and — the reason this
-// matters here — it does NOT share a budget with the photo analysis, which
-// runs on OpenAI because it needs vision. Splitting them means a heavy
-// analysis pass (or an exhausted OpenAI balance) can no longer take the
-// chat down with it, which is exactly what kept happening.
-function provider(): { url: string; key: string; model: string } | null {
-  const ds = deepseekKey();
-  if (ds) return { url: 'https://api.deepseek.com/chat/completions', key: ds, model: 'deepseek-chat' };
-  const oa = openAiKey();
-  if (oa) return { url: 'https://api.openai.com/v1/chat/completions', key: oa, model: 'gpt-4o-mini' };
-  return null;
+// Ask sends no images, so it takes the cheapest text provider. Which one
+// that is now lives in aiProviders.ts — this used to hardcode the model
+// name, which is how the app ended up calling a DeepSeek alias that their
+// API no longer lists.
+function provider(): Provider | null {
+  return textProviders()[0] ?? null;
 }
 
 export function askAvailable(): boolean {
@@ -120,18 +124,38 @@ function recentCalendar(): string {
 
 const PLAN_PROMPT = `You turn a question about someone's personal memory log into a search plan. You never answer the question.
 
-Return JSON: {"dates": ["YYYY-MM-DD", ...], "keywords": ["...", ...]}
+Return JSON: {"dates": ["YYYY-MM-DD", ...], "ranges": [{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}], "keywords": ["...", ...], "events": [{"name": "...", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}], "lookup": ["...", ...]}
 
-"dates" — every specific calendar day the question points at, resolved against the calendar below. "yesterday", "last Friday", "on the 24th of July" all resolve to real dates. A range ("last week", "that weekend") lists each day in it, max 14. Empty array if the question doesn't point at any particular day.
+"dates" — every specific calendar day the question points at, resolved against the calendar below. "yesterday", "last Friday", "on the 24th of July" all resolve to real dates. If the question asks about ONE day of a longer event ("the first day of Ramadan", "the second day of Eid"), work that single day out and put it here. Max 14. Empty array if the question doesn't point at a particular day.
 
-"keywords" — 3 to 8 short search terms for the things, places, activities and people the question is about. ALWAYS IN ENGLISH, no matter what language the question is in. The user often writes Arabic in Latin letters (franco-Arabic): "farah" = wedding, "al3a" = castle, "makan" = place, "shaklo" = looks like, "emta" = when, "mata3am" = restaurant, "sha8l" = work, "bahr" = sea/beach. Translate the meaning, then give English search terms plus obvious synonyms (wedding → wedding, bride, groom, ceremony). Skip filler words like "when", "did", "I".`;
+"ranges" — any stretch of days the question covers ("last week", "that weekend", "over the summer"). Use this instead of listing 30 dates.
+
+"keywords" — 3 to 8 short search terms for the things, places, activities and people the question is about. ALWAYS IN ENGLISH, no matter what language the question is in. The user often writes Arabic in Latin letters (franco-Arabic): "farah" = wedding, "al3a" = castle, "makan" = place, "shaklo" = looks like, "emta" = when, "mata3am" = restaurant, "sha8l" = work, "bahr" = sea/beach. Translate the meaning, then give English search terms plus obvious synonyms (wedding → wedding, bride, groom, ceremony). For a real-world event, add keywords for what would VISIBLY be in that day's photos — Ramadan → iftar, suhoor, family dinner, mosque; a football match → football, TV, cafe, screen, jersey. Skip filler words like "when", "did", "I".
+
+"events" — real-world events the question refers to (a holiday, a football match, a tournament, an election, a big news day) that you ALREADY KNOW the date of, confidently. Give the real dates. Do NOT include an event whose date you're guessing at.
+
+"lookup" — the same kind of real-world event, but ones whose exact date you do NOT know, or aren't sure about, or that are recent enough that you might be out of date. Write each as a short search phrase someone could look up: "last Real Madrid vs Barcelona match before September 2026". These get looked up on the web, so be specific and include the timeframe. Empty array if there's nothing to look up — never put a guessed date in "events" instead.
+
+Anything already listed under "Already resolved" below is settled: don't repeat it in "events" and don't put it in "lookup". Do still use it to work out "dates" when the question asks about one specific day of it.`;
 
 // Step 1: work out what to actually look for. Cheap, tiny prompt. On any
 // failure we fall back to a keyword-free plan — the answer still gets the
 // compact index of every day, it's just less targeted.
-async function planQuery(question: string): Promise<QueryPlan> {
+type PlanResult = QueryPlan & { lookup: string[] };
+
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+const EMPTY_PLAN: PlanResult = { dates: [], keywords: [], ranges: [], events: [], lookup: [] };
+
+async function planQuery(question: string, resolved: ResolvedEvent[]): Promise<PlanResult> {
   const p = provider();
-  if (!p) return { dates: [], keywords: [] };
+  if (!p) return EMPTY_PLAN;
+  const known =
+    resolved.length > 0
+      ? `\n\nAlready resolved (established dates — treat as fact): ${resolved
+          .map((e) => `${e.name} = ${e.start}${e.end !== e.start ? ` to ${e.end}` : ''}`)
+          .join('; ')}`
+      : '';
   try {
     const res = await fetch(p.url, {
       method: 'POST',
@@ -139,26 +163,54 @@ async function planQuery(question: string): Promise<QueryPlan> {
       body: JSON.stringify({
         model: p.model,
         messages: [
-          { role: 'system', content: `${PLAN_PROMPT}\n\nCalendar: ${recentCalendar()}` },
+          { role: 'system', content: `${PLAN_PROMPT}\n\nCalendar: ${recentCalendar()}${known}` },
           { role: 'user', content: question },
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
       }),
     });
-    if (!res.ok) return { dates: [], keywords: [] };
+    if (!res.ok) return EMPTY_PLAN;
     const json = await res.json();
-    const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '{}') as Partial<QueryPlan>;
+    const parsed = JSON.parse(json.choices?.[0]?.message?.content ?? '{}') as {
+      dates?: string[];
+      keywords?: string[];
+      ranges?: { start?: string; end?: string }[];
+      events?: { name?: string; start?: string; end?: string }[];
+      lookup?: string[];
+    };
     return {
-      dates: (parsed.dates ?? []).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).slice(0, 14),
+      dates: (parsed.dates ?? []).filter((d) => ISO.test(d)).slice(0, 14),
       keywords: (parsed.keywords ?? []).filter((k) => typeof k === 'string' && k.trim()).slice(0, 8),
+      ranges: (parsed.ranges ?? [])
+        .filter((r): r is { start: string; end: string } => !!r?.start && !!r?.end && ISO.test(r.start) && ISO.test(r.end))
+        .slice(0, 3),
+      // Dates the model volunteered. Trusted only as far as the merge in
+      // worldEvents puts them — behind the local calendar table, which is
+      // the one source here that can't be hallucinated.
+      events: (parsed.events ?? [])
+        .filter((e) => e?.start && ISO.test(e.start))
+        .map<ResolvedEvent>((e) => ({
+          name: e.name?.trim() || 'that event',
+          start: e.start!,
+          end: e.end && ISO.test(e.end) ? e.end : e.start!,
+          via: 'model',
+        }))
+        .slice(0, 3),
+      lookup: (parsed.lookup ?? []).filter((l) => typeof l === 'string' && l.trim()).slice(0, 3),
     };
   } catch {
-    return { dates: [], keywords: [] };
+    return EMPTY_PLAN;
   }
 }
 
-const SYSTEM_PROMPT = `You are the user's own memory, answering questions about their life. Everything you say comes from the memory log below — never invent a person, place or event that isn't in it.
+const SYSTEM_PROMPT = `You are the user's own memory, answering questions about their life. Everything you say about THEIR life comes from the memory log below — never invent a person, place or event that isn't in it.
+
+WHAT YOU KNOW vs WHAT THEY DID — keep these completely separate:
+- You know about the world: when Ramadan started, when a match was played, what happened on a date. Use that freely to UNDERSTAND the question and to tell them the date. When a date is given under "WHEN THE EVENT(S) IN THE QUESTION ACTUALLY HAPPENED", it is established fact — state it plainly and move on. Never ask the user when a public event was, and never say you don't know what Ramadan is or when it fell.
+- You do NOT know their life except from the log. Never fill a gap with what a person "probably" does on a holiday or a match night. If the log has nothing for that day, give them the date and say there's nothing recorded — that's a useful answer, an invented one isn't.
+- Shape: date first, then what the log has. "Ramadan started 17 Feb. That day your photos show a big family table around 6pm and a drive after." / "Ramadan started 17 Feb — nothing logged that day, and no photos either."
+- If a day has photos that haven't been read yet, say exactly that in one clause and don't speculate about what's in them.
 
 HOW YOU WRITE — this matters as much as being right:
 - Direct and concrete. Say what happened, where, when. Nothing else.
@@ -208,7 +260,46 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
   pauseBackgroundAnalysis();
 
   try {
-    const plan = await planQuery(question);
+    // Free and offline: the recurring dates this user asks about most.
+    // Handed to the planner so it can narrow ("the first day of Ramadan"
+    // → one date) instead of re-deriving a date it might get wrong.
+    const localEvents = matchLocalEvents(question);
+    const draft = await planQuery(question, localEvents);
+
+    // Only the events the planner admitted it couldn't date get looked up
+    // on the web — and each lookup is cached for good, so the same event
+    // is never paid for twice.
+    const web =
+      draft.lookup.length > 0
+        ? await resolveUnknownEvents(draft.lookup)
+        : { events: [], unresolved: [] };
+    const events = mergeEvents(localEvents, draft.events ?? [], web.events);
+    // Whatever the question hangs on that nothing could date — no key, no
+    // credit, or genuinely not findable. The answer has to own that rather
+    // than quietly answering about some other day.
+    const plan: QueryPlan = { ...draft, events, unresolved: web.unresolved };
+
+    // Read the photos for the days this question actually landed on, if
+    // nobody has read them yet. Order is priority order — only a couple
+    // get read on the spot, so it goes: the dates they named, then each
+    // event's own opening days, then the days either side.
+    const candidates = [
+      ...new Set([
+        ...plan.dates,
+        ...events.flatMap((e) => eventFocusDays(e)),
+        ...focusDaysOf(plan),
+      ]),
+    ];
+    if (candidates.length > 0) await analyzeDaysNow(candidates);
+    // Everything else the events cover is too much to read while someone
+    // waits, but it should still jump the background queue.
+    const eventDays = events.flatMap((e) => daysOfEvent(e));
+    if (eventDays.length > 0) prioritizeDays(eventDays);
+
+    // Re-claimed after the analysis above, which may have taken a few
+    // seconds of the original hold.
+    pauseBackgroundAnalysis();
+
     const headers = { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' };
 
     const buildBody = async (mode: 'full' | 'compact') => {
