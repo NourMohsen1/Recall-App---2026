@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import PersonAvatar from './PersonAvatar';
 import { colors, fonts } from '../theme';
 
 function initials(name: string) {
@@ -12,20 +13,31 @@ function initials(name: string) {
     .join('');
 }
 
-// Manual "who was I with" tagging — no face recognition, just a fast way to
-// record real people per day and remove one if it was tagged by mistake.
+// Who the user was with on a day: the people they tagged themselves, plus
+// any the app recognised in that day's photos and is asking about. The two
+// are drawn differently on purpose — see PersonAvatar's `unconfirmed`.
 export default function PeopleEditor({
   people,
   suggestions,
   onAdd,
   onRemove,
   pinSize = 64,
+  photos,
+  suggested = [],
+  onConfirm,
+  onDismiss,
 }: {
   people: string[];
   suggestions: string[];
   onAdd: (name: string) => void;
   onRemove: (name: string) => void;
   pinSize?: number;
+  /** Each person's reference face, so the row shows people not initials. */
+  photos?: Record<string, string | undefined>;
+  /** People the app thinks were here — awaiting the user's yes or no. */
+  suggested?: { name: string }[];
+  onConfirm?: (name: string) => void;
+  onDismiss?: (name: string) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
@@ -47,8 +59,8 @@ export default function PeopleEditor({
     <View style={styles.grid}>
       {people.map((name) => (
         <View key={name} style={[styles.cell, { width: pinSize + 24 }]}>
-          <View style={[styles.pin, { width: pinSize, height: pinSize, borderRadius: pinSize / 2 }]}>
-            <Text style={styles.initials}>{initials(name)}</Text>
+          <View>
+            <PersonAvatar name={name} photoUri={photos?.[name]} size={pinSize} />
             <Pressable style={styles.removeBtn} onPress={() => onRemove(name)} hitSlop={8}>
               <Ionicons name="close-circle" size={18} color="#B24545" />
             </Pressable>
@@ -56,6 +68,29 @@ export default function PeopleEditor({
           <Text numberOfLines={1} style={styles.label}>
             {name}
           </Text>
+        </View>
+      ))}
+
+      {/* People the app recognised in this day's photos but the user hasn't
+          confirmed. Dashed and lighter so a guess never reads as something
+          they recorded, with the two answers right there rather than hidden
+          behind a tap. */}
+      {suggested.map((s) => (
+        <View key={`s-${s.name}`} style={[styles.cell, { width: pinSize + 24 }]}>
+          <PersonAvatar name={s.name} photoUri={photos?.[s.name]} size={pinSize} unconfirmed />
+          {/* First name only: a full name plus the question mark overflows
+              this cell, and the "?" is the bit that carries the meaning. */}
+          <Text numberOfLines={1} style={[styles.label, styles.labelUnconfirmed]}>
+            {s.name.trim().split(/\s+/)[0]}?
+          </Text>
+          <View style={styles.confirmRow}>
+            <Pressable onPress={() => onConfirm?.(s.name)} hitSlop={14}>
+              <Ionicons name="checkmark-circle" size={22} color={colors.teal} />
+            </Pressable>
+            <Pressable onPress={() => onDismiss?.(s.name)} hitSlop={14}>
+              <Ionicons name="close-circle" size={22} color="#B4B8B8" />
+            </Pressable>
+          </View>
         </View>
       ))}
 
@@ -117,6 +152,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 9,
   },
+  labelUnconfirmed: { color: colors.slate, fontStyle: 'italic' },
+  confirmRow: { flexDirection: 'row', gap: 10, marginTop: 4, justifyContent: 'center' },
   label: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
   input: {
     fontFamily: fonts.regular,

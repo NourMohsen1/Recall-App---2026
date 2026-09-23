@@ -1,32 +1,60 @@
+import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
+import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
 import { colors, fonts } from '../../src/theme';
 
 function InfoRow({
   icon,
   label,
   last,
+  muted,
+  onPress,
 }: {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   last?: boolean;
+  muted?: boolean;
+  onPress?: () => void;
 }) {
-  return (
+  const body = (
     <View style={[styles.infoRow, !last && styles.rowDivider]}>
       <View style={styles.infoIcon}>
         <Ionicons name={icon} size={20} color={colors.white} />
       </View>
-      <Text style={styles.infoText}>{label}</Text>
+      <Text style={[styles.infoText, muted && styles.infoTextMuted]}>{label}</Text>
+      {onPress && <Ionicons name="chevron-forward" size={18} color="#B4B8B8" />}
     </View>
   );
+  return onPress ? <Pressable onPress={onPress}>{body}</Pressable> : body;
 }
+
+const MONTHS_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 export default function Profile() {
   const router = useRouter();
+  const [profile, setProfile] = useState<UserProfile>({});
+  const [joined, setJoined] = useState<Date | null>(null);
+  const [entries, setEntries] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      getUserProfile().then(async (p) => {
+        setProfile(p);
+        setJoined(await joinedDate(p));
+      });
+      memoryCount().then(setEntries);
+    }, []),
+  );
+
+  const openMe = () => router.push('/me' as Parameters<typeof router.push>[0]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -35,20 +63,38 @@ export default function Profile() {
           <Ionicons name="arrow-back" size={26} color={colors.primary} />
         </Pressable>
 
-        {/* Header block */}
-        <View style={styles.headerBlock}>
-          <Image source={PERSON_PLACEHOLDER} style={styles.avatar} resizeMode="cover" />
-          <Text style={styles.name}>Nour Mohsen</Text>
-          <Text style={styles.joined}>Joined August 17, 2024</Text>
-        </View>
+        {/* Header block — the whole thing opens the user's own profile,
+            which is where the photo and the name are actually set. */}
+        <Pressable style={styles.headerBlock} onPress={openMe}>
+          <Image
+            source={profile.photoUri ? { uri: profile.photoUri } : PERSON_PLACEHOLDER}
+            style={styles.avatar}
+            resizeMode="cover"
+          />
+          <Text style={styles.name}>{profile.name ?? 'Add your name'}</Text>
+          {joined && (
+            <Text style={styles.joined}>
+              Joined {MONTHS_LONG[joined.getMonth()]} {joined.getDate()}, {joined.getFullYear()}
+            </Text>
+          )}
+        </Pressable>
 
         {/* General */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>General</Text>
-          <InfoRow icon="person" label="Nour Mohsen" />
-          <InfoRow icon="mail" label="NourMohsen1@gmail.com" />
-          <InfoRow icon="phone-portrait" label="929-929-0000" />
-          <InfoRow icon="radio-button-on" label="135+ Memory Entries" last />
+          <InfoRow
+            icon="person"
+            label={profile.name ?? 'Tell Recall who you are'}
+            muted={!profile.name}
+            onPress={openMe}
+          />
+          {profile.email && <InfoRow icon="mail" label={profile.email} />}
+          {profile.phone && <InfoRow icon="phone-portrait" label={profile.phone} />}
+          <InfoRow
+            icon="radio-button-on"
+            label={`${entries} ${entries === 1 ? 'Memory Entry' : 'Memory Entries'}`}
+            last
+          />
         </View>
 
         {/* Memories */}
@@ -129,7 +175,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoText: { fontFamily: fonts.regular, fontSize: 16, color: '#2B2B2B' },
+  infoText: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: '#2B2B2B' },
+  infoTextMuted: { color: '#9AA4A5' },
 
   toggleRow: {
     flexDirection: 'row',
