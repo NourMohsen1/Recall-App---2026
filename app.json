@@ -64,7 +64,8 @@
       "expo-notifications",
       "expo-image",
       "expo-asset",
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-sqlite"
     ]
   }
 }

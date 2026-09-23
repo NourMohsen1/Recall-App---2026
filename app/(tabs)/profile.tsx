@@ -3,6 +3,7 @@ import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import FaceIndexCard from '../../src/components/FaceIndexCard';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
@@ -108,6 +109,11 @@ export default function Profile() {
             <Ionicons name="chevron-forward" size={20} color="#8B9394" />
           </Pressable>
         </View>
+
+        {/* Reading photos for faces: once, in the background. Placed under
+            Memories because that is what it is — the same photos, read for
+            who is in them. */}
+        <FaceIndexCard />
 
         {/* Devices */}
         <View style={styles.card}>
