@@ -11,7 +11,11 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nourwalid.recall",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -20,7 +24,8 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.nourwalid.recall"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -48,6 +53,12 @@
         "expo-location",
         {
           "locationAlwaysAndWhenInUsePermission": "Recall uses your location to tag where a memory happened, and to read where imported photos were taken."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Recall can use a contact's photo and name to fill in a person's profile, so you don't have to find one in your photos. It only looks when you ask it to."
         }
       ],
       "expo-notifications",
