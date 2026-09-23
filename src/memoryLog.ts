@@ -30,6 +30,12 @@ export type LoggedMemory = {
   // user can attach to correct or extend what was transcribed.
   words?: TranscriptWord[];
   note?: string;
+  // Voice memories only: how many times speech-to-text has been tried and
+  // come back broken. Only genuine failures count — a missing key, an empty
+  // balance or a rate limit are temporary and must NOT burn an attempt, or
+  // a recording made during a quiet outage would be written off forever.
+  // That is exactly what happened to the 3 Sep recording.
+  transcribeAttempts?: number;
 };
 
 const STORAGE_KEY = 'loggedMemories';
@@ -88,6 +94,25 @@ export async function updateMemory(id: string, patch: Partial<LoggedMemory>): Pr
 export async function deleteMemory(id: string): Promise<void> {
   const existing = await getLoggedMemories();
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing.filter((m) => m.id !== id)));
+}
+
+// What the user reads on a card for one logged memory.
+//
+// How a memory was captured is an input method, not content: a voice note
+// reads as a plain note once it's transcribed, exactly like a typed one. So
+// there is no such thing as a card that says "voice memory" — either the
+// words are ready, or the app is still working on them.
+export const PENDING_MEMORY_TEXT = 'Still writing this one up…';
+
+export function memoryDisplayText(m: LoggedMemory): string | null {
+  const text = m.text?.trim();
+  if (text) return text;
+  // Audio exists but no words yet — being transcribed, or waiting on a
+  // retry. Deliberately says nothing about voice, transcription or failure:
+  // the machinery is not the user's problem, and the line is replaced by
+  // the real memory the moment it lands.
+  if (m.kind === 'voice' && m.audioUri) return PENDING_MEMORY_TEXT;
+  return null;
 }
 
 export function formatClockTime(d: Date): string {

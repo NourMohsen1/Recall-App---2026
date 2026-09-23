@@ -47,6 +47,7 @@ import {
   dateKey,
   formatClockTime,
   getMemoriesByDay,
+  memoryDisplayText,
 } from '../../src/memoryLog';
 import { Topic, TopicItem, TopicKey, getDayFeed, getInterestTopics, swapTopic } from '../../src/onThisDay';
 import {
@@ -535,22 +536,25 @@ export default function Timeline() {
   };
   const photoCaptions = photoMemories.map((m) => m.text).filter(Boolean) as string[];
 
-  // Voice transcripts read like any other note on the day card.
-  const voiceTexts = voices.map((v) => v.text).filter(Boolean) as string[];
-  const realBullets = [
-    ...texts.map((t) => t.text ?? ''),
-    ...voiceTexts,
+  // Voice transcripts read like any other note on the day card — a
+  // recording still being written up contributes its own pending line
+  // rather than blanking the whole card.
+  const bullets = [
+    ...texts.map((t) => memoryDisplayText(t)),
+    ...voices.map((v) => memoryDisplayText(v)),
     ...photoCaptions,
-  ].filter(Boolean);
-  if (realBullets.length === 0 && voices.length > 0) {
-    realBullets.push('Voice memory — no transcript yet.');
-  }
-  const bullets = realBullets;
+  ].filter(Boolean) as string[];
 
   const latestVoice = voices[voices.length - 1];
-  const recordedLine = latestVoice
-    ? `Recorded by voice on ${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()} at ${formatClockTime(new Date(latestVoice.takenAt))}`
-    : null;
+  // How this day was logged, as icons only. It used to be a sentence
+  // ("Recorded by voice on 9/3/2026 at 11:29 pm"), which was too much for a
+  // card this small and wrong for a day logged more than one way — a voice
+  // note in the morning and a typed one at night would need two sentences.
+  // The icons just mark which methods were used and open the Source page.
+  const captureMethods: { key: string; icon: 'microphone-outline' | 'keyboard-outline' }[] = [
+    ...(voices.length > 0 ? [{ key: 'voice', icon: 'microphone-outline' as const }] : []),
+    ...(texts.length > 0 ? [{ key: 'typed', icon: 'keyboard-outline' as const }] : []),
+  ];
 
   const latestPhotoMemory = photoMemories[photoMemories.length - 1];
   const showDayCard = bullets.length > 0 || !!latestVoice;
@@ -811,19 +815,22 @@ export default function Timeline() {
                           </View>
                         ))}
                       </View>
-                      {recordedLine && (
-                        <View style={styles.recordedRow}>
-                          <Text style={styles.recordedText}>{recordedLine}</Text>
-                          <Pressable
-                            onPress={() =>
-                              router.push({
-                                pathname: '/day/[offset]/source',
-                                params: { offset: selected },
-                              })
-                            }
-                          >
-                            <MaterialCommunityIcons name="waveform" size={24} color={colors.teal} />
-                          </Pressable>
+                      {captureMethods.length > 0 && (
+                        <View style={styles.methodRow}>
+                          {captureMethods.map((m) => (
+                            <Pressable
+                              key={m.key}
+                              hitSlop={8}
+                              onPress={() =>
+                                router.push({
+                                  pathname: '/day/[offset]/source',
+                                  params: { offset: selected },
+                                })
+                              }
+                            >
+                              <MaterialCommunityIcons name={m.icon} size={18} color={colors.teal} />
+                            </Pressable>
+                          ))}
                         </View>
                       )}
                     </Pressable>
@@ -1097,13 +1104,15 @@ const styles = StyleSheet.create({
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8 },
   bulletDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal, marginTop: 7 },
   bulletText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#7C8586' },
-  recordedRow: {
+  // How the day was logged, bottom-right of the day card: icons only, no
+  // sentence — see captureMethods above for why.
+  methodRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
+    gap: 12,
     marginTop: 14,
   },
-  recordedText: { flex: 1, fontFamily: fonts.regular, fontSize: 12, color: '#9AA4A5' },
 
   placeGrid: {
     flexDirection: 'row',

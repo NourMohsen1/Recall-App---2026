@@ -1,4 +1,5 @@
 import { backfillAssumedMemories } from './assumedMemory';
+import { startBackgroundFaceScan } from './faceMatching';
 
 // Owns WHEN the photo analysis runs, so no screen has to.
 //
@@ -19,7 +20,14 @@ let started = false;
 export function startPhotoAnalysis(): void {
   if (started) return;
   started = true;
-  backfillAssumedMemories().catch(() => {});
+  // Photo analysis first, then a small slice of face matching — the way the
+  // Photos app quietly fills in People in the background. It takes a few
+  // batches per person and stops, remembers how far back it got, and stands
+  // aside the moment the user runs a scan themselves. The earlier version of
+  // this was unbounded and blocked manual scans; see faceMatching.ts.
+  backfillAssumedMemories()
+    .then(() => startBackgroundFaceScan())
+    .catch(() => {});
 }
 
 // Called right after a photo sync brings in new days. Bypasses the

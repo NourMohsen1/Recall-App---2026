@@ -15,7 +15,7 @@ import {
   getMemoriesByDay,
   updateMemory,
 } from '../../../src/memoryLog';
-import { transcribeAudio, transcriptionAvailable } from '../../../src/transcription';
+import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
 
 function Header({ onBack }: { onBack: () => void }) {
@@ -153,12 +153,31 @@ function RealSource({
   );
 }
 
-// No voice memory logged for this day — nothing to play back.
+// A typed entry's own source: the words the user actually typed, before the
+// intake brain reorganized them. No player — the typing IS the recording.
+function TypedSource({ memory }: { memory: LoggedMemory }) {
+  const original = memory.rawText ?? memory.text;
+  return (
+    <View style={styles.typedBlock}>
+      <Text style={styles.title}>
+        This Data was typed at {formatClockTime(new Date(memory.takenAt))}
+      </Text>
+      {original ? (
+        <Text style={[styles.typedText, rtlIfArabic(original)]}>{original}</Text>
+      ) : (
+        <Text style={styles.emptyText}>Nothing was written in this entry.</Text>
+      )}
+      {memory.note && <Text style={[styles.typedNote, rtlIfArabic(memory.note)]}>📝 {memory.note}</Text>}
+    </View>
+  );
+}
+
+// Nothing was logged by voice or typing on this day.
 function EmptySource() {
   return (
     <View style={styles.emptyBox}>
       <MaterialCommunityIcons name="microphone-off" size={28} color="#8B9394" />
-      <Text style={styles.emptyText}>No voice memory recorded for this day.</Text>
+      <Text style={styles.emptyText}>Nothing was logged by voice or typing on this day.</Text>
     </View>
   );
 }
@@ -168,13 +187,22 @@ export default function SourceScreen() {
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
   const [loaded, setLoaded] = useState(false);
-  const [voice, setVoice] = useState<LoggedMemory | null>(null);
+  const [entries, setEntries] = useState<LoggedMemory[]>([]);
 
   const reload = useCallback(() => {
     getMemoriesByDay().then((byDay) => {
       const day = byDay.get(dateKey(dateWithOffset(offsetNum))) ?? [];
-      const voices = day.filter((m) => m.kind === 'voice' && m.audioUri);
-      setVoice(voices[voices.length - 1] ?? null);
+      // Every way the day was logged, oldest first — a voice note in the
+      // morning and a typed one at night are two separate sources and both
+      // belong here. This page used to show only the LAST voice memory,
+      // which meant an earlier recording was unreachable and a typed entry
+      // had no source at all. Photos are excluded: they have their own
+      // full-screen viewer.
+      setEntries(
+        day
+          .filter((m) => (m.kind === 'voice' && m.audioUri) || m.kind === 'text')
+          .sort((a, b) => new Date(a.takenAt).getTime() - new Date(b.takenAt).getTime()),
+      );
       setLoaded(true);
     });
   }, [offsetNum]);
@@ -199,13 +227,21 @@ export default function SourceScreen() {
         </View>
 
         {loaded &&
-          (voice ? (
-            <RealSource
-              key={voice.id}
-              voice={voice}
-              onRemoved={backToDay}
-              onUpdated={reload}
-            />
+          (entries.length > 0 ? (
+            entries.map((m) =>
+              m.kind === 'voice' ? (
+                <RealSource
+                  key={m.id}
+                  voice={m}
+                  // Removing one entry leaves the rest — only leave the page
+                  // when that was the last thing on it.
+                  onRemoved={entries.length > 1 ? reload : backToDay}
+                  onUpdated={reload}
+                />
+              ) : (
+                <TypedSource key={m.id} memory={m} />
+              ),
+            )
           ) : (
             <EmptySource />
           ))}
@@ -268,4 +304,20 @@ const styles = StyleSheet.create({
 
   emptyBox: { alignItems: 'center', marginTop: 60, gap: 12 },
   emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+
+  typedBlock: { marginBottom: 8 },
+  typedText: {
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#3D4546',
+    marginTop: 18,
+  },
+  typedNote: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 20,
+    color: '#7C8586',
+    marginTop: 10,
+  },
 });

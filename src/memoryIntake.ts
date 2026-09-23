@@ -4,6 +4,9 @@ import { dateKey, getLoggedMemories, updateMemory } from './memoryLog';
 import { addPersonMention, getKnownPeopleForPrompt } from './peopleTags';
 import { recordNamedPlaceForDay } from './placesFromPhotos';
 import { ParsedTask, addTask } from './tasks';
+import { chatCompletion, textAvailable, textProviders } from './aiProviders';
+import { transcribeAudio, transcriptionAvailable } from './transcription';
+import { getUserProfile, identityForPrompt } from './userProfile';
 
 // The core of Recall: the user logs everything through one door — a rambling
 // voice note, a typed entry, a photo caption — and this module reads it once
@@ -15,13 +18,8 @@ import { ParsedTask, addTask } from './tasks';
 // Everything is best-effort and runs after the memory is already saved, so a
 // failed analysis can never lose what the user logged.
 
-function apiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
 export function intakeAvailable(): boolean {
-  return !!apiKey();
+  return textAvailable();
 }
 
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -46,7 +44,7 @@ Respond with ONLY a JSON object in this exact shape:
 
 "tasks" — only genuine future to-dos: "remind me to…", "I have to…", "X asked me to…". Things that already happened are never tasks. title is a short imperative phrase in the user's own words with lead-ins stripped: "remind me to give Jeff the brief" → "Give Jeff the brief". Keep the entry's language. date resolves relative words ("tomorrow", weekday names) against TODAY given below; null when no day was mentioned. period only when the user said a day-part word. time only for an explicit clock time (24h).
 
-"people" — only people the user personally met, saw, or spent time with in this entry (not people merely referred to). name: if the person clearly matches someone in KNOWN PEOPLE below, return EXACTLY that known spelling; otherwise the name as the user said it. descriptor: a short "who they are" only if the user stated it ("your neighbor", "coworker") — null otherwise. note: one short sentence about what happened with this person this time — written in the exact same language as the entry itself; NEVER translate.
+"people" — only people the user personally met, saw, or spent time with in this entry (not people merely referred to). name: if the person clearly matches someone in KNOWN PEOPLE below, return EXACTLY that known spelling; otherwise the name as the user said it. Match ACROSS SCRIPTS AND SPELLINGS — the user writes the same person differently from day to day, and every version must come back as the one known spelling: "بابا" and "Baba" are one person; "Nayer", "Nair" and "ناير" are one person; "Ahmad" and "Ahmed" are usually one person. A KNOWN PEOPLE line that lists "also written: …" is telling you exactly which spellings already belong to that person. Only give a new name when this really is somebody the list doesn't have. descriptor: a short "who they are" only if the user stated it ("your neighbor", "coworker") — null otherwise. note: one short sentence about what happened with this person this time — written in the exact same language as the entry itself; NEVER translate.
 
 "places" — short names of places the user was physically at ("Work", "Gym", "787 Coffee"). Not places merely mentioned ("a client in New Jersey" is not a visit).
 
@@ -67,11 +65,20 @@ const PERIOD_TIMES: Record<string, string> = {
 };
 
 export async function analyzeMemory(text: string): Promise<IntakeResult | null> {
-  const key = apiKey();
-  if (!key || !text.trim()) return null;
+  if (!intakeAvailable() || !text.trim()) return null;
 
   const now = new Date();
   const known = await getKnownPeopleForPrompt();
+
+  // Who is writing. Without this the intake brain can pull the user's own
+  // name out of their own entry and file them as somebody they met — you'd
+  // end up with a profile of yourself sitting in your People list.
+  const profile = await getUserProfile();
+  const identity = identityForPrompt(profile);
+  const self = identity
+    ? `\n\nWHO IS WRITING: ${identity} They are the "I"/"me" in every entry — never list them under "people", no matter which name or spelling they use for themselves.`
+    : '';
+
   // Spell out the next two weeks so "next Friday" can't be mis-resolved by
   // model date arithmetic.
   const calendar = Array.from({ length: 14 }, (_, i) => {
@@ -79,31 +86,22 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
     d.setDate(now.getDate() + i);
     return `${WEEKDAYS_LONG[d.getDay()]} = ${localDate(d)}`;
   }).join(', ');
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
+  const result = await chatCompletion(textProviders(), (model) => ({
+        model,
         messages: [
           {
             role: 'system',
-            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}. Upcoming dates for reference: ${calendar}.\n\nKNOWN PEOPLE:\n${known || '(none yet)'}`,
+            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}. Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}`,
           },
           { role: 'user', content: text },
         ],
         response_format: { type: 'json_object' },
         temperature: 0.2,
-      }),
-    });
-    if (!res.ok) return null;
+  }));
+  if (!result.ok) return null;
 
-    const json = await res.json();
-    const content: string = json.choices?.[0]?.message?.content ?? '';
-    const parsed = JSON.parse(content) as {
+  try {
+    const parsed = JSON.parse(result.content) as {
       polished?: string;
       tasks?: { title?: string; date?: string | null; period?: string | null; time?: string | null }[];
       people?: { name?: string; descriptor?: string | null; note?: string | null }[];
@@ -246,11 +244,73 @@ export async function polishPendingMemories(limit = 6): Promise<boolean> {
   }
 }
 
+// A recording whose speech-to-text keeps coming back broken. Four tries is
+// generous for a genuinely unreadable file; past that the Source page's
+// "Generate transcript" button is still there to force one by hand.
+const MAX_TRANSCRIBE_ATTEMPTS = 4;
+const lastTranscribeAt = new Map<string, number>();
+
+// Stage one of finishing an incomplete memory: a recording that has audio
+// but no words yet.
+//
+// Transcription used to be attempted exactly once, on the recording screen,
+// with no way back. So a recording made while the network was down or the
+// API balance was empty saved with no text and stayed that way forever —
+// the polish sweep below couldn't rescue it either, because there was no
+// text to polish. That's how a real memory ended up permanently showing a
+// placeholder. This is the retry that was missing.
+export async function transcribePendingMemories(limit = 3): Promise<boolean> {
+  if (!transcriptionAvailable()) return false;
+  try {
+    const now = Date.now();
+    const all = await getLoggedMemories();
+    const pending = all
+      .filter(
+        (m) =>
+          m.kind === 'voice' &&
+          !!m.audioUri &&
+          !m.text?.trim() &&
+          (m.transcribeAttempts ?? 0) < MAX_TRANSCRIBE_ATTEMPTS &&
+          now - (lastTranscribeAt.get(m.id) ?? 0) > RETRY_COOLDOWN_MS,
+      )
+      .slice(0, limit);
+
+    let changed = false;
+    for (const m of pending) {
+      lastTranscribeAt.set(m.id, Date.now());
+      const result = await transcribeAudio(m.audioUri!, 'auto');
+
+      if (!result.ok) {
+        // Only a real failure counts against the attempt budget. No key, no
+        // credit and rate-limited are all temporary conditions that say
+        // nothing about the recording, so they leave the count untouched
+        // and the memory stays eligible for the next sweep.
+        if (result.reason === 'failed') {
+          await updateMemory(m.id, { transcribeAttempts: (m.transcribeAttempts ?? 0) + 1 });
+        }
+        continue;
+      }
+
+      await updateMemory(m.id, { text: result.text, words: result.words });
+      changed = true;
+      // Straight on to the intake brain: polish for the card, and route any
+      // tasks/people/places the recording mentioned — the same treatment it
+      // would have had if transcription had worked the first time.
+      const spoken = [result.text.trim(), m.note?.trim()].filter(Boolean).join(' — ');
+      await processMemoryIntake(m.id, spoken, dateKey(new Date(m.takenAt)));
+    }
+    return changed;
+  } catch {
+    return false;
+  }
+}
+
 // Drop-in hook for any screen that displays memory content: on every focus,
-// sweeps up unpolished memories and calls `onChanged` if anything was
-// updated (so the screen can re-fetch what it shows). Returns `analyzing`,
-// true only once the sweep has taken long enough to be worth showing —
-// avoids a flash when there's nothing pending.
+// finishes any memory that isn't finished — first transcribing recordings
+// that never got words, then polishing and routing anything unrefined — and
+// calls `onChanged` if anything was updated (so the screen can re-fetch
+// what it shows). Returns `analyzing`, true only once the sweep has taken
+// long enough to be worth showing — avoids a flash when nothing is pending.
 export function useMemoryPolish(onChanged: () => void): boolean {
   const [analyzing, setAnalyzing] = useState(false);
   const onChangedRef = useRef(onChanged);
@@ -263,7 +323,14 @@ export function useMemoryPolish(onChanged: () => void): boolean {
         if (live) setAnalyzing(true);
       }, 250);
 
-      polishPendingMemories()
+      // Transcribe first, then polish: a recording that only just got its
+      // words needs the polish pass in the same sweep, or the card would
+      // show the raw transcript until the next time the screen is opened.
+      transcribePendingMemories()
+        .then(async (transcribed) => {
+          const polished = await polishPendingMemories();
+          return transcribed || polished;
+        })
         .then((changed) => {
           if (!live) return;
           clearTimeout(showDelay);

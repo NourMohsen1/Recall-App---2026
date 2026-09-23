@@ -12,6 +12,7 @@ import {
   dateKey,
   formatClockTime,
   getLoggedMemories,
+  memoryDisplayText,
 } from '../src/memoryLog';
 import { colors, fonts } from '../src/theme';
 
@@ -78,11 +79,9 @@ function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
                 <Text style={styles.timePillText}>≈ {formatClockTime(new Date(m.takenAt))}</Text>
               </View>
             </View>
-            {m.text ? (
-              <Text style={styles.segmentText}>{m.text}</Text>
-            ) : m.kind === 'voice' ? (
-              <Text style={styles.segmentText}>Voice memory — no transcript yet.</Text>
-            ) : null}
+            {memoryDisplayText(m) && (
+              <Text style={styles.segmentText}>{memoryDisplayText(m)}</Text>
+            )}
           </View>
         </View>
       ))}

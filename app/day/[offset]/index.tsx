@@ -18,19 +18,32 @@ import {
   translateAssumedMemory,
 } from '../../../src/assumedMemory';
 import { WEEKDAYS, dateWithOffset, shortDate } from '../../../src/data';
-import { useMemoryPolish } from '../../../src/memoryIntake';
+import MemoryEditSheet from '../../../src/components/MemoryEditSheet';
+import { processMemoryIntake, useMemoryPolish } from '../../../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
+  deleteMemory,
   formatClockTime,
   getMemoriesByDay,
+  memoryDisplayText,
+  saveMemory,
+  updateMemory,
 } from '../../../src/memoryLog';
 import {
   addPersonForDay,
+  getAllPersonMeta,
   getAllTaggedPeople,
   getPeopleForDay,
   removePersonForDay,
 } from '../../../src/peopleTags';
+import {
+  PersonSuggestion,
+  acceptSuggestion,
+  getSuggestionsForDay,
+  rejectSuggestion,
+} from '../../../src/personSuggestions';
+import { ensureDayScanned, faceMatchingAvailable } from '../../../src/faceMatching';
 import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
 import { DetectedPlace, getPlacesForDay } from '../../../src/placesFromPhotos';
 import { rtlIfArabic } from '../../../src/transcription';
@@ -46,6 +59,12 @@ export default function DayDetailScreen() {
   const [places, setPlaces] = useState<DetectedPlace[]>([]);
   const [people, setPeople] = useState<string[]>([]);
   const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  const [editTarget, setEditTarget] = useState<LoggedMemory | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
+  const [faceSuggestions, setFaceSuggestions] = useState<PersonSuggestion[]>([]);
+  const [readingFaces, setReadingFaces] = useState(false);
   const dayKey = dateKey(dateWithOffset(offsetNum));
   const reload = useCallback(() => {
     const key = dateKey(dateWithOffset(offsetNum));
@@ -53,7 +72,58 @@ export default function DayDetailScreen() {
     getPlacesForDay(key).then(setPlaces);
     getPeopleForDay(key).then(setPeople);
     getAllTaggedPeople().then(setPeopleSuggestions);
+    // Faces and guesses for the People row.
+    getAllPersonMeta().then((all) =>
+      setPersonPhotos(
+        Object.fromEntries(Object.entries(all).map(([n, m]) => [n, m.photoUri])),
+      ),
+    );
+    getSuggestionsForDay(key).then(setFaceSuggestions);
   }, [offsetNum]);
+
+  // The user settling a guess: yes makes it a real tagged day, no stops the
+  // app offering that face on that day again.
+  const confirmSuggested = async (personName: string) => {
+    await acceptSuggestion(personName, dayKey);
+    reload();
+  };
+  const dismissSuggested = async (personName: string) => {
+    await rejectSuggestion(personName, dayKey);
+    reload();
+  };
+
+  // Rewriting a memory the user already has. Their words replace whatever
+  // was there and the entry is marked refined, so the polish sweep never
+  // comes back and rewrites what they just typed. The verbatim original is
+  // untouched in rawText, and still on the Source page.
+  const saveEdit = async (text: string) => {
+    if (!editTarget) return;
+    await updateMemory(editTarget.id, { text, refined: true });
+    setEditTarget(null);
+    reload();
+  };
+
+  const deleteEntry = async () => {
+    if (!editTarget) return;
+    await deleteMemory(editTarget.id);
+    setEditTarget(null);
+    reload();
+  };
+
+  // A new memory written onto a day that may be in the past, so takenAt is
+  // set to that day rather than now — otherwise it would file itself under
+  // today and vanish from the day being looked at. Midday, since there's no
+  // real time of day for something written from memory later.
+  const saveNew = async (text: string) => {
+    const when = dateWithOffset(offsetNum);
+    when.setHours(12, 0, 0, 0);
+    const saved = await saveMemory({ kind: 'text', text, takenAt: when });
+    setAdding(false);
+    reload();
+    // Same treatment as anything logged the normal way: read it once and
+    // file the tasks, people and places out of it.
+    processMemoryIntake(saved.id, text, dateKey(when)).catch(() => {});
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -146,6 +216,34 @@ export default function DayDetailScreen() {
 
   const retryAssumed = () => fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
 
+  // Who was here? Asked of the day rather than of a person: this day's photos
+  // go in against every face the app knows, and whoever it recognises turns up
+  // in the People row below as a question, next to the people the user tagged
+  // themselves.
+  //
+  // It runs on opening a day and then never again for the same day — the pass
+  // remembers which people it has already read this day for, so coming back
+  // costs nothing, while a person added next week makes the day worth one more
+  // look, for them alone.
+  useEffect(() => {
+    if (realPhotoUris.length === 0 || !faceMatchingAvailable()) return;
+    let live = true;
+    setReadingFaces(true);
+    ensureDayScanned(dayKey)
+      .then(async (outcome) => {
+        if (!live || outcome.status !== 'done' || outcome.found === 0) return;
+        setFaceSuggestions(await getSuggestionsForDay(dayKey));
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (live) setReadingFaces(false);
+      });
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayKey, photoUrisKey]);
+
 
   // A day analyzed by the background pass appears here on its own — no
   // need to tap the day to make it show up.
@@ -198,6 +296,16 @@ export default function DayDetailScreen() {
         <Text style={styles.headerTitle}>
           {WEEKDAYS[date.getDay()]}, {shortDate(date)}
         </Text>
+        {/* Editing is a mode rather than a one-shot action: the day can hold
+            several memories, and turning it on marks every one of them
+            editable at once instead of asking which before you can see them. */}
+        <Pressable onPress={() => setEditing((v) => !v)} hitSlop={12} style={styles.headerAction}>
+          {editing ? (
+            <Text style={styles.headerDone}>Done</Text>
+          ) : (
+            <Ionicons name="create-outline" size={24} color={colors.primary} />
+          )}
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -220,14 +328,18 @@ export default function DayDetailScreen() {
                         ≈ {formatClockTime(new Date(m.takenAt))}
                       </Text>
                     </View>
+                    {editing && (
+                      <Pressable onPress={() => setEditTarget(m)} hitSlop={10} style={styles.editDot}>
+                        <Ionicons name="create-outline" size={17} color={colors.teal} />
+                      </Pressable>
+                    )}
                   </View>
 
-                  {m.text ? (
-                    <Text style={[styles.segmentText, rtlIfArabic(m.text)]}>{m.text}</Text>
-                  ) : m.kind === 'voice' ? (
-                    // No transcript yet — the audio is the only content we have.
-                    <Text style={styles.segmentText}>Voice memory — no transcript yet.</Text>
-                  ) : null}
+                  {memoryDisplayText(m) && (
+                    <Text style={[styles.segmentText, rtlIfArabic(memoryDisplayText(m)!)]}>
+                      {memoryDisplayText(m)}
+                    </Text>
+                  )}
 
                   {m.note && <Text style={[styles.noteText, rtlIfArabic(m.note)]}>📝 {m.note}</Text>}
 
@@ -249,6 +361,16 @@ export default function DayDetailScreen() {
               </View>
             ))}
           </View>
+        )}
+
+        {/* Adding to a past day. Offered whenever editing is on, and also on
+            an empty day — a day with nothing on it is exactly when you most
+            want to write something, and there'd otherwise be no way in. */}
+        {(editing || entries.length === 0) && (
+          <Pressable style={styles.addRow} onPress={() => setAdding(true)}>
+            <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
+            <Text style={styles.addText}>Add to this day</Text>
+          </Pressable>
         )}
 
         {hasVoice && (
@@ -305,10 +427,20 @@ export default function DayDetailScreen() {
         )}
 
         <View style={styles.divider} />
-        <Text style={styles.placesTitle}>People</Text>
+        <View style={styles.peopleHeader}>
+          <Text style={styles.placesTitle}>People</Text>
+          {/* Said out loud rather than left as a silent pause — a row that
+              gains a face ten seconds after you opened the day is confusing
+              if nothing ever mentioned it was looking. */}
+          {readingFaces && <Text style={styles.peopleReading}>Reading faces…</Text>}
+        </View>
         <PeopleEditor
           people={people}
           suggestions={peopleSuggestions}
+          photos={personPhotos}
+          suggested={faceSuggestions}
+          onConfirm={confirmSuggested}
+          onDismiss={dismissSuggested}
           onAdd={addPerson}
           onRemove={removePerson}
         />
@@ -378,6 +510,19 @@ export default function DayDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      <MemoryEditSheet
+        visible={!!editTarget || adding}
+        mode={editTarget ? 'edit' : 'add'}
+        dayLabel={`${WEEKDAYS[date.getDay()]}, ${shortDate(date)}`}
+        initialText={editTarget?.text ?? ''}
+        onSave={editTarget ? saveEdit : saveNew}
+        onDelete={editTarget ? deleteEntry : undefined}
+        onClose={() => {
+          setEditTarget(null);
+          setAdding(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -392,6 +537,18 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E5E8E8',
   },
   back: { position: 'absolute', left: 20, top: 16 },
+  headerAction: { position: 'absolute', right: 20, top: 18 },
+  headerDone: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.teal },
+  editDot: { padding: 2 },
+  addRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  addText: { fontFamily: fonts.medium, fontSize: 15, color: colors.teal },
   headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
   scroll: { padding: 24, paddingBottom: 140 },
 
@@ -456,6 +613,12 @@ const styles = StyleSheet.create({
   sourceLinkText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
   noteText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#7C8586', marginTop: 6 },
 
+  peopleHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+  },
+  peopleReading: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
   placesTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111', marginBottom: 14 },
   placeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
   placeCell: { width: 88, alignItems: 'center' },

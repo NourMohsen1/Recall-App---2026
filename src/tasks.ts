@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { chatCompletion, textAvailable, textProviders } from './aiProviders';
 import { cancelTaskReminder, scheduleTaskReminder } from './taskNotifications';
 
 // Local-first task store. Tasks come from two doors: the user creates one
@@ -156,13 +157,8 @@ export function formatDueTime(dueTime: string): string {
 // ---------------------------------------------------------------------------
 // AI extraction — turns free-form journal text into structured tasks.
 
-function apiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
 export function taskExtractionAvailable(): boolean {
-  return !!apiKey();
+  return textAvailable();
 }
 
 type ExtractedTask = {
@@ -198,19 +194,11 @@ export type ParsedTask = { title: string; dueDate?: string; dueTime?: string };
 // Returns null when the AI call itself failed (no key, network, bad JSON) so
 // callers can tell "no tasks in this text" apart from "couldn't check".
 export async function extractTasks(text: string): Promise<ParsedTask[] | null> {
-  const key = apiKey();
-  if (!key || !text.trim()) return null;
+  if (!textAvailable() || !text.trim()) return null;
 
   const now = new Date();
-  try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
+  const result = await chatCompletion(textProviders(), (model) => ({
+        model,
         messages: [
           {
             role: 'system',
@@ -220,13 +208,11 @@ export async function extractTasks(text: string): Promise<ParsedTask[] | null> {
         ],
         response_format: { type: 'json_object' },
         temperature: 0.2,
-      }),
-    });
-    if (!res.ok) return null;
+  }));
+  if (!result.ok) return null;
 
-    const json = await res.json();
-    const content: string = json.choices?.[0]?.message?.content ?? '';
-    const parsed = JSON.parse(content) as { tasks?: ExtractedTask[] };
+  try {
+    const parsed = JSON.parse(result.content) as { tasks?: ExtractedTask[] };
     if (!Array.isArray(parsed.tasks)) return null;
 
     return parsed.tasks

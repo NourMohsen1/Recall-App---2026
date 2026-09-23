@@ -15,9 +15,12 @@ import { colors, fonts } from '../theme';
 export default function ScreenHeader({
   title,
   backTo = '/home',
+  action,
 }: {
   title: string;
   backTo?: string;
+  /** Optional top-right control, mirroring the back arrow on the left. */
+  action?: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void; label?: string };
 }) {
   const router = useRouter();
   return (
@@ -30,6 +33,16 @@ export default function ScreenHeader({
         <Ionicons name="arrow-back" size={28} color={colors.primary} />
       </Pressable>
       <Text style={styles.title}>{title}</Text>
+      {action && (
+        <Pressable
+          onPress={action.onPress}
+          hitSlop={12}
+          style={styles.action}
+          accessibilityLabel={action.label}
+        >
+          <Ionicons name={action.icon} size={24} color={colors.primary} />
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -43,5 +56,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   back: { position: 'absolute', left: 20, top: 14 },
+  action: { position: 'absolute', right: 20, top: 16 },
   title: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
 });

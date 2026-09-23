@@ -6,7 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import { BRAND, MISC, placePhoto } from '../../src/images';
 import { useMemoryPolish } from '../../src/memoryIntake';
-import { LoggedMemory, dateKey, getMemoriesByDay } from '../../src/memoryLog';
+import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../../src/memoryLog';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
@@ -55,13 +55,7 @@ export default function Home() {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yReal = byDay.get(dateKey(yesterday)) ?? [];
-  const yLines = yReal
-    .map((m) =>
-      m.kind === 'voice'
-        ? m.text ?? 'Voice memory — no transcript yet.'
-        : m.text,
-    )
-    .filter(Boolean) as string[];
+  const yLines = yReal.map(memoryDisplayText).filter(Boolean) as string[];
   const usingRealSummary = yLines.length > 0;
 
   // The Timeline widget always reflects yesterday, from the user's own logs.
