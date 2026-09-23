@@ -115,3 +115,59 @@ export async function chatCompletion(
 
   return { ok: false, ...last };
 }
+
+// The full message back, not just its text.
+//
+// chatCompletion above deliberately treats an empty completion as a failure
+// and moves on to the next provider. That is right for every feature that
+// wants prose — and wrong for tool calling, where an empty content field with
+// a populated tool_calls is the NORMAL, successful answer: the model is
+// saying "I need to look something up first". Hence a second door rather than
+// a flag, so neither caller has to reason about the other's rules.
+export type ToolCall = {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+};
+
+export type RawMessage = {
+  role: string;
+  content?: string | null;
+  tool_calls?: ToolCall[];
+};
+
+export type RawResult =
+  | { ok: true; message: RawMessage; provider: Provider }
+  | { ok: false; status: number; body: string };
+
+export async function chatCompletionRaw(
+  providers: Provider[],
+  buildBody: (model: string) => Record<string, unknown>,
+): Promise<RawResult> {
+  let last: { status: number; body: string } = { status: 0, body: 'no provider configured' };
+
+  for (const p of providers) {
+    try {
+      const res = await fetch(p.url, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildBody(p.model)),
+      });
+      if (!res.ok) {
+        last = { status: res.status, body: (await res.text()).slice(0, 400) };
+        continue;
+      }
+      const json = await res.json();
+      const message = json.choices?.[0]?.message as RawMessage | undefined;
+      if (!message) {
+        last = { status: 200, body: 'no message in response' };
+        continue;
+      }
+      return { ok: true, message, provider: p };
+    } catch (e) {
+      last = { status: 0, body: e instanceof Error ? e.message : 'network error' };
+    }
+  }
+
+  return { ok: false, ...last };
+}

@@ -787,11 +787,22 @@ export default function Chat() {
               {/* One primary action: mic while the field is empty, send once
                   there's text — always big, always in thumb reach. */}
               {input.trim().length === 0 && canSpeak ? (
-                <Pressable onPress={startVoice} hitSlop={8} disabled={thinking}>
-                  <View style={[styles.primaryBtn, thinking && { opacity: 0.4 }]}>
-                    <Ionicons name="mic" size={24} color={colors.ink} />
-                  </View>
-                </Pressable>
+                <>
+                  <Pressable onPress={startVoice} hitSlop={8} disabled={thinking}>
+                    <View style={[styles.ghostBtn, thinking && { opacity: 0.4 }]}>
+                      <Ionicons name="mic" size={22} color={colors.white} />
+                    </View>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => router.push('/live' as Parameters<typeof router.push>[0])}
+                    hitSlop={8}
+                    disabled={thinking}
+                  >
+                    <View style={[styles.primaryBtn, thinking && { opacity: 0.4 }]}>
+                      <Ionicons name="pulse" size={24} color={colors.ink} />
+                    </View>
+                  </Pressable>
+                </>
               ) : (
                 <Pressable onPress={send} hitSlop={8} disabled={thinking || !input.trim()}>
                   <View
@@ -1020,6 +1031,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   sendBtn: { backgroundColor: colors.white },
+  // The mic steps back to a quieter button now that it shares the bar with
+  // the live one — two identical circles side by side say nothing about
+  // which does what.
+  ghostBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+  },
 
   recDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#E5484D' },
   recTimer: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.white, minWidth: 44 },

@@ -33,6 +33,13 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
+        {/* The live conversation comes up from the bottom and covers
+            everything, the way a call does — it is not a page you navigated
+            to, it is something you are in until you drop it. */}
+        <Stack.Screen
+          name="live"
+          options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
+        />
       </Stack>
     </>
   );
