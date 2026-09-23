@@ -33,13 +33,13 @@ export default function RootLayout() {
       <StatusBar style="light" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
-        {/* The live conversation comes up from the bottom and covers
-            everything, the way a call does — it is not a page you navigated
-            to, it is something you are in until you drop it. */}
-        <Stack.Screen
-          name="live"
-          options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }}
-        />
+        {/* Presented as an ordinary pushed screen, like Ask and Day.
+            'fullScreenModal' read better in theory and broke in practice: on
+            a real phone the safe-area insets do not reach inside that
+            presentation, so the header slid up under the Dynamic Island and
+            took the way out with it. Every other screen in this app is a
+            plain push, and every other screen is fine. */}
+        <Stack.Screen name="live" options={{ animation: 'slide_from_bottom' }} />
       </Stack>
     </>
   );

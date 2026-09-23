@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -9,6 +9,7 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
+  useAudioRecorderState,
 } from 'expo-audio';
 import { speakText, stopSpeaking } from '../src/speech';
 import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../src/transcription';
@@ -29,18 +30,30 @@ import { colors, fonts } from '../src/theme';
 // (see voiceSession.ts). Whatever this says now is what the live one will say
 // later, just without the pause.
 
-type Phase = 'idle' | 'listening' | 'thinking' | 'speaking';
+// 'opening' exists because asking for the microphone is not instant. Without
+// it, the first tap looked like nothing had happened, so the natural thing to
+// do was tap again — which started a second recording over the first and left
+// a fragment too short to transcribe. That was the reported "it said it
+// didn't catch that, instantly".
+type Phase = 'idle' | 'opening' | 'listening' | 'thinking' | 'speaking';
 
 const PHASE_LABEL: Record<Phase, string> = {
   idle: 'Tap to talk',
+  opening: 'Opening the mic…',
   listening: 'Listening… tap when you’re done',
   thinking: 'Thinking…',
   speaking: 'Tap to stop',
 };
 
+// Anything shorter than this is a tap, not a sentence. Sending it to be
+// transcribed spends a call and comes back as an unexplained failure.
+const MIN_SPEECH_MS = 700;
+
 export default function LiveConversation() {
   const router = useRouter();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 200);
+  const insets = useSafeAreaInsets();
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
@@ -54,7 +67,7 @@ export default function LiveConversation() {
   // never ambiguous about whose turn it is.
   const pulse = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const active = phase === 'listening' || phase === 'speaking' || phase === 'thinking';
+    const active = phase !== 'idle';
     if (!active) {
       pulse.stopAnimation();
       pulse.setValue(0);
@@ -96,18 +109,28 @@ export default function LiveConversation() {
   const startListening = async () => {
     setError(null);
     stopSpeaking();
-    const perm = await requestRecordingPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert('Microphone needed', 'Allow microphone access so Recall can hear you.');
-      return;
+    // Set before the first await, so a second tap cannot start a second
+    // recording while the first is still being set up.
+    setPhase('opening');
+    try {
+      const perm = await requestRecordingPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Microphone needed', 'Allow microphone access so Recall can hear you.');
+        setPhase('idle');
+        return;
+      }
+      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+      setPhase('listening');
+    } catch {
+      setError('Could not open the microphone.');
+      setPhase('idle');
     }
-    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-    await recorder.prepareToRecordAsync();
-    recorder.record();
-    setPhase('listening');
   };
 
   const finishListening = async () => {
+    const spokenMs = recorderState.durationMillis ?? 0;
     setPhase('thinking');
     let uri: string | null = null;
     try {
@@ -117,13 +140,35 @@ export default function LiveConversation() {
       uri = null;
     }
     if (!uri) {
+      setError('Nothing was recorded — try again.');
+      setPhase('idle');
+      return;
+    }
+    if (spokenMs < MIN_SPEECH_MS) {
+      setError('I didn’t hear anything. Tap, speak, then tap again when you’re done.');
       setPhase('idle');
       return;
     }
 
     const heard = await transcribeAudio(uri, 'auto');
-    if (!heard.ok || !heard.text.trim()) {
-      setError('I couldn’t make that out — try again.');
+    if (!heard.ok) {
+      // Each of these is a different problem with a different answer, and
+      // collapsing them all into "I couldn't make that out" left the user
+      // repeating themselves at a screen that had actually run out of credit.
+      setError(
+        heard.reason === 'no-key'
+          ? 'No API key for speech.'
+          : heard.reason === 'no-credits'
+            ? 'That OpenAI key is out of credit.'
+            : heard.reason === 'rate-limited'
+              ? 'Too many requests just now — try again in a moment.'
+              : 'The transcription failed. Try again.',
+      );
+      setPhase('idle');
+      return;
+    }
+    if (!heard.text.trim()) {
+      setError('I couldn’t make out any words — try speaking a little longer.');
       setPhase('idle');
       return;
     }
@@ -166,13 +211,19 @@ export default function LiveConversation() {
         locations={[0, 0.4, 0.75, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={styles.fill} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.fill} edges={['top']}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Ionicons name="chevron-down" size={28} color="rgba(255,255,255,0.8)" />
+          <Pressable
+            onPress={() => {
+              stopSpeaking();
+              router.back();
+            }}
+            hitSlop={16}
+            style={styles.back}
+          >
+            <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle}>Talk to Recall</Text>
-          <View style={{ width: 28 }} />
         </View>
 
         {/* What was said, newest at the bottom. Kept on screen rather than
@@ -212,7 +263,7 @@ export default function LiveConversation() {
           {error && <Text style={styles.error}>{error}</Text>}
         </ScrollView>
 
-        <View style={styles.orbArea}>
+        <View style={[styles.orbArea, { paddingBottom: Math.max(insets.bottom, 18) + 8 }]}>
           <Pressable onPress={onOrbPress} disabled={!available || phase === 'thinking'}>
             <Animated.View
               style={[
@@ -246,14 +297,19 @@ const ORB = 96;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  // Same shape as Ask's header, which is the one known to behave on a real
+  // phone: a centred title with the back arrow laid over it, rather than a
+  // three-way space-between that leans whenever one side is empty.
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingTop: 6,
+    paddingBottom: 14,
+    minHeight: 48,
   },
-  headerTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.white },
+  back: { position: 'absolute', left: 16, top: 6, padding: 4 },
+  headerTitle: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },
   transcript: { flex: 1 },
   transcriptInner: { paddingHorizontal: 22, paddingBottom: 20, gap: 14 },
   hint: {
@@ -291,7 +347,7 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   error: { fontFamily: fonts.regular, fontSize: 14, color: '#FFB4A8' },
-  orbArea: { alignItems: 'center', paddingBottom: 18, gap: 14 },
+  orbArea: { alignItems: 'center', gap: 14 },
   orbGlow: {
     position: 'absolute',
     top: -14,
