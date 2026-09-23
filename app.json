@@ -33,7 +33,12 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      "expo-audio",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Recall uses your microphone so you can speak a memory instead of typing it, and talk to it about what you have recorded."
+        }
+      ],
       [
         "expo-image-picker",
         {
@@ -65,7 +70,20 @@
       "expo-image",
       "expo-asset",
       "expo-status-bar",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "react-native-fast-tflite",
+        {
+          "enableCoreMLDelegate": true
+        }
+      ],
+      "@config-plugins/react-native-webrtc",
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "most-recent"
+        }
+      ]
     ]
   }
 }
