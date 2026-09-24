@@ -229,11 +229,13 @@ function fallbackFeed(date: Date, topics: Topic[]): TopicItem[] {
   });
 }
 
+import { backendToken, backendUrl, ENDPOINTS } from './backend';
 // ---- Internet fetch via OpenAI web search ----
 
+// The app's own server holds the provider key; this is only what gets the
+// app through its door. See src/backend.ts.
 function apiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
+  return backendToken();
 }
 
 const MONTH_NAMES = [
@@ -317,7 +319,7 @@ async function fetchFromInternet(
   const prompt = `Search the web for what happened on ${dateLabel} (or the closest coverage of that date) for each topic below. For each topic give one real event from that date.\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<topic key>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    const res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
@@ -431,7 +433,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
     } Aim for exactly ${EVENTS_COUNT} items covering different competitions, artists, or angles — return fewer only if that date genuinely had fewer. No URLs or citations in the headline/summary text.\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
 
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${key}`,

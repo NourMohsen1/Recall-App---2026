@@ -63,7 +63,7 @@ function dayOffsetFromIso(iso: string): number {
 
 function errorText(reason: Exclude<AskResult, { ok: true }>['reason']) {
   if (reason === 'no-key') {
-    return 'Ask isn’t set up yet — add EXPO_PUBLIC_OPENAI_API_KEY to your .env file to turn this on.';
+    return 'Ask isn’t set up yet — add EXPO_PUBLIC_RECALL_API_URL and EXPO_PUBLIC_RECALL_APP_TOKEN to your .env file to turn this on.';
   }
   if (reason === 'no-credits') {
     return 'Your OpenAI account has no credits yet — add a prepaid balance at platform.openai.com → Billing.';

@@ -8,9 +8,11 @@ import * as Speech from 'expo-speech';
 // and English alike); the device's built-in speech engine is the fallback so
 // answers are still spoken when the API can't be reached.
 
+import { backendToken, backendUrl, ENDPOINTS } from './backend';
+// The app's own server holds the provider key; this is only what gets the
+// app through its door. See src/backend.ts.
 function apiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
+  return backendToken();
 }
 
 // Only one thing speaks at a time.
@@ -44,7 +46,7 @@ export function stopSpeaking(): void {
 // Fetches natural speech for `text` and returns a playable local URI —
 // a blob URL on web, a cached mp3 file on device.
 async function fetchTtsUri(text: string, key: string): Promise<string | null> {
-  const res = await fetch('https://api.openai.com/v1/audio/speech', {
+  const res = await fetch(backendUrl(ENDPOINTS.speak) ?? '', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${key}`,

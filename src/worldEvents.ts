@@ -454,9 +454,11 @@ async function writeCache(phrase: string, event: ResolvedEvent | null): Promise<
   }
 }
 
+import { backendToken, backendUrl, ENDPOINTS } from './backend';
+// The app's own server holds the provider key; this is only what gets the
+// app through its door. See src/backend.ts.
 function openAiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
+  return backendToken();
 }
 
 export function eventSearchAvailable(): boolean {
@@ -526,7 +528,7 @@ or
   });
 
   try {
-    let res = await fetch('https://api.openai.com/v1/chat/completions', {
+    let res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
       body,
@@ -537,7 +539,7 @@ or
       // Out of money is not something waiting fixes.
       if (/insufficient_quota|credit_balance|billing/i.test(text)) return { status: 'error' };
       await sleep(retryDelayMs(text));
-      res = await fetch('https://api.openai.com/v1/chat/completions', {
+      res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
         method: 'POST',
         headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
         body,

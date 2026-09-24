@@ -4,9 +4,11 @@ import { Platform } from 'react-native';
 // Arabic, English, and mixed Arabic/English speech in a single model.
 //
 // Setup: create `recall/.env` containing
-//   EXPO_PUBLIC_OPENAI_API_KEY=sk-...
-// then restart the dev server. Without a key, recordings still save —
-// they just won't be transcribed.
+//   EXPO_PUBLIC_RECALL_API_URL=https://recall-keys.nourmohsen-recall.workers.dev
+//   EXPO_PUBLIC_RECALL_APP_TOKEN=...
+// then restart the dev server. The OpenAI key itself lives on that server,
+// not here — see src/backend.ts. Without those, recordings still save, they
+// just won't be transcribed.
 
 export type SpeechLanguage = 'auto' | 'ar' | 'en';
 
@@ -19,11 +21,13 @@ export type TranscriptionResult =
   // are HTTP 429; only the response body tells them apart.
   | { ok: false; reason: 'no-key' | 'no-credits' | 'rate-limited' | 'failed' };
 
-const API_URL = 'https://api.openai.com/v1/audio/transcriptions';
+import { backendToken, backendUrl, ENDPOINTS } from './backend';
+const API_URL = () => backendUrl(ENDPOINTS.transcribe);
 
+// The app's own server holds the provider key; this is only what gets the
+// app through its door. See src/backend.ts.
 function apiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
+  return backendToken();
 }
 
 async function readErrorReason(res: Response): Promise<'no-credits' | 'rate-limited' | 'failed'> {
@@ -84,7 +88,7 @@ export async function transcribeAudio(
     // Omitting `language` lets Whisper auto-detect — best for mixed speech.
     if (language !== 'auto') form.append('language', language);
 
-    const res = await fetch(API_URL, {
+    const res = await fetch(API_URL() ?? '', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}` },
       body: form,

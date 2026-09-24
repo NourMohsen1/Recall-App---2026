@@ -21,6 +21,8 @@
 //            web_search_options is accepted and then ignored, and the model
 //            says so itself when asked.
 
+import { backendToken, backendUrl, ENDPOINTS } from './backend';
+
 export const MODELS = {
   deepseekText: 'deepseek-v4-flash',
   deepseekVision: 'deepseek-v4-flash-vision-exp',
@@ -32,40 +34,43 @@ export const MODELS = {
   openAiTts: 'gpt-4o-mini-tts',
 } as const;
 
-const DEEPSEEK_URL = 'https://api.deepseek.com/chat/completions';
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+// Both go through the app's own server, which holds the provider keys.
+// See src/backend.ts for why, and for what this does and does not protect.
+const DEEPSEEK_URL = () => backendUrl(ENDPOINTS.deepseekChat);
+const OPENAI_URL = () => backendUrl(ENDPOINTS.openAiChat);
 
 export type Provider = { url: string; key: string; model: string; name: 'deepseek' | 'openai' };
 
-export function openAiKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
-
-export function deepseekKey(): string | undefined {
-  const key = process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY;
-  return key && key.trim().length > 10 ? key.trim() : undefined;
-}
+// There used to be one of these per provider, because the app held one key
+// per provider and either could be missing on its own. It now holds
+// neither: both providers are reached through the same server with the same
+// token, so there is one question left — is that server configured — and
+// asking it per provider would only imply a distinction that no longer
+// exists.
 
 // Text-only work, cheapest capable provider first.
 export function textProviders(): Provider[] {
-  const out: Provider[] = [];
-  const ds = deepseekKey();
-  if (ds) out.push({ url: DEEPSEEK_URL, key: ds, model: MODELS.deepseekText, name: 'deepseek' });
-  const oa = openAiKey();
-  if (oa) out.push({ url: OPENAI_URL, key: oa, model: MODELS.openAiText, name: 'openai' });
-  return out;
+  const token = backendToken();
+  const deepseek = DEEPSEEK_URL();
+  const openai = OPENAI_URL();
+  if (!token || !deepseek || !openai) return [];
+  return [
+    { url: deepseek, key: token, model: MODELS.deepseekText, name: 'deepseek' },
+    { url: openai, key: token, model: MODELS.openAiText, name: 'openai' },
+  ];
 }
 
 // Anything that sends images. Same order, same reasoning — but the fallback
 // matters more here because DeepSeek's vision model is experimental.
 export function visionProviders(): Provider[] {
-  const out: Provider[] = [];
-  const ds = deepseekKey();
-  if (ds) out.push({ url: DEEPSEEK_URL, key: ds, model: MODELS.deepseekVision, name: 'deepseek' });
-  const oa = openAiKey();
-  if (oa) out.push({ url: OPENAI_URL, key: oa, model: MODELS.openAiVision, name: 'openai' });
-  return out;
+  const token = backendToken();
+  const deepseek = DEEPSEEK_URL();
+  const openai = OPENAI_URL();
+  if (!token || !deepseek || !openai) return [];
+  return [
+    { url: deepseek, key: token, model: MODELS.deepseekVision, name: 'deepseek' },
+    { url: openai, key: token, model: MODELS.openAiVision, name: 'openai' },
+  ];
 }
 
 export function textAvailable(): boolean {
