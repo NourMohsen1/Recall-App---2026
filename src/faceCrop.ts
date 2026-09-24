@@ -1,5 +1,5 @@
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { chatCompletion, visionProviders } from './aiProviders';
+import { findFaces } from './faceEmbedderTflite';
 import { persistFile } from './memoryLog';
 import { getAllPersonMeta, setPersonFace } from './peopleTags';
 import { resolvePhotoUri } from './photoUri';
@@ -30,24 +30,6 @@ import { resolvePhotoUri } from './photoUri';
 // The original photo is untouched and stays the avatar everywhere. This is
 // only what goes into the matcher.
 
-const BOX_PROMPT = `You are given one photo. Find the single most prominent human face in it — the person the photo is of.
-
-Reply with ONLY a JSON object giving that face's bounding box as fractions of the image, where 0,0 is the top-left corner and 1,1 is the bottom-right:
-
-{"found": true, "x": <left edge 0-1>, "y": <top edge 0-1>, "w": <width 0-1>, "h": <height 0-1>}
-
-The box must contain the face itself — brow to chin, ear to ear — not the whole head-and-shoulders, and not the whole person.
-
-If there is no human face in the photo, or you cannot locate one confidently, reply {"found": false}. Guessing a box is worse than saying no.`;
-
-// How much of the frame a real face occupies. A "face" reported as 2% of a
-// photo is a distant figure, not a portrait; one reported as 95% is the
-// model handing back the whole image because it didn't actually look. Both
-// are rejected in favour of using the photo as it is.
-const MIN_FACE_FRACTION = 0.02;
-const MAX_FACE_FRACTION = 0.9;
-// Grown outward from the reported box, because the useful signal for
-// telling two people apart sits just outside a tight face crop — hairline,
 // jaw, ears — and because the model's box is approximate.
 const PADDING = 0.45;
 // The crop is what gets sent, so it is kept large.
@@ -55,95 +37,60 @@ const CROP_WIDTH = 720;
 
 type Box = { x: number; y: number; w: number; h: number };
 
-// Locating a face is a different skill from describing one, and only one of
-// the two providers has it.
+
+// Where the face is, found on the phone.
 //
-// Measured on drawn scenes with a face placed at a known spot: DeepSeek put
-// the box within 0.02-0.09 of it every time, wherever it was. gpt-4o-mini
-// answered with the middle of the frame in every case — (0.50, 0.40) for a
-// face at the top right, and again for one at the bottom left. It is not
-// locating anything; it is guessing the centre.
+// (Worth keeping from the version this replaces: asked to locate a face,
+// DeepSeek put the box within 0.02-0.09 of a known position every time,
+// while gpt-4o-mini answered with the middle of the frame in every case —
+// (0.50, 0.40) for a face at the top right and again for one at the bottom
+// left. It was not locating anything. That is a fact about gpt-4o-mini and
+// coordinates, not about faces, and it will be true the next time anyone
+// asks a vision model to point at something.)
 //
-// A wrong box here is worse than no box, because the crop it produces
-// becomes the stored reference every future match is judged against. So
-// this one step does not fall back: without a provider that can ground a
-// coordinate, no crop is made and the whole photo is used, exactly as
-// before.
-function boxProviders() {
-  return visionProviders().filter((p) => p.name === 'deepseek');
+// This used to ask DeepSeek: upload the photo, have a vision model describe
+// a box, check the answer was shaped like a box. It worked, but it sent a
+// personal photo to a third party, cost a call per person, needed the
+// network, and could return a plausible box around no face at all.
+//
+// The app now carries a face detector for its own recognition, so the same
+// question is answered locally in about a tenth of a second, for nothing,
+// offline, by something that only ever reports faces it actually found.
+//
+// The checks the old version needed — is this box inside the photo, is it
+// face-shaped, is it a sane size — are gone with it. They existed to catch
+// a language model producing the shape of an answer. A detector either
+// finds a face or does not.
+async function findFaceBox(photoUri: string): Promise<Box | null> {
+  const found = await findFaces(photoUri);
+  if (!found?.faces.length) return null;
+
+  // The biggest face is the subject of a portrait; anyone else in it is a
+  // bystander, and this is building that person's profile picture.
+  const main = [...found.faces].sort(
+    (a, b) => b.box.w * b.box.h - a.box.w * a.box.h,
+  )[0];
+  return main.box;
 }
 
-async function askForFaceBox(dataUri: string): Promise<Box | null> {
-  const result = await chatCompletion(boxProviders(), (model) => ({
-    model,
-    messages: [
-      { role: 'system', content: BOX_PROMPT },
-      {
-        role: 'user',
-        content: [{ type: 'image_url', image_url: { url: dataUri, detail: 'high' } }],
-      },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0,
-  }));
-  if (!result.ok) return null;
-
-  try {
-    const p = JSON.parse(result.content) as Partial<Box> & { found?: boolean };
-    if (p.found === false) return null;
-    const nums = [p.x, p.y, p.w, p.h];
-    if (nums.some((n) => typeof n !== 'number' || !Number.isFinite(n))) return null;
-    const box = { x: p.x as number, y: p.y as number, w: p.w as number, h: p.h as number };
-    // Everything below is the model being checked, not trusted. A box that
-    // runs off the edge, inverts, or covers the whole frame means it didn't
-    // find a face — it produced the shape of an answer.
-    if (box.w <= 0 || box.h <= 0) return null;
-    if (box.x < 0 || box.y < 0 || box.x + box.w > 1.001 || box.y + box.h > 1.001) return null;
-    const area = box.w * box.h;
-    if (area < MIN_FACE_FRACTION || area > MAX_FACE_FRACTION) return null;
-    // A face is roughly as tall as it is wide. Something four times longer
-    // than it is high is a strip of the photo, not a head.
-    const ratio = box.w / box.h;
-    if (ratio < 0.25 || ratio > 4) return null;
-    return box;
-  } catch {
-    return null;
-  }
-}
-
-async function toDataUri(uri: string, width: number): Promise<string | null> {
-  try {
-    const shrunk = await manipulateAsync(uri, [{ resize: { width } }], {
-      compress: 0.8,
-      format: SaveFormat.JPEG,
-      base64: true,
-    });
-    return shrunk.base64 ? `data:image/jpeg;base64,${shrunk.base64}` : null;
-  } catch {
-    return null;
-  }
-}
 
 // Produces the face crop for one person and stores it. Returns the stored
 // URI, or null when no usable face was found — in which case the caller
 // keeps using the photo as it is.
 export async function buildFaceCrop(name: string, photoUri: string): Promise<string | null> {
-  if (boxProviders().length === 0) return null;
   try {
     const resolved = await resolvePhotoUri(photoUri);
     if (!resolved) return null;
 
-    // Resized first so the box comes back in a frame whose real pixel
+    // Resized first so the crop below has a frame whose real pixel
     // dimensions are known — manipulateAsync reports them, and crop takes
     // pixels, not fractions.
     const base = await manipulateAsync(resolved, [{ resize: { width: 1024 } }], {
       compress: 0.9,
       format: SaveFormat.JPEG,
     });
-    const asked = await toDataUri(base.uri, 1024);
-    if (!asked) return null;
 
-    const box = await askForFaceBox(asked);
+    const box = await findFaceBox(resolved);
     if (!box) return null;
 
     // Pad outward, then clamp back inside the photo.
@@ -231,10 +178,10 @@ export async function referenceFaceUri(
 // The crop was added after these profiles were made, so every photo already
 // uploaded has no face cut from it and would only get one the next time that
 // person happened to be searched for. This goes and does them, a few at a
-// time so it never turns into a burst of calls, newest profiles first is not
-// meaningful here — order is just whatever the store gives back.
+// time. That pacing was originally about not firing off a burst of API
+// calls; it still earns its place now the work is local, because each one
+// decodes a full-sized photo and this runs while someone is using the app.
 export async function backfillFaceCrops(limit: number): Promise<number> {
-  if (boxProviders().length === 0) return 0;
   const all = await getAllPersonMeta();
   let done = 0;
   for (const [name, m] of Object.entries(all)) {
