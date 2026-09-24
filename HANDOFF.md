@@ -1,6 +1,6 @@
 # Where Recall is — handoff
 
-*Last updated 23 September 2026. This file is for picking the thread back up in
+*Last updated 24 September 2026. This file is for picking the thread back up in
 a new session, on any machine. It is not documentation of the app; it is the
 part that is hard to reconstruct — the decisions, the reasons, and the loose
 ends. If it contradicts the code, the code is right and this file is stale.*
@@ -24,7 +24,7 @@ flagging up front rather than discovering later.
 
 ---
 
-## The single most important thing to know
+## The two most important things to know
 
 **Face recognition was rebuilt from scratch, because the first version was built
 on the wrong technology and no amount of tuning could fix it.**
@@ -52,53 +52,118 @@ questions. Only the thing doing the comparing is being replaced.
 **If you find yourself about to improve the LLM face matching: don't. That road
 was walked to the end.**
 
+**And the second thing: nothing about face recognition here should be changed
+on the strength of reasoning alone.** Three confident, textbook-correct
+assumptions were overturned in one evening by measuring them — including one
+that had already been written into this file as settled. The harness that does
+the measuring is `app/face-test.tsx`. Use it before changing anything below.
+
 ---
 
-## What replaced it, and how much is done
+## What replaced it — done, measured, and switched on
+
+*(24 September 2026. This section was "interface only, nothing registered"
+until a Mac build existed; all of it now runs on a phone.)*
 
 | Piece | File | State |
 |---|---|---|
-| Fingerprint storage + search | `src/faceIndex.ts` | **Done**, tested |
-| Reading the library once | `src/faceIndexing.ts` | **Done**, tested |
-| The model itself | `src/faceEmbedder.ts` | **Interface only** — nothing registered |
-| Status UI | `src/components/FaceIndexCard.tsx` | **Done** (Profile → Faces) |
+| Fingerprint storage + search | `src/faceIndex.ts` | Done |
+| Reading the library once | `src/faceIndexing.ts` | Done |
+| Photos to numbers | `src/facePixels.ts` | Done |
+| Finding faces | `src/faceDetector.ts` | Done |
+| Fingerprinting them | `src/faceEmbedderTflite.ts` | Done |
+| One model call at a time | `src/modelQueue.ts` | Done |
+| Status UI | `src/components/FaceIndexCard.tsx` | Done |
+| Throwaway measuring harness | `app/face-test.tsx` | **Delete before TestFlight** |
 
-A face becomes 192 numbers. Each photo is read **once, ever**, leaving a row in
-SQLite; every search afterwards is a sweep over those rows — no network, no
-per-photo cost, and no slower at ten thousand photos than at ten.
+It is registered at startup in `app/_layout.tsx` and indexes in the
+background. No network, no per-photo cost, works on a plane.
 
-The model is deliberately **not imported anywhere**. It registers itself at
-startup via `registerFaceEmbedder()`, and until it does `faceEmbedderAvailable()`
-is false and nothing indexes. That is what lets the app still run without it, and
-lets a test drive the whole pipeline with a stand-in.
+### What the measurements settled, and what they overturned
 
-Verified end to end that way: 97 photos read once and only once, screenshots
-skipped, photos with nobody in them recorded as read rather than retried forever,
-re-running free, new photos picked up. Same person across different photos scored
-0.75–0.79; a lookalike deliberately built to sit at 0.56 was correctly refused by
-the 0.62 threshold; a stranger returned nothing. A search took 0.3ms.
+117 pairs from Nour's own library: 9 photos of him against 9 of other
+bearded men of similar age — including a face a few dozen pixels tall, red
+stage lighting, sunglasses, photos years apart. Every combination of model,
+crop, channel order and normalisation scored against all of them.
 
-`MATCH_THRESHOLD = 0.62` in `src/faceIndex.ts:227` is **a starting point, not a
-decision** — the number that counts is the one measured against real photos on a
-real device.
+**The ranking metric matters as much as the result.** Rows were ranked by
+the *worst* same-person score minus the *best* stranger score, not by
+averages. MobileFaceNet looks fine on averages (0.449 same, 0.207
+different) and is unusable: its worst same-person pair scored 0.104 while
+some stranger scored 0.527. A setup that is right on average and wrong one
+time in ten puts a stranger into a friend's profile.
 
-### What is left, exactly
+What won, and is what the app uses:
 
-1. No `.tflite` model files exist in the repo yet.
-2. Nothing calls `registerFaceEmbedder()`.
-3. Nothing calls `startBackgroundIndexing()`.
+    FaceNet-512 · no alignment · 0.4 padded crop · rgb · 0..1
 
-The intended stack: **BlazeFace** (find faces) + **MobileFaceNet** (fingerprint),
-both run through `react-native-fast-tflite`, with `@shopify/react-native-skia`
-decoding photos into pixels to feed them. All installed, none wired.
+    worst same-person pair ....  0.574
+    best stranger pair ........  0.365
+    margin ....................  +0.209
+    averages ..................  0.709 same, 0.141 different
 
-**Before wiring any of it: build a throwaway two-photo similarity screen.** Pick
-two photos, print the score. Nothing else gets built until a known person scores
-high against themselves and low against a stranger. This was agreed explicitly
-after the first version's failure, and it matters — the alternative is
-discovering it doesn't work after another fortnight of building on top.
+**Three things were the opposite of what was expected.** All three would
+have shipped as settled if they had not been measured:
 
----
+1. **MobileFaceNet cannot do this job.** Not a preparation problem — every
+   one of its 24 preparations had a negative margin.
+2. **Alignment hurts.** Rotating each face so the eyes are level is the
+   textbook step and scored negative on every model. FaceNet is trained on
+   loose, un-rotated crops. `alignedCrop` stays in `facePixels.ts` for a
+   future model; **nothing uses it, and re-enabling it is not a fix.**
+3. **The documented preprocessing lost.** FaceNet is documented to want each
+   crop normalised by its own brightness; plain 0..1 beat it.
+
+`MATCH_THRESHOLD` is **0.47** (`src/faceIndex.ts`), and two earlier values
+were wrong for instructive reasons. 0.62 came from published figures and was
+never measured — it sat *above* the same-person score, so the app would have
+refused to recognise Nour in his own photos, a feature that silently never
+works. 0.40 came from a single pair; a second pair reversed which settings
+looked best. **One pair is one data point.** The harness in
+`app/face-test.tsx` is how to redo this properly against a bigger sample.
+
+### Distance, which is what nearly sank it
+
+Nour noticed a photo of himself a few metres away returned no faces at all.
+`blaze_face_short_range` is built for selfies and cannot see a small face —
+Google's own docs say so, and it was the wrong choice for a photo library
+where most pictures are not selfies. Two fixes:
+
+- `DEFAULT_DETECTOR = 'full'` — BlazeFace full-range, good to ~5 metres.
+- A **tiled fallback**: a photo that comes back empty is searched again in
+  nine overlapping tiles. One look 102ms, ten looks 227ms — decoding the
+  photo dominates and happens once — so only apparently-empty photos pay.
+  On a museum photo where every single-look detector found nothing, tiling
+  found two faces.
+
+Group photos always worked: each face gets its own fingerprint and row.
+Detection was the only limit.
+
+### Traps, paid for once already
+
+- **Two model calls must never overlap.** A TFLite interpreter has one set
+  of buffers and hands back a view of its own output, so concurrent `run()`
+  calls silently return each other's answers — no error, just fingerprints
+  of the wrong face. Everything goes through `src/modelQueue.ts`. The
+  symptom was a stranger and Nour scoring *identically*.
+- **Changing a model invalidates the index.** Photos already read are marked
+  read, so a swap looks exactly like the new model not working.
+  `useModels()` in `faceIndex.ts` stores a signature of detector, embedder
+  and search effort, and wipes the index when it changes. It is automatic;
+  do not remove it.
+- Face cropping (`src/faceCrop.ts`) no longer uploads a photo to DeepSeek to
+  locate a face — it uses the on-device detector. Kept from the old version
+  because it is a fact about vision models rather than about faces: asked to
+  point at a face, DeepSeek landed within 0.02–0.09 every time, while
+  gpt-4o-mini answered with the centre of the frame in every case.
+
+### Before TestFlight
+
+`app/face-test.tsx`, the Developer row in `app/(tabs)/profile.tsx`, and
+three of the five `.tflite` files exist only for measuring. Bundled assets
+are 40MB today; deleting them saves ~6MB. Keep them until the threshold has
+been checked against a bigger sample — recalibrating is the one thing that
+harness is for.
 
 ## Talking to Recall (live voice)
 
@@ -146,15 +211,38 @@ account.
 
 - `main` is current (previously everything lived on `upgrade/expo-sdk-57`).
 - `backup/july-2026` and tag `v0.1-july-2026` hold the last pre-upgrade state.
-- **Expo Go can no longer run Recall.** Native modules are installed; a
-  development build is required from here on.
-- The plan is to build **locally on the Mac** (`npx expo run:ios --device`) rather
-  than EAS cloud, because the free EAS tier is 15 iOS builds a month behind a
-  low-priority queue that reaches 90+ minutes at peak. `eas.json` still exists and
-  works if ever needed.
-- Day-to-day development stays on Windows: once the build is on the phone,
-  `npx expo start --dev-client` from either machine. The Mac is only needed when
-  native code changes.
+- **Expo Go can no longer run Recall.** A development build is required.
+- **Building locally on the Mac works, and these are the exact steps.** Four
+  separate things had to be fixed before the first build; each failed the
+  build in under a minute, but only one at a time:
+  1. `sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer`
+     — the Mac was pointed at the bare Command Line Tools.
+  2. Apple ID signed into Xcode → Settings → Accounts. Team `JF22LNW5JZ`,
+     Individual, paid (so builds last a year, not seven days).
+  3. **Developer Mode on the iPhone** — Settings → Privacy & Security →
+     Developer Mode → restart. It only appears once a Mac has tried to build
+     to the phone.
+  4. The build command. `npx expo run:ios` fails with "No code signing
+     certificates are available"; this works and creates the certificate and
+     profile on first use:
+
+         xcodebuild -workspace ios/Recall.xcworkspace -scheme Recall \
+           -configuration Debug -destination "id=<UDID>" \
+           -derivedDataPath ios/build \
+           -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+           DEVELOPMENT_TEAM=JF22LNW5JZ CODE_SIGN_STYLE=Automatic build
+
+     **`-allowProvisioningDeviceRegistration` is the one people forget** —
+     without it, `-allowProvisioningUpdates` alone still fails with "Device
+     isn't registered in your developer account".
+  Then `xcrun devicectl device install app --device <UDID> \
+  ios/build/Build/Products/Debug-iphoneos/Recall.app`, and
+  `npx expo start --dev-client`. The phone is an iPhone 14 Pro Max, UDID
+  `00008120-001478481188C01E`.
+- A debug build contains no JavaScript and no models — both come from Metro
+  over Wi-Fi. So model files and face code can be changed without rebuilding;
+  only native changes need the 30-minute compile.
+- Day-to-day development stays on Windows: `npx expo start --dev-client`.
 
 Installed and resolved cleanly against RN 0.86: `react-native-fast-tflite` 3.0.1,
 `react-native-nitro-modules` 0.37.1, `@shopify/react-native-skia` 2.6.2,
@@ -177,6 +265,15 @@ difference between reading a library in minutes and in hours.
   at minimum hard spend caps) **before TestFlight**, not after.
 - `.env` is gitignored and has never been committed. A second machine needs it
   recreated by hand.
+- **The agreed order to testers** (Nour's, 23 September): dev build on his phone
+  → prove face recognition on his own photos → fix the keys with a small server
+  → TestFlight, internal testers only. The first two are done. **Do not jump
+  ahead to TestFlight with the keys still in the bundle.**
+- **Where photos go, decided deliberately.** Face recognition and face cropping
+  are entirely on-device. Day analysis (`src/assumedMemory.ts`) still sends
+  photos to DeepSeek and **stays that way for now** — Nour's words: "until we
+  find a smart private and safe way later." Do not quietly change it, and
+  declare it truthfully on Apple's privacy questionnaire.
 - `src/faceRegions.ts` is dead — nothing imports it. Apple's Photos "People" album
   is not reachable by any app, which is why the app brings its own model.
 - Contacts matching is off behind a flag; it matched on name and was wrong often.
