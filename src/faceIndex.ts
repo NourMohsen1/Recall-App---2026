@@ -91,6 +91,10 @@ async function db(): Promise<SQLite.SQLiteDatabase> {
           x REAL NOT NULL, y REAL NOT NULL, w REAL NOT NULL, h REAL NOT NULL,
           embedding TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS face_meta (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS faces_photo ON faces (photo_uri);
         CREATE INDEX IF NOT EXISTS faces_day ON faces (day);
 
@@ -219,12 +223,32 @@ export async function getIndexStatus(): Promise<IndexStatus> {
 // How alike two fingerprints have to be before the app will claim they are
 // the same person.
 //
-// DELIBERATELY NOT FINAL. The published figures for models of this kind put
-// the same-person / different-person boundary around here, but the number
-// that matters is the one measured against this user's actual photos, and
-// that measurement needs the model running on a device. Treat it as a
-// starting point to be calibrated, not a decision already made.
-export const MATCH_THRESHOLD = 0.62;
+// MEASURED, 24 September 2026, on an iPhone 14 Pro Max against 117 pairs
+// from this library: 9 photos of the user and 9 of other bearded men of
+// similar age — the hardest case a face recogniser meets — including a face
+// a few dozen pixels tall, red stage lighting, sunglasses, and photos years
+// apart. Using BlazeFace full-range and FaceNet-512 with a 0.4 padded crop:
+//
+//   worst pair of the same person .....  0.574
+//   best pair of different people .....  0.365
+//   averages ..........................  0.709 same, 0.141 different
+//
+// 0.47 sits between the two, so every one of those 117 pairs is judged
+// correctly. There is real room either side — 0.1 of margin — rather than a
+// number balanced on the edge of the evidence.
+//
+// TWO EARLIER VALUES WERE WRONG, both from too little evidence:
+//   0.62 came from published figures and was never measured at all. It sat
+//   above the same-person score, so the app would have refused to recognise
+//   the user in his own photos.
+//   0.40 came from a single pair of photos. One pair is one data point, and
+//   a second pair reversed which settings looked best.
+//
+// A false match here is not a false fact — the app only ever ASKS whether a
+// suggestion is right, and nothing becomes real data until the user says
+// yes. That asymmetry is why this errs towards offering a guess rather than
+// staying silent.
+export const MATCH_THRESHOLD = 0.47;
 
 export async function setPersonFace(
   name: string,
@@ -322,6 +346,36 @@ export async function findPersonPhotos(
   const face = await getPersonFace(name);
   if (!face) return [];
   return findSimilarFaces(face, opts);
+}
+
+// Which models produced what is stored, and a wipe when that changes.
+//
+// Two different models do not produce comparable fingerprints, and a photo
+// read by a weaker detector is recorded as READ — so swapping a model
+// without forgetting leaves an index that is part old, part new, and
+// quietly wrong in a way no screen would show. It also looks exactly like
+// the new model not working: every already-seen photo is skipped.
+//
+// This is the guard for that. It runs at startup, before any indexing, and
+// costs one row read when nothing has changed.
+const SIGNATURE_KEY = 'models';
+
+export async function useModels(signature: string): Promise<boolean> {
+  const handle = await db();
+  const row = await handle.getFirstAsync<{ value: string }>(
+    'SELECT value FROM face_meta WHERE key = ?',
+    SIGNATURE_KEY,
+  );
+  if (row?.value === signature) return false;
+
+  // Includes the very first run, where there is nothing to throw away.
+  await clearFaceIndex();
+  await handle.runAsync(
+    'INSERT OR REPLACE INTO face_meta (key, value) VALUES (?, ?)',
+    SIGNATURE_KEY,
+    signature,
+  );
+  return row !== null;
 }
 
 // Wipes everything the app has worked out about faces. For when the model

@@ -115,6 +115,20 @@ export default function Profile() {
             who is in them. */}
         <FaceIndexCard />
 
+        {/* TEMPORARY — remove with app/face-test.tsx once the model is
+            trusted. Two photos, one similarity number: the proof that has
+            to pass before face recognition is built on. */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Developer</Text>
+          <Pressable
+            style={styles.toggleRow}
+            onPress={() => router.push('/face-test' as Parameters<typeof router.push>[0])}
+          >
+            <Text style={styles.toggleLabel}>Face test</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
+          </Pressable>
+        </View>
+
         {/* Devices */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Devices</Text>
