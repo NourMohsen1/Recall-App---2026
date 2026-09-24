@@ -1,6 +1,7 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { WEEKDAYS } from './data';
 import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from './memoryLog';
+import { getGuessedDaysFor, getGuessesForDay } from './guessedPeople';
 import { getAllDayPlaces } from './placesFromPhotos';
 import {
   getAllPersonMeta,
@@ -198,8 +199,26 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
     logged: d.logged,
     photos_suggest: d.assumed,
     people: d.people,
+    // Faces matched in that day's photos that the user has not confirmed.
+    // Kept in their own field with their own instruction: spoken aloud, a
+    // guess and a fact sound identical, and this is the one place in the
+    // app where that difference cannot be shown with a dashed ring.
+    people_recognised_not_confirmed: (await guessedNamesFor(date)).length
+      ? {
+          names: await guessedNamesFor(date),
+          say_it_like: 'It looks like you saw X — Recall matched their face but you have not confirmed it.',
+          never_say: 'You saw X.',
+        }
+      : undefined,
     places: d.places,
   };
+}
+
+/** Names recognised on a day, minus anyone the user has already confirmed —
+ *  those are facts and belong in `people`. */
+async function guessedNamesFor(day: string): Promise<string[]> {
+  const guesses = await getGuessesForDay(day);
+  return guesses.map((g) => g.name);
 }
 
 async function findPerson(args: { name?: string }): Promise<ToolResult> {
@@ -231,6 +250,14 @@ async function findPerson(args: { name?: string }): Promise<ToolResult> {
       : null,
     coming_up: person.upcomingDay ?? null,
     days_together: person.days.length,
+    // Days their face was matched but never confirmed. A person the user
+    // has only ever been RECOGNISED with is a real answer to "when did I
+    // last see them" — as long as it is given as recognition.
+    days_recognised_not_confirmed: (await getGuessedDaysFor(canonical)).slice(0, 6).map((k) => ({
+      date: k,
+      when: spokenWhen(k),
+      caution: 'Recall matched their face in a photo. The user has not confirmed it.',
+    })),
     recent_days: person.days.slice(0, 6).map((k) => ({
       date: k,
       when: spokenWhen(k),

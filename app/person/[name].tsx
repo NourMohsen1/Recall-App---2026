@@ -26,7 +26,7 @@ import {
   getSuggestionsForPerson,
   rejectSuggestion,
 } from '../../src/personSuggestions';
-import { approveGuess, getAllGuesses, rejectGuess } from '../../src/guessedPeople';
+import { approveAllFor, approveGuess, getAllGuesses, rejectGuess } from '../../src/guessedPeople';
 
 // The days this person was recognised on, in the shape this screen already
 // draws. The old LLM matcher filled the same list with a confidence and a
@@ -225,6 +225,20 @@ export default function PersonProfile() {
     setPerson(summaries.find((p) => p.name === name) ?? null);
     setSuggestions(pending);
   };
+  // Agreeing with every day at once. The days are already on screen as
+  // guesses, so this is confirming what the user can see, not accepting
+  // something unseen.
+  const confirmAllDays = async () => {
+    if (!name) return;
+    await approveAllFor(name);
+    const [summaries, pending] = await Promise.all([
+      getPeopleSummaries(),
+      guessedDaysAsSuggestions(name),
+    ]);
+    setPerson(summaries.find((p) => p.name === name) ?? null);
+    setSuggestions(pending);
+  };
+
   const rejectDay = async (day: string) => {
     if (!name) return;
     await rejectGuess(day, name);
@@ -538,9 +552,22 @@ export default function PersonProfile() {
                 {suggestions.length > 0 && (
                   <>
                     <Text style={styles.suggestSub}>
-                      Recall thinks it recognised them on these days. Nothing is added until you say
-                      so.
+                      Recall recognised them on these days. They are already shown on each day,
+                      marked as a guess, until you agree.
                     </Text>
+
+                    {/* One tap for all of them. Going through twelve days one
+                        at a time is the kind of chore that gets abandoned
+                        halfway, which leaves the app half-right — worse than
+                        either finishing or not starting. */}
+                    {suggestions.length > 1 && (
+                      <Pressable onPress={confirmAllDays} style={styles.confirmAll}>
+                        <Ionicons name="checkmark-done" size={16} color={colors.ink} />
+                        <Text style={styles.confirmAllText}>
+                          Yes to all {suggestions.length} days
+                        </Text>
+                      </Pressable>
+                    )}
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
@@ -675,6 +702,18 @@ export default function PersonProfile() {
 }
 
 const styles = StyleSheet.create({
+  confirmAll: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: 10,
+  },
+  confirmAllText: { color: colors.ink, fontFamily: fonts.medium, fontSize: 13 },
   safe: { flex: 1, backgroundColor: colors.white },
   header: {
     paddingTop: 12,

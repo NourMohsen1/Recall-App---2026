@@ -20,6 +20,7 @@ import {
   dismissCluster,
   getClusters,
   nameCluster,
+  unnameCluster,
   MIN_CLUSTER_SIZE,
   type Cluster,
 } from '../src/faceClusters';
@@ -46,19 +47,32 @@ export default function ReviewFaces() {
   const [busy, setBusy] = useState<string | null>('Looking for people…');
   const [typed, setTyped] = useState<Record<number, string>>({});
   const [done, setDone] = useState<Record<number, string>>({});
+  // Groups already named. Shown so a wrong name can be spotted and taken
+  // back — without this, naming the wrong face is a permanent mistake the
+  // user cannot find again.
+  const [named, setNamed] = useState<Card[]>([]);
 
   const load = useCallback(async () => {
     try {
       // Group whatever has been read since last time. Cheap when there is
       // nothing new, which is the usual case for a screen being reopened.
       await clusterFaces();
-      const [found, counts, people] = await Promise.all([
+      const [found, alreadyNamed, counts, people] = await Promise.all([
         getClusters({ named: false }),
+        getClusters({ named: true }),
         clusterStats(),
         getAllTaggedPeople(),
       ]);
       setStats(counts);
       setKnown(people);
+      setNamed(
+        await Promise.all(
+          alreadyNamed.map(async (c) => ({
+            ...c,
+            thumb: c.sample ? await faceThumbnail(c.sample.photoUri, c.sample.box) : null,
+          })),
+        ),
+      );
       setCards(
         await Promise.all(
           found.map(async (c) => ({
@@ -91,6 +105,12 @@ export default function ReviewFaces() {
     setDone((d) => ({ ...d, [cluster.id]: `${trimmed} · added to ${days} day${days === 1 ? '' : 's'}` }));
     setCards((list) => list.filter((c) => c.id !== cluster.id));
     setBusy(null);
+  }
+
+  async function undo(cluster: Card) {
+    await unnameCluster(cluster.id);
+    setBusy('Undoing…');
+    await load();
   }
 
   async function dismiss(cluster: Card) {
@@ -141,6 +161,38 @@ export default function ReviewFaces() {
             <Text style={styles.meta}>{label}</Text>
           </View>
         ))}
+
+        {/* Already answered. Kept visible rather than tidied away: this is
+            the only screen where a wrong name is visible as a wrong FACE,
+            which is the only way anyone would notice. */}
+        {named.length > 0 && (
+          <View style={styles.namedBlock}>
+            <Text style={styles.namedTitle}>Already named</Text>
+            {named.map((c) => (
+              <View key={c.id} style={styles.namedRow}>
+                {c.thumb ? (
+                  <Image source={{ uri: c.thumb }} style={styles.namedFace} />
+                ) : (
+                  <View style={[styles.namedFace, styles.faceEmpty]} />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.namedName}>{c.name}</Text>
+                  <Text style={styles.meta}>
+                    {c.size} photo{c.size === 1 ? '' : 's'} · {c.days.length} day
+                    {c.days.length === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                <Pressable onPress={() => undo(c)} hitSlop={10}>
+                  <Text style={styles.undo}>Not them</Text>
+                </Pressable>
+              </View>
+            ))}
+            <Text style={styles.meta}>
+              Undoing removes the guesses this face made. Days you already agreed to stay —
+              those are yours now, not the app's.
+            </Text>
+          </View>
+        )}
 
         {cards.map((c) => (
           <View key={c.id} style={styles.card}>
@@ -259,4 +311,10 @@ const styles = StyleSheet.create({
   saveText: { color: colors.white, fontFamily: fonts.medium, fontSize: type.body },
   disabled: { opacity: 0.35 },
   skip: { color: colors.slate, fontFamily: fonts.regular, fontSize: type.label },
+  namedBlock: { marginBottom: 24, gap: 10 },
+  namedTitle: { color: colors.white, fontFamily: fonts.medium, fontSize: type.subtitle },
+  namedRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  namedFace: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.dark },
+  namedName: { color: colors.pale, fontFamily: fonts.regular, fontSize: type.body },
+  undo: { color: colors.slate, fontFamily: fonts.regular, fontSize: type.label },
 });

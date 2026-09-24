@@ -7,6 +7,7 @@ import {
   unpackEmbedding,
 } from './faceIndex';
 import { addGuess, forgetCluster } from './guessedPeople';
+import { createPerson } from './peopleTags';
 
 // Grouping faces into people, before anyone has said who they are.
 //
@@ -336,6 +337,18 @@ export async function nameCluster(id: number, name: string): Promise<number> {
 
   await handle.runAsync('UPDATE face_clusters SET name = ? WHERE id = ?', trimmed, id);
 
+  // The person now exists, even though none of their days are confirmed.
+  //
+  // Naming a face IS the user saying who someone is — that part is not a
+  // guess and should not wait for anything. Without this, a newly named
+  // person is invisible in People until a day is approved, which reads as
+  // the app having ignored the answer it just asked for.
+  //
+  // Their day count stays zero until days are confirmed, because that
+  // number means "days you told me about" and must not quietly absorb
+  // guesses. The recognised days show separately on their profile.
+  const canonical = await createPerson(trimmed);
+
   // One face per day, the biggest, so the user is shown the clearest
   // example of what the app is claiming rather than a name on its own.
   const days = await handle.getAllAsync<{
@@ -353,7 +366,7 @@ export async function nameCluster(id: number, name: string): Promise<number> {
     id,
   );
   for (const d of days) {
-    await addGuess(d.day, trimmed, id, {
+    await addGuess(d.day, canonical || trimmed, id, {
       photoUri: d.photo_uri,
       box: { x: d.x, y: d.y, w: d.w, h: d.h },
     });
@@ -375,6 +388,24 @@ export async function dismissCluster(id: number): Promise<void> {
  *  sentinel rather than anything clever: this string is interpolated into
  *  SQL below, and a null byte or a quote there is a bug waiting to happen. */
 export const DISMISSED = '__dismissed__';
+
+/** Take a name back off a group, and take back everything that name did.
+ *
+ *  Naming the wrong face is an easy mistake and, without this, a permanent
+ *  one: the name is attached to a group the user cannot find again, and the
+ *  days it produced are scattered across the timeline. This removes both —
+ *  the group goes back to being an unanswered question, and its guesses
+ *  disappear.
+ *
+ *  Days the user already AGREED to are left alone. Those stopped being
+ *  guesses the moment they were confirmed; they are the user's own data now,
+ *  and quietly deleting them because a group was renamed would be the app
+ *  editing someone's memories on its own. */
+export async function unnameCluster(id: number): Promise<void> {
+  const handle = await ready();
+  await handle.runAsync('UPDATE face_clusters SET name = NULL WHERE id = ?', id);
+  await forgetCluster(id);
+}
 
 /** Wipe the grouping without touching the faces themselves. For when the
  *  threshold changes, or a user wants to start the questions again. */
