@@ -43,6 +43,7 @@ import {
   getSuggestionsForDay,
   rejectSuggestion,
 } from '../../../src/personSuggestions';
+import { approveGuess, getGuessesForDay, rejectGuess } from '../../../src/guessedPeople';
 import { ensureDayScanned, faceMatchingAvailable } from '../../../src/faceMatching';
 import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
 import { DetectedPlace, getPlacesForDay } from '../../../src/placesFromPhotos';
@@ -63,7 +64,9 @@ export default function DayDetailScreen() {
   const [editTarget, setEditTarget] = useState<LoggedMemory | null>(null);
   const [adding, setAdding] = useState(false);
   const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
-  const [faceSuggestions, setFaceSuggestions] = useState<PersonSuggestion[]>([]);
+  // Only the name is needed to draw a guess; the old type carried the LLM
+  // matcher's confidence and source photo, which nothing here used.
+  const [faceSuggestions, setFaceSuggestions] = useState<{ name: string }[]>([]);
   const [readingFaces, setReadingFaces] = useState(false);
   const dayKey = dateKey(dateWithOffset(offsetNum));
   const reload = useCallback(() => {
@@ -78,17 +81,20 @@ export default function DayDetailScreen() {
         Object.fromEntries(Object.entries(all).map(([n, m]) => [n, m.photoUri])),
       ),
     );
-    getSuggestionsForDay(key).then(setFaceSuggestions);
+    // Guesses from the on-device face grouping. The old store behind
+    // getSuggestionsForDay belonged to the LLM matcher, which is switched
+    // off — this reads the same shape from the new one.
+    getGuessesForDay(key).then((g) => setFaceSuggestions(g.map((x) => ({ name: x.name }))));
   }, [offsetNum]);
 
   // The user settling a guess: yes makes it a real tagged day, no stops the
   // app offering that face on that day again.
   const confirmSuggested = async (personName: string) => {
-    await acceptSuggestion(personName, dayKey);
+    await approveGuess(dayKey, personName);
     reload();
   };
   const dismissSuggested = async (personName: string) => {
-    await rejectSuggestion(personName, dayKey);
+    await rejectGuess(dayKey, personName);
     reload();
   };
 
@@ -139,8 +145,14 @@ export default function DayDetailScreen() {
   const realPhotoUris = real.filter((m) => m.kind === 'photo').flatMap((m) => m.photoUris ?? []);
   const entries = real.filter((m) => m.kind !== 'photo' || m.text);
   const hasVoice = real.some((m) => m.kind === 'voice');
+  // A day the app found faces on is not an empty day, even if the user has
+  // not written anything or confirmed anyone yet.
   const isEmpty =
-    entries.length === 0 && realPhotoUris.length === 0 && places.length === 0 && people.length === 0;
+    entries.length === 0 &&
+    realPhotoUris.length === 0 &&
+    places.length === 0 &&
+    people.length === 0 &&
+    faceSuggestions.length === 0;
 
   const addPerson = async (name: string) => {
     await addPersonForDay(dayKey, name);

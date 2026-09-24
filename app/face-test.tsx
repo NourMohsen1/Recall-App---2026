@@ -18,11 +18,13 @@ import { setTrace, type Detection } from '../src/faceDetector';
 import {
   alignedPreview,
   embedFace,
+  faceThumbnail,
   findFaces,
   modelInfo,
   type EmbedderKind,
   type EmbedOptions,
 } from '../src/faceEmbedderTflite';
+import { clusterFaces, getClusters, type Cluster } from '../src/faceClusters';
 
 // THROWAWAY. Delete once the numbers below have been acted on.
 //
@@ -99,6 +101,9 @@ export default function FaceTest() {
   const [busy, setBusy] = useState<string | null>(null);
   const [faces, setFaces] = useState<Face[]>([]);
   const [rows, setRows] = useState<Row[] | null>(null);
+  // Grouping is a separate question from scoring: not "how alike are these
+  // two" but "did it put the right faces together".
+  const [groups, setGroups] = useState<(Cluster & { thumb: string | null })[] | null>(null);
 
   useEffect(() => {
     setTrace(true);
@@ -148,6 +153,21 @@ export default function FaceTest() {
       });
     }
     setFaces((prev) => [...prev, ...added]);
+    setBusy(null);
+  }
+
+  async function group() {
+    setBusy('Grouping faces…');
+    const { grouped, groups: total } = await clusterFaces();
+    const found = await getClusters();
+    const withFaces = await Promise.all(
+      found.slice(0, 20).map(async (c) => ({
+        ...c,
+        thumb: c.sample ? await faceThumbnail(c.sample.photoUri, c.sample.box) : null,
+      })),
+    );
+    setGroups(withFaces);
+    setStatus(`${grouped} new faces sorted · ${total} groups in total`);
     setBusy(null);
   }
 
@@ -261,6 +281,48 @@ export default function FaceTest() {
         )}
 
         <Pressable
+          onPress={group}
+          disabled={busy !== null}
+          style={[styles.button, styles.sweep, busy !== null && styles.disabled]}
+        >
+          <Text style={styles.buttonText}>Group every face in my library</Text>
+        </Pressable>
+
+        {groups && (
+          <View style={styles.table}>
+            <Text style={styles.tableNote}>
+              Each row is one person the app thinks it has found, biggest group first.
+              Look at whether each face really is one person — and whether the same
+              person turns up as two rows.
+            </Text>
+            {groups.map((g) => (
+              <View key={g.id} style={styles.groupRow}>
+                {g.thumb ? (
+                  <Image source={{ uri: g.thumb }} style={styles.groupFace} />
+                ) : (
+                  <View style={[styles.groupFace, styles.thumbEmpty]} />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.groupTitle}>
+                    {g.name ?? `Group ${g.id}`} · {g.size} photos
+                  </Text>
+                  <Text style={styles.meta}>
+                    {g.days.length} day{g.days.length === 1 ? '' : 's'}
+                    {g.days.length ? ` · ${g.days[g.days.length - 1]} → ${g.days[0]}` : ''}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {groups.length === 0 && (
+              <Text style={styles.meta}>
+                No group has reached three photos yet — either the library is still
+                being read, or nobody recurs in it.
+              </Text>
+            )}
+          </View>
+        )}
+
+        <Pressable
           onPress={sweep}
           disabled={!canSweep || busy !== null}
           style={[styles.button, styles.sweep, (!canSweep || busy) && styles.disabled]}
@@ -364,6 +426,9 @@ const styles = StyleSheet.create({
   },
   busy: { alignItems: 'center', marginTop: 16, gap: 8 },
   meta: { color: colors.soft, fontFamily: fonts.regular, fontSize: type.label },
+  groupRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8 },
+  groupFace: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.deep },
+  groupTitle: { color: colors.white, fontFamily: fonts.medium, fontSize: type.body },
   table: { marginTop: 24 },
   tableNote: {
     color: colors.muted,

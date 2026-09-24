@@ -1,3 +1,4 @@
+import { clusterFaces } from './faceClusters';
 import { faceEmbedderAvailable, getFaceEmbedder } from './faceEmbedder';
 import {
   candidatePhotos,
@@ -139,10 +140,31 @@ export async function indexUntilDone(): Promise<IndexingOutcome> {
 
 let started = false;
 
-// Called once per app launch. Does nothing at all without a model, which is
-// every launch until the installed build exists.
+// Called once per app launch. Does nothing at all without a model.
+//
+// Runs until the library is FINISHED, not for one pass. It used to stop
+// after 200 photos and wait for the next launch, which meant a library of
+// any size crawled forward a few hundred photos a day and the feature built
+// on top of it appeared to be broken — faces would be found, a couple of
+// people would surface, and then nothing more would happen no matter how
+// long the app was left open.
+//
+// Each pass still commits as it goes, so stopping is free and nothing is
+// half-recorded. The difference is only that it starts the next one itself.
 export function startBackgroundIndexing(): void {
   if (started || !faceEmbedderAvailable()) return;
   started = true;
-  runIndexingPass().catch(() => {});
+  (async () => {
+    for (;;) {
+      const outcome = await runIndexingPass();
+      if (outcome.status !== 'done') break;
+
+      // Group what was just read, so people appear while the library is
+      // still being worked through rather than only at the end. A pass is
+      // a few hundred photos; grouping them is seconds.
+      await clusterFaces().catch(() => undefined);
+
+      if (cancelled || outcome.remaining === 0) break;
+    }
+  })().catch(() => {});
 }

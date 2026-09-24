@@ -1,6 +1,7 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { PLACES, WEEKDAYS } from './data';
 import { getLoggedMemories } from './memoryLog';
+import { getAllGuesses } from './guessedPeople';
 import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
 import { getAllDayPlaces } from './placesFromPhotos';
 import { formatDueTime, getTasks } from './tasks';
@@ -83,6 +84,12 @@ type DayRecord = {
   logged: string[];
   assumed?: string;
   people: string[];
+  /** People the app RECOGNISED in that day's photos but the user has not
+   *  confirmed. Kept apart from `people` all the way to the prompt: spoken
+   *  aloud or written down, a guess and a fact read identically, and being
+   *  told you saw someone is uncomfortably close to remembering that you
+   *  did. */
+  guessed: string[];
   places: string[];
   // How many real photos that day holds. Kept separately from `assumed` so
   // the model can tell "nothing happened" apart from "there are 14 photos
@@ -95,7 +102,7 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
   const get = (key: string): DayRecord => {
     const existing = days.get(key);
     if (existing) return existing;
-    const fresh: DayRecord = { logged: [], people: [], places: [], photoCount: 0 };
+    const fresh: DayRecord = { logged: [], people: [], guessed: [], places: [], photoCount: 0 };
     days.set(key, fresh);
     return fresh;
   };
@@ -118,6 +125,16 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
 
   for (const person of await getPeopleSummaries()) {
     for (const day of person.days) get(day).people.push(person.name);
+  }
+
+  // Faces the app matched, which the user has not agreed to yet.
+  for (const [day, guesses] of Object.entries(await getAllGuesses())) {
+    const rec = get(day);
+    for (const g of guesses) {
+      if (!rec.people.some((n) => n.toLowerCase() === g.name.toLowerCase())) {
+        rec.guessed.push(g.name);
+      }
+    }
   }
 
   for (const [key, places] of Object.entries(await getAllDayPlaces())) {
@@ -143,6 +160,13 @@ function fullDayBlock(key: string, rec: DayRecord): string {
     );
   }
   if (rec.people.length > 0) lines.push(`People tagged that day: ${rec.people.join(', ')}`);
+  if (rec.guessed.length > 0) {
+    lines.push(
+      `Faces RECOGNISED in that day's photos, NOT confirmed by the user: ${rec.guessed.join(', ')}. ` +
+        `Say these as recognition, never as fact — "it looks like you saw X" or "X appears in your photos", ` +
+        `never "you saw X". If the user asks whether that is certain, say plainly that the app matched a face and they have not confirmed it.`,
+    );
+  }
   if (rec.places.length > 0) lines.push(`Places that day: ${rec.places.join(', ')}`);
   if (lines.length === 1) lines.push('Nothing at all recorded for this day — no photos, no notes.');
   return lines.join('\n');
@@ -153,7 +177,11 @@ function indexLine(key: string, rec: DayRecord): string {
     rec.logged[0] ??
     rec.assumed ??
     (rec.photoCount > 0 ? `(${rec.photoCount} photos, not read yet)` : '');
-  const extras = [...rec.places, ...rec.people].join(', ');
+  // A guessed name carries its "?" into the one-line index too. This list
+  // is how the model decides which days to look at, and a day where someone
+  // MIGHT appear is worth looking at — but it must not arrive here looking
+  // like a day where they definitely did.
+  const extras = [...rec.places, ...rec.people, ...rec.guessed.map((n) => `${n}?`)].join(', ');
   const text = [gist.slice(0, 70), extras.slice(0, 60)].filter(Boolean).join(' — ');
   return `- ${key}: ${text || '(nothing)'}`;
 }

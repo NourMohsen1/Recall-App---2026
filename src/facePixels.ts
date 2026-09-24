@@ -42,6 +42,16 @@ export function cropToPixels(
   box: FaceBox,
   size: number,
 ): Uint8Array | null {
+  return cropToImage(image, box, size)?.pixels ?? null;
+}
+
+/** The same cut, kept as a picture as well as numbers — so the app can show
+ *  a face to the person it is asking about it. */
+export function cropToImage(
+  image: SkImage,
+  box: FaceBox,
+  size: number,
+): { pixels: Uint8Array; square: SkImage } | null {
   const surface = Skia.Surface.MakeOffscreen(size, size) ?? Skia.Surface.Make(size, size);
   if (!surface) return null;
 
@@ -55,8 +65,8 @@ export function cropToPixels(
   surface.getCanvas().drawImageRect(image, src, dst, paint);
   surface.flush();
 
-  const snapshot = surface.makeImageSnapshot();
-  const pixels = snapshot.readPixels(0, 0, {
+  const square = surface.makeImageSnapshot();
+  const pixels = square.readPixels(0, 0, {
     width: size,
     height: size,
     colorType: ColorType.RGBA_8888,
@@ -65,8 +75,8 @@ export function cropToPixels(
 
   // readPixels can hand back a Float32Array for float formats. We asked for
   // 8-bit, so anything else means the request was not honoured and the bytes
-  // below would be misread rather than merely wrong.
-  return pixels instanceof Uint8Array ? pixels : null;
+  // would be misread rather than merely wrong.
+  return pixels instanceof Uint8Array ? { pixels, square } : null;
 }
 
 // RGBA bytes (0-255) to the RGB floats a model wants.

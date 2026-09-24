@@ -26,6 +26,33 @@ import {
   getSuggestionsForPerson,
   rejectSuggestion,
 } from '../../src/personSuggestions';
+import { approveGuess, getAllGuesses, rejectGuess } from '../../src/guessedPeople';
+
+// The days this person was recognised on, in the shape this screen already
+// draws. The old LLM matcher filled the same list with a confidence and a
+// source photo; on-device recognition has neither to offer, and the screen
+// never showed them.
+async function guessedDaysAsSuggestions(name: string): Promise<PersonSuggestion[]> {
+  const all = await getAllGuesses();
+  const out: PersonSuggestion[] = [];
+  for (const [day, guesses] of Object.entries(all)) {
+    const mine = guesses.find((g) => g.name.toLowerCase() === name.toLowerCase());
+    if (!mine) continue;
+    out.push({
+      name,
+      day,
+      photoUri: mine.photoUri ?? '',
+      // On-device recognition gives a yes or a no against a threshold
+      // measured on this user's own photos, not a percentage. Reporting a
+      // made-up number would be exactly the kind of false precision the
+      // rest of the app avoids.
+      confidence: 1,
+      status: 'pending',
+      at: '',
+    });
+  }
+  return out.sort((a, b) => b.day.localeCompare(a.day));
+}
 import { LoggedMemory, getMemoriesByDay, persistFile } from '../../src/memoryLog';
 import {
   PersonMeta,
@@ -171,7 +198,7 @@ export default function PersonProfile() {
         getAllDayPlaces(),
         name ? getPersonMeta(name) : Promise.resolve(null),
         getAllAssumedMemories(),
-        name ? getSuggestionsForPerson(name) : Promise.resolve([]),
+        name ? guessedDaysAsSuggestions(name) : Promise.resolve([]),
       ]).then(([summaries, memories, places, personMeta, assumedByDay, pending]) => {
         setPerson(summaries.find((p) => p.name === name) ?? null);
         setByDay(memories);
@@ -190,18 +217,18 @@ export default function PersonProfile() {
   // them; no keeps it from being offered again.
   const confirmDay = async (day: string) => {
     if (!name) return;
-    await acceptSuggestion(name, day);
+    await approveGuess(day, name);
     const [summaries, pending] = await Promise.all([
       getPeopleSummaries(),
-      getSuggestionsForPerson(name),
+      guessedDaysAsSuggestions(name),
     ]);
     setPerson(summaries.find((p) => p.name === name) ?? null);
     setSuggestions(pending);
   };
   const rejectDay = async (day: string) => {
     if (!name) return;
-    await rejectSuggestion(name, day);
-    setSuggestions(await getSuggestionsForPerson(name));
+    await rejectGuess(day, name);
+    setSuggestions(await guessedDaysAsSuggestions(name));
   };
 
   const openDay = (dayKey: string) =>

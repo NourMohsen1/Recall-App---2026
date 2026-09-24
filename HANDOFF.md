@@ -259,10 +259,24 @@ difference between reading a library in minutes and in hours.
 
 ## Loose ends and landmines
 
-- **API keys ship inside the app.** Anything `EXPO_PUBLIC_*` is written into the
-  JavaScript bundle. Fine on Nour's own phone, **not fine the moment a tester
-  installs it** — they can be extracted. This must be solved (a small server, or
-  at minimum hard spend caps) **before TestFlight**, not after.
+- **Recall does not launch on iOS 27.** Apps built against the current SDK
+  must adopt the UIKit scene life cycle; this one does not, so iOS 27 kills
+  it at launch (`UIApplicationEvaluateRuntimeIssueForNoSceneLifecycleAdoption`).
+  Nour's phone is on 26.6.2, where it is tolerated, which is why it has
+  never been seen in use. **Any tester on iOS 27 would be unable to open the
+  app at all.** Fix: `expo` 57.0.23+ (project has 57.0.19), then
+  `["expo-build-properties", { "ios": { "enableSceneSupport": true } }]` and
+  a prebuild. Check expo/expo#47570 first — on SDK 57 that reportedly trades
+  the crash for a blank screen, and the fix properly landed in SDK 58.
+  Deferred deliberately on 24 September; **must be fixed before TestFlight**,
+  and it is why the iOS Simulator cannot be used to preview work.
+- ~~**API keys ship inside the app.**~~ **Solved 24 September.** The keys now
+  live on a Cloudflare Worker (`server/`), and the app carries only a token
+  that reaches four endpoints with six named models. Proved by searching the
+  built bundle: no provider key appears in it. What remains is **hard spend
+  caps in the provider dashboards** — this server limits which models can be
+  used, not how much, and the caps are the real ceiling if the app's token
+  leaks. See `server/README.md`.
 - `.env` is gitignored and has never been committed. A second machine needs it
   recreated by hand.
 - **The agreed order to testers** (Nour's, 23 September): dev build on his phone

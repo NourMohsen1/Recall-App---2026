@@ -1,12 +1,13 @@
 import { loadTensorflowModel, type TfliteModel } from 'react-native-fast-tflite';
 import type { SkImage } from '@shopify/react-native-skia';
 
-import { useModels, type DetectedFace } from './faceIndex';
+import { useModels, type DetectedFace, type FaceBox } from './faceIndex';
 import { registerFaceEmbedder, type FaceEmbedder } from './faceEmbedder';
 import { serialized } from './modelQueue';
 import {
   alignedCropWithImage,
   asDataUri,
+  cropToImage,
   cropToPixels,
   decodePhoto,
   padBox,
@@ -203,6 +204,22 @@ export async function findFaces(
   // in it are small — and those two cases are indistinguishable without
   // looking closer.
   return { image, faces: await detectFacesThorough(d, image), detectorInput };
+}
+
+/** One face, cut out of its photo, as a picture to show someone.
+ *
+ *  Padded well past the detector's box: a question like "who is this?" is
+ *  much easier to answer with some hair, neck and background than with a
+ *  tight rectangle of features. */
+export async function faceThumbnail(
+  photoUri: string,
+  box: FaceBox,
+  size = 160,
+): Promise<string | null> {
+  const image = await decodePhoto(photoUri);
+  if (!image) return null;
+  const cut = cropToImage(image, padBox(box, 0.8), size);
+  return cut ? asDataUri(cut.square) : null;
 }
 
 /** The 112x112 the fingerprint model is actually handed, as a picture.

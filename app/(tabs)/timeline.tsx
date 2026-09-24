@@ -19,6 +19,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
+import { approveGuess, getGuessesForDay, rejectGuess } from '../../src/guessedPeople';
 import PhotoTile from '../../src/components/PhotoTile';
 import {
   AssumedMemory,
@@ -342,11 +343,16 @@ export default function Timeline() {
   const [places, setPlaces] = useState<DetectedPlace[]>([]);
   const [people, setPeople] = useState<string[]>([]);
   const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
+  // Who the app thinks was there, from the faces in that day's photos.
+  // Drawn beside the confirmed names with a dashed ring and a question
+  // mark, so a guess never passes for something the user recorded.
+  const [guessed, setGuessed] = useState<{ name: string }[]>([]);
   const reloadDay = useCallback(() => {
     const key = dateKey(dateWithOffset(selected));
     getMemoriesByDay().then(setByDay);
     getPlacesForDay(key).then(setPlaces);
     getPeopleForDay(key).then(setPeople);
+    getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
   }, [selected]);
 
   useFocusEffect(
@@ -357,6 +363,7 @@ export default function Timeline() {
       getPlacesForDay(key).then(setPlaces);
       getPeopleForDay(key).then(setPeople);
       getAllTaggedPeople().then(setPeopleSuggestions);
+      getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
     }, [selected]),
   );
 
@@ -373,6 +380,19 @@ export default function Timeline() {
   const removePerson = async (name: string) => {
     await removePersonForDay(dayKey, name);
     setPeople(await getPeopleForDay(dayKey));
+  };
+
+  // Settling a guess. Yes makes it the user's own data, no is remembered so
+  // the same face is not offered for the same day again. Either way it
+  // disappears from every screen at once, because they all read one store.
+  const confirmGuess = async (name: string) => {
+    await approveGuess(dayKey, name);
+    reloadDay();
+    setPeople(await getPeopleForDay(dayKey));
+  };
+  const dismissGuess = async (name: string) => {
+    await rejectGuess(dayKey, name);
+    reloadDay();
   };
 
   const date = dateWithOffset(selected);
@@ -560,7 +580,11 @@ export default function Timeline() {
   const showDayCard = bullets.length > 0 || !!latestVoice;
   const showPhotoLib = realPhotoUris.length > 0;
   const showPlaces = places.length > 0;
-  const showPeople = people.length > 0;
+  // A day with only guesses on it still has people on it — that is the
+  // whole point of the app noticing. Requiring a confirmed name here would
+  // have hidden every face it found until the user had already done the
+  // work themselves.
+  const showPeople = people.length > 0 || guessed.length > 0;
   const hasContent =
     showDayCard || showPhotoLib || showPlaces || showPeople || (!otdFuture && otdTopics.length > 0);
 
@@ -731,6 +755,9 @@ export default function Timeline() {
                           onAdd={addPerson}
                           onRemove={removePerson}
                           pinSize={48}
+                          suggested={guessed}
+                          onConfirm={confirmGuess}
+                          onDismiss={dismissGuess}
                         />
                       </View>
                     </View>
