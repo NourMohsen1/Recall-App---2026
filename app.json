@@ -107,6 +107,14 @@
         {
           "launchMode": "most-recent"
         }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
       ]
     ],
     "extra": {
