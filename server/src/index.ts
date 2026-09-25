@@ -43,12 +43,23 @@ const ALLOWED_MODELS = new Set([
   'deepseek-v4-flash-vision-exp',
   'gpt-4o-mini',
   'gpt-5-search-api',
-  'whisper-1',
+  'gpt-transcribe',
   'gpt-4o-mini-tts',
 ]);
 
 /** Photos are the big ones: a day's worth of images is a few megabytes. */
 const MAX_BODY = 25 * 1024 * 1024;
+
+// Live voice runs against this model and no other. The app never gets to
+// choose: a realtime session is the most expensive thing this token can
+// start, at roughly ten cents a minute, so what it costs per minute is
+// decided here rather than by whoever is holding the token.
+const REALTIME_MODEL = 'gpt-realtime-2.1';
+
+// The voice, also decided here. Not a security matter — it is simply
+// something the server can change for every build at once, without anyone
+// updating an app.
+const REALTIME_VOICE = 'marin';
 
 const UPSTREAM = {
   openai: 'https://api.openai.com',
@@ -86,6 +97,34 @@ export default {
     if (size > MAX_BODY) return deny(413, 'Request too large.');
 
     const { pathname } = new URL(request.url);
+
+    // Live voice: a short-lived key the app can connect WebRTC with.
+    //
+    // The app cannot be given the real key — a realtime connection is made
+    // from the phone straight to OpenAI, so whatever it holds is on the
+    // phone. This mints a credential that expires in about a minute and can
+    // only start the session configured below.
+    if (pathname === '/realtime/token') {
+      const minted = await fetch(`${UPSTREAM.openai}/v1/realtime/client_secrets`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${env.OPENAI_API_KEY}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({
+          session: {
+            type: 'realtime',
+            model: REALTIME_MODEL,
+            audio: { output: { voice: REALTIME_VOICE } },
+          },
+        }),
+      });
+      return new Response(minted.body, {
+        status: minted.status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
     let upstream: string;
     let path: string;
 
@@ -120,7 +159,7 @@ export default {
     // JSON requests get their model checked. Transcription is multipart
     // with an audio file in it, and reading that body here to inspect it
     // would mean holding a whole recording in memory for no benefit — its
-    // only model is whisper-1 and it is priced by the minute, so the size
+    // only model is gpt-transcribe and it is priced by the minute, so the size
     // limit above is the control that matters there.
     const contentType = request.headers.get('content-type') ?? '';
     let body: BodyInit | null = request.body;

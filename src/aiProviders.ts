@@ -30,7 +30,18 @@ export const MODELS = {
   openAiVision: 'gpt-4o-mini',
   // OpenAI-only capabilities.
   openAiSearch: 'gpt-5-search-api',
-  openAiTranscribe: 'whisper-1',
+  // gpt-transcribe, not whisper-1. Whisper is the 2022 model and is
+  // noticeably weaker on the thing this app does most — Arabic and English
+  // mixed inside one sentence. The transcript is what every other feature
+  // is built from: tasks, people and places are all extracted from these
+  // words, so a misheard word becomes a wrong task.
+  //
+  // THE COST OF THIS CHOICE: word-level timestamps are a whisper-1 feature
+  // and no newer model offers them, so the karaoke-style highlight during
+  // playback is gone. VoicePlayer already falls back to plain text when
+  // there are no timings. Accuracy first — the highlight decorates words
+  // that have to be right before they are worth decorating.
+  openAiTranscribe: 'gpt-transcribe',
   openAiTts: 'gpt-4o-mini-tts',
 } as const;
 

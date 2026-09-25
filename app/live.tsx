@@ -4,56 +4,50 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  RecordingPresets,
-  requestRecordingPermissionsAsync,
-  setAudioModeAsync,
-  useAudioRecorder,
-  useAudioRecorderState,
-} from 'expo-audio';
-import { speakText, stopSpeaking } from '../src/speech';
-import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../src/transcription';
-import { VoiceTurn, answerAloud, voiceSessionAvailable } from '../src/voiceSession';
+import { rtlIfArabic } from '../src/transcription';
+import type { VoiceTurn } from '../src/voiceSession';
+import { newSessionId, saveSession, type ChatMessage } from '../src/chatSessions';
+import { liveVoiceAvailable, startLiveVoice, type LiveSession } from '../src/realtimeVoice';
 import { colors, fonts } from '../src/theme';
 
-// Talking to Recall.
+// Talking to Recall, live.
 //
-// TWO VERSIONS OF THIS SCREEN, one shape. The real one streams audio both
-// ways through gpt-realtime and lets you cut in mid-sentence; it needs WebRTC,
-// which is native, so it only exists in an installed build. This is the other
-// one: tap, speak, tap, and it answers — recorded, transcribed, thought about
-// and spoken in turns.
+// Audio goes both ways at once. The model hears the user while it is still
+// speaking, so it can be cut off mid-sentence, and it starts answering
+// before the question has finished — which is the whole difference between
+// a conversation and a walkie-talkie.
 //
-// It is not a stand-in for the sake of having something. The turns are the
-// only difference. The instructions, the tools, the refusal to invent and the
-// answers themselves are identical, because they come from the same place
-// (see voiceSession.ts). Whatever this says now is what the live one will say
-// later, just without the pause.
+// The brain is not new. Same instructions, same six tools, same refusal to
+// invent, all from realtimeTools.ts. This screen used to run that brain in
+// turns: record, transcribe, think, speak. Now the model runs the loop
+// itself and this screen only shows what is happening.
+//
+// WHAT IS SHOWN AND WHY. The transcript is not decoration. Mishearing is
+// the commonest reason a spoken answer is wrong, and out loud there is no
+// way to tell a misheard question from a bad answer — so both sides of the
+// conversation are written down as they happen.
 
-// 'opening' exists because asking for the microphone is not instant. Without
-// it, the first tap looked like nothing had happened, so the natural thing to
-// do was tap again — which started a second recording over the first and left
-// a fragment too short to transcribe. That was the reported "it said it
-// didn't catch that, instantly".
+// 'opening' covers minting a key, asking for the microphone and connecting.
+// It is deliberately one state: from the user's side it is all "starting".
 type Phase = 'idle' | 'opening' | 'listening' | 'thinking' | 'speaking';
 
 const PHASE_LABEL: Record<Phase, string> = {
   idle: 'Tap to talk',
-  opening: 'Opening the mic…',
-  listening: 'Listening… tap when you’re done',
-  thinking: 'Thinking…',
-  speaking: 'Tap to stop',
+  opening: 'Connecting…',
+  listening: 'Listening — just talk',
+  thinking: 'Looking something up…',
+  speaking: 'Tap to cut in',
 };
-
-// Anything shorter than this is a tap, not a sentence. Sending it to be
-// transcribed spends a call and comes back as an unexplained failure.
-const MIN_SPEECH_MS = 700;
 
 export default function LiveConversation() {
   const router = useRouter();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder, 200);
   const insets = useSafeAreaInsets();
+  const session = useRef<LiveSession | null>(null);
+  // Where this conversation is being written down. Made when it starts, so
+  // every turn is saved as it happens rather than at the end — a spoken
+  // conversation that is only saved on a tidy exit is one that vanishes
+  // whenever the app is closed mid-sentence, which is most of the time.
+  const sessionId = useRef<string | null>(null);
 
   const [phase, setPhase] = useState<Phase>('idle');
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
@@ -61,7 +55,7 @@ export default function LiveConversation() {
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<ScrollView | null>(null);
 
-  const available = voiceSessionAvailable() && transcriptionAvailable();
+  const available = liveVoiceAvailable();
 
   // The orb breathes while it listens and while it talks, so the screen is
   // never ambiguous about whose turn it is.
@@ -93,11 +87,13 @@ export default function LiveConversation() {
     return () => loop.stop();
   }, [phase, pulse]);
 
-  // Leaving must silence it. Walking away from a screen that is still talking
-  // is the sort of thing that makes an app feel out of control.
+  // Leaving must hang up. Walking away from a screen that is still
+  // listening — and still being charged by the minute — is the sort of
+  // thing that makes an app feel out of control.
   useEffect(() => {
     return () => {
-      stopSpeaking();
+      session.current?.end();
+      session.current = null;
     };
   }, []);
 
@@ -106,98 +102,93 @@ export default function LiveConversation() {
     requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
   }, []);
 
-  const startListening = async () => {
+  // Saved into the same history as typed conversations, marked as spoken.
+  // One place to look for "what did I ask Recall", whichever way it was
+  // asked — two histories would mean remembering which one a conversation
+  // happened in, which is exactly the sort of thing this app exists to
+  // stop people having to do.
+  useEffect(() => {
+    const id = sessionId.current;
+    if (!id || turns.length === 0) return;
+    const messages: ChatMessage[] = turns.map((t) => ({
+      role: t.role === 'assistant' ? 'ai' : 'user',
+      text: t.text,
+      spoken: true,
+    }));
+    void saveSession(id, messages);
+  }, [turns]);
+
+  // Start talking. Everything after this is driven by events from the
+  // model rather than by taps: it decides when the user has finished
+  // speaking, and it can be interrupted by them starting again.
+  const start = async () => {
     setError(null);
-    stopSpeaking();
-    // Set before the first await, so a second tap cannot start a second
-    // recording while the first is still being set up.
     setPhase('opening');
+    // A new thread each time the orb is tapped from idle. Picking up where
+    // a previous conversation left off is a different feature; this one
+    // just has to not lose anything.
+    sessionId.current = newSessionId();
     try {
-      const perm = await requestRecordingPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert('Microphone needed', 'Allow microphone access so Recall can hear you.');
-        setPhase('idle');
-        return;
-      }
-      await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
-      await recorder.prepareToRecordAsync();
-      recorder.record();
-      setPhase('listening');
-    } catch {
-      setError('Could not open the microphone.');
+      session.current = await startLiveVoice((e) => {
+        switch (e.type) {
+          case 'connecting':
+            setPhase('opening');
+            break;
+          case 'listening':
+            setPhase('listening');
+            break;
+          case 'thinking':
+            setPhase('thinking');
+            break;
+          case 'speaking':
+            setPhase('speaking');
+            break;
+          case 'said':
+            push({ role: e.role, text: e.text });
+            break;
+          case 'looked-up':
+            // What it consulted, shown as it happens. Not decoration: it is
+            // the difference between an answer the user can check and one
+            // they have to take on faith.
+            setLookedUp((prev) => (prev.includes(e.label) ? prev : [...prev, e.label]));
+            break;
+          case 'ended':
+            session.current = null;
+            setPhase('idle');
+            if (e.reason === 'time') {
+              setError('That conversation reached ten minutes. Tap to start another.');
+            } else if (e.reason === 'error') {
+              setError(e.detail ?? 'The conversation dropped.');
+            }
+            break;
+        }
+      });
+    } catch (e) {
+      session.current = null;
       setPhase('idle');
+      setError(
+        e instanceof Error ? e.message : 'Could not start the conversation.',
+      );
     }
   };
 
-  const finishListening = async () => {
-    const spokenMs = recorderState.durationMillis ?? 0;
-    setPhase('thinking');
-    let uri: string | null = null;
-    try {
-      await recorder.stop();
-      uri = recorder.uri;
-    } catch {
-      uri = null;
-    }
-    if (!uri) {
-      setError('Nothing was recorded — try again.');
-      setPhase('idle');
-      return;
-    }
-    if (spokenMs < MIN_SPEECH_MS) {
-      setError('I didn’t hear anything. Tap, speak, then tap again when you’re done.');
-      setPhase('idle');
-      return;
-    }
-
-    const heard = await transcribeAudio(uri, 'auto');
-    if (!heard.ok) {
-      // Each of these is a different problem with a different answer, and
-      // collapsing them all into "I couldn't make that out" left the user
-      // repeating themselves at a screen that had actually run out of credit.
-      setError(
-        heard.reason === 'no-key'
-          ? 'No API key for speech.'
-          : heard.reason === 'no-credits'
-            ? 'That OpenAI key is out of credit.'
-            : heard.reason === 'rate-limited'
-              ? 'Too many requests just now — try again in a moment.'
-              : 'The transcription failed. Try again.',
-      );
-      setPhase('idle');
-      return;
-    }
-    if (!heard.text.trim()) {
-      setError('I couldn’t make out any words — try speaking a little longer.');
-      setPhase('idle');
-      return;
-    }
-    const question = heard.text.trim();
-    push({ role: 'user', text: question });
-
-    // History is passed so it can follow "and who else was there?" — a
-    // conversation that forgets the previous sentence isn't one.
-    const answer = await answerAloud(question, turns);
-    if (!answer.ok) {
-      setError(answer.error);
-      setPhase('idle');
-      return;
-    }
-    setLookedUp(answer.lookedUp);
-    push({ role: 'assistant', text: answer.text });
-
-    setPhase('speaking');
-    const started = await speakText(answer.text, () => setPhase('idle'));
-    if (!started) setPhase('idle');
+  const stop = () => {
+    session.current?.end();
+    session.current = null;
+    setPhase('idle');
   };
 
   const onOrbPress = () => {
     if (!available) return;
-    if (phase === 'idle') startListening();
-    else if (phase === 'listening') finishListening();
-    else if (phase === 'speaking') {
-      stopSpeaking();
-      setPhase('idle');
+    if (phase === 'idle') {
+      start();
+    } else if (phase === 'speaking') {
+      // Cut it off without hanging up — the same thing as talking over it,
+      // for when the user would rather not.
+      session.current?.interrupt();
+      setPhase('listening');
+    } else {
+      stop();
     }
   };
 
@@ -215,7 +206,9 @@ export default function LiveConversation() {
         <View style={styles.header}>
           <Pressable
             onPress={() => {
-              stopSpeaking();
+              // Hanging up is the point: leaving must not leave a live
+              // microphone open behind the screen.
+              stop();
               router.back();
             }}
             hitSlop={16}
@@ -285,8 +278,13 @@ export default function LiveConversation() {
             </View>
           </Pressable>
           <Text style={styles.phase}>
-            {available ? PHASE_LABEL[phase] : 'Unavailable'}
+            {available ? PHASE_LABEL[phase] : 'Live voice isn’t set up yet'}
           </Text>
+          {/* Said once, at the start, because a conversation that ends
+              without warning reads as a fault rather than a limit. */}
+          {phase === 'listening' && turns.length === 0 && (
+            <Text style={styles.limitHint}>Up to ten minutes. Talk over it any time.</Text>
+          )}
         </View>
       </SafeAreaView>
     </View>
@@ -297,6 +295,13 @@ const ORB = 96;
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  limitHint: {
+    color: colors.soft,
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    marginTop: 6,
+    textAlign: 'center',
+  },
   // Same shape as Ask's header, which is the one known to behave on a real
   // phone: a centred title with the back arrow laid over it, rather than a
   // three-way space-between that leans whenever one side is empty.

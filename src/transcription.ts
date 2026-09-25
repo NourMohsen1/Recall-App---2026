@@ -1,7 +1,8 @@
 import { Platform } from 'react-native';
 
-// Speech-to-text for voice memories via OpenAI Whisper, which handles
-// Arabic, English, and mixed Arabic/English speech in a single model.
+// Speech-to-text for voice memories, via OpenAI's gpt-transcribe — chosen
+// over Whisper for mixed Arabic/English speech, which is most of what this
+// app hears. See MODELS.openAiTranscribe for what that choice costs.
 //
 // Setup: create `recall/.env` containing
 //   EXPO_PUBLIC_RECALL_API_URL=https://recall-keys.nourmohsen-recall.workers.dev
@@ -21,6 +22,7 @@ export type TranscriptionResult =
   // are HTTP 429; only the response body tells them apart.
   | { ok: false; reason: 'no-key' | 'no-credits' | 'rate-limited' | 'failed' };
 
+import { MODELS } from './aiProviders';
 import { backendToken, backendUrl, ENDPOINTS } from './backend';
 const API_URL = () => backendUrl(ENDPOINTS.transcribe);
 
@@ -80,12 +82,12 @@ export async function transcribeAudio(
         type: ext === 'wav' ? 'audio/wav' : 'audio/m4a',
       } as any);
     }
-    form.append('model', 'whisper-1');
-    // verbose_json + word granularity gives per-word start/end times, which
-    // drives the karaoke-style highlight while a memory plays back.
-    form.append('response_format', 'verbose_json');
-    form.append('timestamp_granularities[]', 'word');
-    // Omitting `language` lets Whisper auto-detect — best for mixed speech.
+    form.append('model', MODELS.openAiTranscribe);
+    // Plain json: verbose_json and timestamp_granularities are whisper-1
+    // only, and asking a newer model for them is an error rather than a
+    // silently ignored option.
+    form.append('response_format', 'json');
+    // Omitting `language` lets it auto-detect — best for mixed speech.
     if (language !== 'auto') form.append('language', language);
 
     const res = await fetch(API_URL() ?? '', {
