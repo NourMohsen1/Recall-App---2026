@@ -28,21 +28,14 @@ const DB_NAME = 'recall-faces.db';
 // vector written as a JSON array of decimals is nearer 4KB, and at ten
 // thousand faces that difference is 40MB against 10MB — in a database that
 // gets read into memory for every search.
-// Shared with faceClusters.ts, which groups these same rows. It reads and
-// writes the same tables, so it uses the same connection rather than
-// opening a second one onto the same file.
-export async function faceDb(): Promise<SQLite.SQLiteDatabase> {
-  return db();
-}
-
-export function packEmbedding(v: Float32Array): string {
+function packEmbedding(v: Float32Array): string {
   const bytes = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
   let s = '';
   for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
   return globalThis.btoa(s);
 }
 
-export function unpackEmbedding(packed: string): Float32Array {
+function unpackEmbedding(packed: string): Float32Array {
   const s = globalThis.atob(packed);
   const bytes = new Uint8Array(s.length);
   for (let i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);

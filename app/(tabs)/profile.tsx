@@ -7,7 +7,6 @@ import FaceIndexCard from '../../src/components/FaceIndexCard';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
-import { clusterStats } from '../../src/faceClusters';
 import { colors, fonts } from '../../src/theme';
 
 function InfoRow({
@@ -45,10 +44,6 @@ export default function Profile() {
   const [profile, setProfile] = useState<UserProfile>({});
   const [joined, setJoined] = useState<Date | null>(null);
   const [entries, setEntries] = useState(0);
-  // How many faces are waiting to be named. Counted on every focus rather
-  // than once, because the background pass keeps finding more while the
-  // app is open.
-  const [faceReview, setFaceReview] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -57,9 +52,6 @@ export default function Profile() {
         setJoined(await joinedDate(p));
       });
       memoryCount().then(setEntries);
-      clusterStats()
-        .then((s) => setFaceReview(s.needNames))
-        .catch(() => setFaceReview(0));
     }, []),
   );
 
@@ -123,41 +115,6 @@ export default function Profile() {
             who is in them. */}
         <FaceIndexCard />
 
-        {/* Who the app has found but cannot name. The counter is the whole
-            point of putting this here: the work only gets done if the user
-            can see there is any. */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>People in your photos</Text>
-          <Pressable
-            style={styles.toggleRow}
-            onPress={() => router.push('/review-faces' as Parameters<typeof router.push>[0])}
-          >
-            <Text style={styles.toggleLabel}>Who is this?</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {faceReview > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{faceReview}</Text>
-                </View>
-              )}
-              <Ionicons name="chevron-forward" size={20} color="#8B9394" />
-            </View>
-          </Pressable>
-        </View>
-
-        {/* TEMPORARY — remove with app/face-test.tsx once the model is
-            trusted. Two photos, one similarity number: the proof that has
-            to pass before face recognition is built on. */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Developer</Text>
-          <Pressable
-            style={styles.toggleRow}
-            onPress={() => router.push('/face-test' as Parameters<typeof router.push>[0])}
-          >
-            <Text style={styles.toggleLabel}>Face test</Text>
-            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
-          </Pressable>
-        </View>
-
         {/* Devices */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Devices</Text>
@@ -192,16 +149,6 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
-  badge: {
-    minWidth: 22,
-    height: 22,
-    borderRadius: 11,
-    paddingHorizontal: 6,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  badgeText: { color: colors.ink, fontFamily: fonts.semiBold, fontSize: 12 },
   safe: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingBottom: 130 },
   back: { marginTop: 12 },

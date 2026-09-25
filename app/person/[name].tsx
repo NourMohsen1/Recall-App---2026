@@ -27,6 +27,7 @@ import {
   rejectSuggestion,
 } from '../../src/personSuggestions';
 import { approveAllFor, approveGuess, getAllGuesses, rejectGuess } from '../../src/guessedPeople';
+import { refreshPerson } from '../../src/facePeople';
 
 // The days this person was recognised on, in the shape this screen already
 // draws. The old LLM matcher filled the same list with a confidence and a
@@ -269,15 +270,20 @@ export default function PersonProfile() {
     setMeta((prev) => ({ ...(prev ?? { verified: true, mentions: [] }), photoUri: permanent }));
     setSheetOpen(false);
 
-    // A new face invalidates every guess made against the old one, so those
-    // are cleared. The search itself is NOT started automatically any more:
-    // it costs real vision calls, and the user decides when to spend them
-    // with 'Run face match'.
+    // A new face invalidates every guess made against the old one.
     await clearSuggestionsFor(name);
-    // Every past search compared against the OLD face, so those days are
-    // worth looking at again.
     await clearExaminedFor(name);
     setSuggestions([]);
+
+    // This photo IS the fingerprint now. Learning it and looking for them
+    // happens here, on its own, because the user has just done the only
+    // part they should have to do: said who this is.
+    //
+    // It no longer costs anything to run — recognition is on the phone —
+    // which is why it stopped being a button the user has to find and
+    // press.
+    await refreshPerson(name, permanent);
+    setSuggestions(await guessedDaysAsSuggestions(name));
   };
 
   // The explicit scan. Closes the sheet first so the progress is visible on

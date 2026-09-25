@@ -98,6 +98,7 @@ export default function DayDetailScreen() {
     reload();
   };
 
+
   // Rewriting a memory the user already has. Their words replace whatever
   // was there and the entry is marked refined, so the polish sweep never
   // comes back and rewrites what they just typed. The verbatim original is

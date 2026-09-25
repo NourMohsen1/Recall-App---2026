@@ -55,18 +55,15 @@ export const DEFAULT_DETECTOR: DetectorKind = 'full';
 
 /** Which model turns a face into numbers.
  *
- *  'mobilefacenet' was the first choice and failed its measurement: across
- *  117 pairs of real photos, the worst same-person score (0.104) sat far
- *  BELOW the best stranger score (0.527), so no threshold could separate
- *  them. Small and fast, but not able to do the job on hard photos.
- *
- *  'facenet512' is five times the size and the documented fallback. */
-export type EmbedderKind = 'mobilefacenet' | 'facenet512';
+ *  MobileFaceNet was tried first and failed its measurement: across 117
+ *  pairs of real photos its worst same-person score (0.104) sat far BELOW
+ *  its best stranger score (0.527), so no threshold could separate them.
+ *  It has been removed; this is what replaced it. */
+export type EmbedderKind = 'facenet512';
 
 export const DEFAULT_EMBEDDER: EmbedderKind = 'facenet512';
 
 const EMBEDDER_ASSETS: Record<EmbedderKind, number> = {
-  mobilefacenet: require('../assets/models/mobilefacenet.tflite'),
   facenet512: require('../assets/models/facenet_512.tflite'),
 };
 
@@ -255,12 +252,40 @@ export async function embedFace(
   return new Float32Array(new Float32Array(result[0]));
 }
 
+// A face has to be worth measuring before it is measured.
+//
+// THIS IS NOT A TIDINESS RULE, it is what keeps recognition honest. A face
+// forty pixels across carries almost no detail, so the fingerprint it
+// produces is mush — and mush is vaguely similar to everything. Those faces
+// do not merely fail to match; they actively poison the grouping, because
+// each one lands in whichever group is nearest and drags that group's
+// average towards the middle, where it then attracts more mush.
+//
+// Measured consequence of not having this: 90% of every face in a 2,389
+// photo library was filed as one person.
+//
+// 90 pixels is roughly a face that a person could recognise if they were
+// shown just that crop — which is the same bar the app asks the user to
+// meet when it shows them one.
+const MIN_FACE_PIXELS = 90;
+
+// Above the detector's own floor. A hesitant detection is usually a face
+// that is turned away, motion blurred, or not a face at all.
+const MIN_FACE_CONFIDENCE = 0.75;
+
 export async function detectAndEmbed(photoUri: string): Promise<DetectedFace[]> {
   const found = await findFaces(photoUri);
   if (!found) return [];
 
+  const width = found.image.width();
+  const height = found.image.height();
+
   const out: DetectedFace[] = [];
   for (const face of found.faces) {
+    const pixels = Math.min(face.box.w * width, face.box.h * height);
+    if (pixels < MIN_FACE_PIXELS) continue;
+    if (face.score < MIN_FACE_CONFIDENCE) continue;
+
     const embedding = await embedFace(found.image, face, DEFAULT_OPTIONS);
     if (embedding) out.push({ box: face.box, embedding });
   }

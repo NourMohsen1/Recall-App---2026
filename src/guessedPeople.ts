@@ -74,24 +74,27 @@ export async function getGuessedDaysFor(name: string): Promise<string[]> {
  *  Silently does nothing when the user has already said so themselves, or
  *  has already said no. Both are answers, and re-asking is the behaviour
  *  that makes a feature like this exhausting. */
+/** Returns true only when something was actually recorded, so a caller can
+ *  report what changed rather than how many times it asked. */
 export async function addGuess(
   day: string,
   name: string,
   clusterId: number,
   face?: { photoUri: string; box: { x: number; y: number; w: number; h: number } },
-): Promise<void> {
+): Promise<boolean> {
   const confirmed = await getPeopleForDay(day);
-  if (confirmed.some((n) => sameName(n, name))) return;
+  if (confirmed.some((n) => sameName(n, name))) return false;
 
   const rejected = await readJSON<RejectedByDay>(REJECTED_KEY, {});
-  if ((rejected[day] ?? []).some((n) => sameName(n, name))) return;
+  if ((rejected[day] ?? []).some((n) => sameName(n, name))) return false;
 
   const all = await readJSON<GuessesByDay>(GUESS_KEY, {});
   const forDay = all[day] ?? [];
-  if (forDay.some((g) => sameName(g.name, name))) return;
+  if (forDay.some((g) => sameName(g.name, name))) return false;
 
   all[day] = [...forDay, { name, clusterId, photoUri: face?.photoUri, box: face?.box }];
   await AsyncStorage.setItem(GUESS_KEY, JSON.stringify(all));
+  return true;
 }
 
 async function dropGuess(day: string, name: string): Promise<void> {
@@ -128,6 +131,16 @@ export async function approveAllFor(name: string): Promise<number> {
   const days = await getGuessedDaysFor(name);
   for (const day of days) await approveGuess(day, name);
   return days.length;
+}
+
+/** Throw away every guess the app has made.
+ *
+ *  For starting the recognition over. Only touches guesses: days the user
+ *  confirmed are their own data and survive, because the app deciding to
+ *  delete someone's memories on its own is a worse bug than any it would be
+ *  fixing. */
+export async function clearAllGuesses(): Promise<void> {
+  await AsyncStorage.removeItem(GUESS_KEY);
 }
 
 /** Undo a whole group — for when a name was given to the wrong face. */

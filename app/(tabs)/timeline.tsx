@@ -364,7 +364,7 @@ export default function Timeline() {
       getPeopleForDay(key).then(setPeople);
       getAllTaggedPeople().then(setPeopleSuggestions);
       getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
-    }, [selected]),
+      }, [selected]),
   );
 
   // Sweep up any memory the AI hasn't polished/routed yet (older logs, or
@@ -394,6 +394,7 @@ export default function Timeline() {
     await rejectGuess(dayKey, name);
     reloadDay();
   };
+
 
   const date = dateWithOffset(selected);
   const weekday = WEEKDAYS[date.getDay()];

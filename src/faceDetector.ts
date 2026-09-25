@@ -12,18 +12,19 @@ import { serialized } from './modelQueue';
 // was trained — each with a score and a nudge away from its anchor. Nearly
 // all of them are rubbish. Turning that into face boxes is this file.
 //
-// THREE MODELS, because distance matters more than it sounds. The
-// short-range model is built for selfies and cannot see a face that is
-// small in the frame: a photo of someone standing across a room comes back
-// empty. That is fatal for a photo library, where most pictures are not
-// selfies. The full-range models see to roughly five metres.
+// FULL RANGE, not short range. The short-range model is built for selfies
+// and cannot see a face that is small in the frame — a photo of someone
+// across a room comes back empty, which is fatal for a photo library where
+// most pictures are not selfies. This one sees to roughly five metres.
+// Measured against the short-range and sparse variants on real photos
+// before the others were removed.
 //
 // Every constant below is from Google's own configuration for these exact
 // models, checked against a reference implementation rather than
 // remembered. They are not tunable: a wrong scale puts boxes slightly
 // beside faces rather than on them, which looks like a bad model.
 
-export type DetectorKind = 'short' | 'full' | 'full-sparse';
+export type DetectorKind = 'full';
 
 type Grid = { cells: number; perCell: number };
 
@@ -38,19 +39,6 @@ type Config = {
 };
 
 const CONFIGS: Record<DetectorKind, Config> = {
-  // Selfie distance only. Kept because it is the fastest and the most
-  // accurate at what it does — a face filling the frame.
-  short: {
-    label: 'short range',
-    inputSize: 128,
-    anchors: 896,
-    grids: [
-      { cells: 16, perCell: 2 },
-      { cells: 8, perCell: 6 },
-    ],
-    minScore: 0.6,
-    asset: require('../assets/models/blaze_face_short_range.tflite'),
-  },
   // To about five metres. One flat 48x48 grid, one anchor per cell.
   full: {
     label: 'full range',
@@ -59,16 +47,6 @@ const CONFIGS: Record<DetectorKind, Config> = {
     grids: [{ cells: 48, perCell: 1 }],
     minScore: 0.5,
     asset: require('../assets/models/blaze_face_full_range.tflite'),
-  },
-  // Same shape, a smaller and faster network. Google's own note: the sparse
-  // model has higher precision, the dense one slightly better recall.
-  'full-sparse': {
-    label: 'full range (sparse)',
-    inputSize: 192,
-    anchors: 2304,
-    grids: [{ cells: 48, perCell: 1 }],
-    minScore: 0.5,
-    asset: require('../assets/models/face_detection_full_range_sparse.tflite'),
   },
 };
 
