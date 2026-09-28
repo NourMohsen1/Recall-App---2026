@@ -114,6 +114,22 @@ function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
   return sections.filter((s) => s.tasks.length > 0);
 }
 
+// The task that deserves attention now: the nearest one still ahead —
+// today's next, or the soonest after today when today is clear. A task
+// with a date but no time counts until the end of its day. Overdue ones are
+// not it: they are already marked in red, and "next" means what is coming.
+function nextUpId(tasks: StoredTask[], now: Date): string | null {
+  const nowKey = `${keyOf(now)} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  let best: { id: string; at: string } | null = null;
+  for (const t of tasks) {
+    if (t.done || !t.dueDate) continue;
+    const at = `${t.dueDate} ${t.dueTime ?? '23:59'}`;
+    if (at < nowKey) continue;
+    if (!best || at < best.at) best = { id: t.id, at };
+  }
+  return best?.id ?? null;
+}
+
 // The switch in the design is ON for a task still to do and OFF once it is
 // done — done tasks turn grey, as the past weeks do in the design.
 function Toggle({ on, onPress }: { on: boolean; onPress: () => void }) {
@@ -138,12 +154,16 @@ function Toggle({ on, onPress }: { on: boolean; onPress: () => void }) {
 function TaskCard({
   task,
   isNew,
+  isNext,
+  onLayoutY,
   onToggle,
   onEdit,
   onOpenSource,
 }: {
   task: StoredTask;
   isNew: boolean;
+  isNext: boolean;
+  onLayoutY?: (y: number) => void;
   onToggle: () => void;
   onEdit: () => void;
   onOpenSource: (() => void) | null;
@@ -163,9 +183,16 @@ function TaskCard({
       : { name: 'pencil-outline' as const, onPress: onEdit };
 
   return (
-    <Pressable onPress={onEdit} style={[styles.card, isNew && !muted && styles.cardNew]}>
+    <Pressable
+      onPress={onEdit}
+      onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}
+      style={[styles.card, isNext && styles.cardNext]}
+    >
       <View style={styles.cardTop}>
         <View style={styles.titleRow}>
+          {/* Just added from a memory — a small dot until the page is seen.
+              The outline is kept for one meaning only: what is next. */}
+          {isNew && !muted && <View style={styles.newDot} />}
           <Text
             numberOfLines={2}
             style={[styles.taskTitle, muted && styles.mutedText, rtlIfArabic(task.title)]}
@@ -277,19 +304,48 @@ export default function Tasks() {
 
   const sections = groupByWeek(tasks);
 
-  // Open on this week, like the design: what is coming sits above it, what
-  // has passed below. Once per visit, so it never jumps while reading.
+  // "Next" moves on by itself as the day goes: checked every minute, so the
+  // outline leaves a 3 pm task once it is 3 pm without the page reopening.
+  const [now, setNow] = useState(() => new Date());
+  useFocusEffect(
+    useCallback(() => {
+      setNow(new Date());
+      const timer = setInterval(() => setNow(new Date()), 60_000);
+      return () => clearInterval(timer);
+    }, []),
+  );
+  const nextId = nextUpId(tasks, now);
+  const nextSection = sections.find((s) => s.tasks.some((t) => t.id === nextId))?.key;
+
+  // Open on what is next — or on this week when nothing is — with its week
+  // header in view. Once per visit, so it never jumps while reading.
   const scrollRef = useRef<ScrollView>(null);
   const scrolled = useRef(false);
+  const sectionY = useRef<Record<string, number>>({});
+  const nextCardY = useRef<number | null>(null);
   useFocusEffect(
     useCallback(() => {
       scrolled.current = false;
     }, []),
   );
-  const onSectionLayout = (key: string, y: number) => {
-    if (key !== 'this' || scrolled.current) return;
+  const tryScroll = () => {
+    if (scrolled.current) return;
+    let y: number | undefined;
+    if (nextSection) {
+      const top = sectionY.current[nextSection];
+      if (top == null || nextCardY.current == null) return;
+      // Keep the week's header in view when the card is its first.
+      y = nextCardY.current < 120 ? top : top + nextCardY.current - 24;
+    } else {
+      y = sectionY.current.this;
+      if (y == null) return;
+    }
     scrolled.current = true;
     if (y > 40) scrollRef.current?.scrollTo({ y: y - 8, animated: false });
+  };
+  const onSectionLayout = (key: string, y: number) => {
+    sectionY.current[key] = y;
+    tryScroll();
   };
 
   return (
@@ -334,6 +390,15 @@ export default function Tasks() {
                 key={task.id}
                 task={task}
                 isNew={newIds.has(task.id)}
+                isNext={task.id === nextId}
+                onLayoutY={
+                  task.id === nextId
+                    ? (y) => {
+                        nextCardY.current = y;
+                        tryScroll();
+                      }
+                    : undefined
+                }
                 onToggle={() => onToggle(task.id)}
                 onEdit={() => router.push({ pathname: '/log/task-edit', params: { id: task.id } })}
                 onOpenSource={
@@ -439,9 +504,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.white,
   },
-  // Just added from a memory: outlined, as the design outlines the current
-  // task, until the page has been seen.
-  cardNew: { borderColor: colors.accent },
+  // What is next: the design's teal outline, on one task at a time.
+  cardNext: { borderColor: colors.accent },
+  newDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   taskTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B', flexShrink: 1 },
