@@ -28,7 +28,7 @@ import VoicePlayer from '../../src/components/VoicePlayer';
 import { MISC } from '../../src/images';
 import { TranscriptWord, dateKey, persistFile, saveMemory } from '../../src/memoryLog';
 import { processMemoryIntake } from '../../src/memoryIntake';
-import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
+import { recordCurrentLocationForDay } from '../../src/places';
 import {
   SpeechLanguage,
   transcribeAudio,

@@ -11,6 +11,7 @@ import {
 import { startPhotoAnalysis } from '../src/photoAnalysisQueue';
 import { installFaceEmbedder } from '../src/faceEmbedderTflite';
 import { startBackgroundIndexing } from '../src/faceIndexing';
+import { startPlaceIndexing } from '../src/places';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -37,6 +38,12 @@ export default function RootLayout() {
   // recognition — that is the whole point of the model registering itself
   // rather than being imported — so this logs and lets everything else
   // carry on.
+  // Places: read where imported photos were taken and file them under
+  // places, quietly. Needs no model, so it does not wait for the faces.
+  useEffect(() => {
+    startPlaceIndexing();
+  }, []);
+
   useEffect(() => {
     installFaceEmbedder()
       .then(() => startBackgroundIndexing())

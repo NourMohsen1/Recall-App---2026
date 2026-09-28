@@ -19,6 +19,15 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
+import PlaceTile from '../../src/components/PlaceTile';
+import SirCluster, { SirPicker } from '../../src/components/SirCluster';
+import {
+  getMarkersForDay,
+  markDay,
+  removeMarker,
+  type ShownMarker,
+  type SirKind,
+} from '../../src/dayMarkers';
 import { approveGuess, getGuessesForDay, rejectGuess } from '../../src/guessedPeople';
 import PhotoTile from '../../src/components/PhotoTile';
 import {
@@ -57,7 +66,7 @@ import {
   getPeopleForDay,
   removePersonForDay,
 } from '../../src/peopleTags';
-import { DetectedPlace, getPlacesForDay } from '../../src/placesFromPhotos';
+import { DayPlace, getPlacesForDay, onPlacesChanged } from '../../src/places';
 import { rtlIfArabic } from '../../src/transcription';
 import TopicSwapSheet from '../../src/components/TopicSwapSheet';
 import { colors, fonts } from '../../src/theme';
@@ -178,6 +187,24 @@ const CARD_POS = {
   // people/day/places/otd chain of real logged content.
   assumed: { x: 610, y: 780, w: 290 },
 } as const;
+
+// Where the Smart Icon Reminders sit: a small grid under the day card's left
+// half. The day card's connector to On This Day leaves from its bottom-centre
+// (x = 200), and On This Day itself starts at x = 180, so a three-wide grid
+// from x = 24 ends at 176 and never sits on a line or under a card.
+// Three across inside the 410-wide Places card: 16 padding each side, 14
+// between.
+const PLACE_TILE = 112;
+
+const SIR_X = 24;
+const SIR_GAP = 22;
+// On an empty or upcoming day there is only the placeholder card (left 40,
+// top 420), so the icons go just ABOVE it. Both other spots were tried on a
+// phone-sized screen and failed: under it they sat level with the app's big
+// "+" button, crowded and half hidden; beside it they were past the right
+// edge of what a phone shows before panning, so an upcoming birthday simply
+// wasn't visible.
+const EMPTY_DAY_SIR = { x: 40, y: 362 };
 
 type Point = { x: number; y: number };
 
@@ -340,20 +367,34 @@ export default function Timeline() {
 
   // Re-read logged memories whenever the screen regains focus so a memory
   // saved from the "+" button shows up immediately.
-  const [places, setPlaces] = useState<DetectedPlace[]>([]);
+  const [places, setPlaces] = useState<DayPlace[]>([]);
   const [people, setPeople] = useState<string[]>([]);
   const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
   // Who the app thinks was there, from the faces in that day's photos.
   // Drawn beside the confirmed names with a dashed ring and a question
   // mark, so a guess never passes for something the user recorded.
   const [guessed, setGuessed] = useState<{ name: string }[]>([]);
+  // Smart Icon Reminders for this day: moments noticed in what was logged,
+  // dates that repeat (a birthday shows on upcoming days too), and anything
+  // added with the "+". See src/dayMarkers.ts.
+  const [markers, setMarkers] = useState<ShownMarker[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const reloadDay = useCallback(() => {
     const key = dateKey(dateWithOffset(selected));
     getMemoriesByDay().then(setByDay);
     getPlacesForDay(key).then(setPlaces);
     getPeopleForDay(key).then(setPeople);
     getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
+    getMarkersForDay(key).then(setMarkers);
   }, [selected]);
+
+  // Places fill in quietly in the background — a photo's location read, a
+  // spot given its street name — so the card follows along rather than
+  // waiting for the next visit to this screen.
+  useEffect(
+    () => onPlacesChanged(() => getPlacesForDay(dateKey(dateWithOffset(selected))).then(setPlaces)),
+    [selected],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -364,6 +405,11 @@ export default function Timeline() {
       getPeopleForDay(key).then(setPeople);
       getAllTaggedPeople().then(setPeopleSuggestions);
       getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
+      getMarkersForDay(key).then(setMarkers);
+      // The Timeline stays mounted behind other tabs, so a picker left open
+      // here would float over whatever screen came next — which a link or
+      // a notification tap can do. Leaving the screen closes it.
+      return () => setPickerOpen(false);
       }, [selected]),
   );
 
@@ -393,6 +439,17 @@ export default function Timeline() {
   const dismissGuess = async (name: string) => {
     await rejectGuess(dayKey, name);
     reloadDay();
+  };
+
+  // Marking a day by hand. The rule for what repeats lives in markDay.
+  const addSir = async (kind: SirKind) => {
+    setPickerOpen(false);
+    await markDay(dayKey, kind);
+    setMarkers(await getMarkersForDay(dayKey));
+  };
+  const removeSir = async (marker: ShownMarker) => {
+    await removeMarker(dayKey, marker);
+    setMarkers(await getMarkersForDay(dayKey));
   };
 
 
@@ -864,9 +921,10 @@ export default function Timeline() {
                     </Pressable>
                   )}
 
-                  {/* Places card — derived from where the day's photos were
-                      actually taken (or live location when logging manually).
-                      Only appears once a real place has been detected. */}
+                  {/* Places card — where the day's photos were actually taken,
+                      and the places the user said they were at. Each shows
+                      the user's own photo from there (src/places.ts), never
+                      an address. Only appears once there is a real place. */}
                   {showPlaces && (
                     <View
                       onLayout={measure('places')}
@@ -877,18 +935,25 @@ export default function Timeline() {
                     >
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>Places</Text>
-                        <MaterialCommunityIcons name="map-marker-outline" size={22} color={colors.primary} />
+                        <Pressable onPress={() => router.push('/places')} hitSlop={10}>
+                          <MaterialCommunityIcons name="map-marker-outline" size={22} color={colors.primary} />
+                        </Pressable>
                       </View>
                       <View style={styles.placeGrid}>
                         {places.slice(0, 6).map((place) => (
-                          <View key={`${place.label}-${place.latitude ?? 'named'}`} style={styles.placeCell}>
-                            <View style={styles.placePin}>
-                              <MaterialCommunityIcons name="map-marker" size={30} color={colors.teal} />
-                            </View>
-                            <Text numberOfLines={1} style={styles.placeCellLabel}>
-                              {place.label}
-                            </Text>
-                          </View>
+                          <PlaceTile
+                            key={place.placeId}
+                            label={place.label}
+                            cover={place.cover}
+                            kind={place.kind}
+                            size={PLACE_TILE}
+                            onPress={() =>
+                              router.push({
+                                pathname: '/place/[name]',
+                                params: { name: place.placeId },
+                              })
+                            }
+                          />
                         ))}
                       </View>
                     </View>
@@ -1017,10 +1082,34 @@ export default function Timeline() {
                   </Text>
                 </Pressable>
               )}
+
+              {/* Smart Icon Reminders. Outside the content check on purpose:
+                  a day with nothing logged can still be the day you took
+                  your medicine, and an upcoming birthday has to show on a
+                  day that hasn't happened yet. Drawn last so an open bubble
+                  sits over the cards beside it. */}
+              <SirCluster
+                markers={markers}
+                origin={
+                  !hasContent
+                    ? EMPTY_DAY_SIR
+                    : {
+                        x: SIR_X,
+                        y:
+                          showDayCard && cardH.day
+                            ? CARD_POS.day.y + cardH.day + SIR_GAP
+                            : CARD_POS.day.y,
+                      }
+                }
+                onAdd={() => setPickerOpen(true)}
+                onRemove={removeSir}
+              />
             </Animated.View>
           </GestureDetector>
         </View>
       </View>
+
+      <SirPicker visible={pickerOpen} onPick={addSir} onClose={() => setPickerOpen(false)} />
 
       <TopicSwapSheet
         visible={!!otdSwapTarget}
@@ -1145,19 +1234,10 @@ const styles = StyleSheet.create({
   placeGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    columnGap: 14,
+    rowGap: 12,
     marginTop: 14,
   },
-  placeCell: { width: 88, alignItems: 'center' },
-  placePin: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.pale,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeCellLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
 
   otdCardHeader: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 4 },
 

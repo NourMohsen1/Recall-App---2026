@@ -9,7 +9,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
-import { recordLocationForDay } from './placesFromPhotos';
+import { startPlaceIndexing, toLocation } from './places';
 
 // Bulk-imports photos from the device's library into the Timeline, grouped
 // onto the day they were actually taken. Bounded by a date window (the user
@@ -203,19 +203,21 @@ export async function importRecentPhotos(
             creationTime: a.creationTime,
             location: info.location,
             source: source?.key,
+            infoRead: true,
           };
         } catch {
           const source = detectPhotoSource({ filename: a.filename, mediaSubtypes: a.mediaSubtypes });
-          return { id: a.id, uri: a.uri, creationTime: a.creationTime, location: undefined, source: source?.key };
+          return {
+            id: a.id,
+            uri: a.uri,
+            creationTime: a.creationTime,
+            location: undefined,
+            source: source?.key,
+            infoRead: false,
+          };
         }
     });
 
-    // One location per day, not per photo. This used to fire an
-    // un-awaited recordLocationForDay() for EVERY photo with GPS, which on
-    // a big sync meant hundreds of overlapping read-modify-write cycles
-    // against the same storage key — a lost-update race that also piled up
-    // unresolved promises. One awaited write per distinct day instead.
-    const dayLocations = new Map<string, { latitude: number; longitude: number }>();
     const pageByDay = new Map<string, PhotoEntry[]>();
     const pageMeta: [string, PhotoMeta][] = [];
 
@@ -225,22 +227,27 @@ export async function importRecentPhotos(
       if (bucket) bucket.push(item);
       else pageByDay.set(key, [item]);
       allDays.add(key);
-      if (item.location && !dayLocations.has(key)) dayLocations.set(key, item.location);
       // Always record the capture time (drives the assumed-memory feature's
       // day sequencing) and the asset id (lets src/photoUri.ts fetch a real
       // file path later for photos whose original is still in iCloud); the
       // source label only when one was detected.
       const meta: PhotoMeta = { takenAt: item.creationTime, assetId: item.id };
       if (item.source) meta.source = item.source;
-      pageMeta.push([item.uri, meta]);
-    }
-
-    for (const [key, loc] of dayLocations) {
-      try {
-        await recordLocationForDay(key, loc.latitude, loc.longitude);
-      } catch {
-        // A place we couldn't record is never worth failing the sync over.
+      // Where it was taken, per photo. This used to keep ONE location per
+      // day — the first photo with GPS — so a day at college, then a café,
+      // then the gym could only ever show one place. Every photo's own spot
+      // is kept now, on the device; src/places.ts turns them into places.
+      // An asset whose info could not be read is left for the places sweep
+      // to ask about again rather than marked as having no location.
+      if (item.infoRead) {
+        meta.locationRead = true;
+        const where = toLocation(item.location);
+        if (where) {
+          meta.latitude = where.latitude;
+          meta.longitude = where.longitude;
+        }
       }
+      pageMeta.push([item.uri, meta]);
     }
 
     // Commit the page: meta first, then the day memories, and only then
@@ -259,6 +266,8 @@ export async function importRecentPhotos(
     after = page.endCursor;
   }
 
+  // File the new photos under their places, in the background.
+  if (importedCount > 0) startPlaceIndexing();
   return { imported: importedCount, days: allDays.size };
 }
 

@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import PillButton from '../../src/components/PillButton';
 import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, saveMemory } from '../../src/memoryLog';
-import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
+import { recordCurrentLocationForDay } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
 import { useReturnTo } from '../../src/useReturnTo';
 

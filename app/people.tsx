@@ -23,7 +23,7 @@ import {
 } from '../src/peopleTags';
 import { mergePersonEverywhere } from '../src/peopleMerge';
 import { DuplicateSuggestion, findDuplicatePeople } from '../src/personIdentity';
-import { DetectedPlace, getAllDayPlaces } from '../src/placesFromPhotos';
+import { DayPlace, getAllDayPlaces } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
 
@@ -104,7 +104,7 @@ export default function People() {
   const router = useRouter();
   const [people, setPeople] = useState<PersonSummary[]>([]);
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
-  const [dayPlaces, setDayPlaces] = useState<Record<string, DetectedPlace[]>>({});
+  const [dayPlaces, setDayPlaces] = useState<Record<string, DayPlace[]>>({});
   const [meta, setMeta] = useState<Record<string, PersonMeta>>({});
   const [rejected, setRejected] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);

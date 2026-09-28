@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import { BRAND, MISC, placePhoto } from '../../src/images';
+import { PlaceThumb } from '../../src/components/PlaceTile';
 import { useMemoryPolish } from '../../src/memoryIntake';
 import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../../src/memoryLog';
 import { rtlIfArabic } from '../../src/transcription';
@@ -148,7 +149,7 @@ export default function Home() {
         <View style={styles.shortcutRow}>
           <Link href="/places" asChild>
             <Pressable style={styles.shortcut}>
-              <Image source={placePhoto('College')} style={styles.shortcutImage} resizeMode="cover" />
+              <PlaceThumb style={styles.shortcutImage} />
               <Text style={styles.shortcutLabel}>Places</Text>
             </Pressable>
           </Link>

@@ -1,8 +1,21 @@
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { dateKey, getLoggedMemories, updateMemory } from './memoryLog';
+import {
+  SIR_KINDS,
+  addDayMarker,
+  addRecurringMarker,
+  isSirKind,
+  type SirKind,
+} from './dayMarkers';
+import { dateKey, getLoggedMemories, localFile, updateMemory } from './memoryLog';
 import { addPersonMention, getKnownPeopleForPrompt } from './peopleTags';
-import { recordNamedPlaceForDay } from './placesFromPhotos';
+import {
+  isPlaceKind,
+  knownPlaceNames,
+  linkPhotosToSaidPlace,
+  recordNamedPlaceForDay,
+  type PlaceKind,
+} from './places';
 import { ParsedTask, addTask } from './tasks';
 import { chatCompletion, textAvailable, textProviders } from './aiProviders';
 import { transcribeAudio, transcriptionAvailable } from './transcription';
@@ -37,7 +50,9 @@ Respond with ONLY a JSON object in this exact shape:
   "polished": "...",
   "tasks": [{"title": "...", "date": "YYYY-MM-DD" | null, "period": "morning"|"afternoon"|"evening"|"night" | null, "time": "HH:MM" | null}],
   "people": [{"name": "...", "descriptor": "..." | null, "note": "..."}],
-  "places": ["..."]
+  "places": [{"name": "...", "kind": "...", "moment": "..." | null}],
+  "markers": [{"kind": "...", "label": "..."}],
+  "recurring": [{"kind": "...", "label": "...", "every": "year"|"month", "date": "MM-DD" | "today" | null, "day_of_month": 1-31 | null, "person": "..." | null}]
 }
 
 "polished" — the memory itself, cleaned and reorganized: fix rambling and fillers, keep EVERY event and detail, first person, past tense where natural, in the SAME language(s) the user used (Arabic stays Arabic, mixed stays mixed). Reminders/to-dos MUST be removed entirely from the polished text — they live in "tasks" instead. Example: "…grabbed coffee with Lina, oh and remind me to book the flight friday" → polished ends at "…grabbed coffee with Lina." and the flight goes into tasks. Never invent details. If the entry is already clean, return it as-is.
@@ -46,15 +61,39 @@ Respond with ONLY a JSON object in this exact shape:
 
 "people" — only people the user personally met, saw, or spent time with in this entry (not people merely referred to). name: if the person clearly matches someone in KNOWN PEOPLE below, return EXACTLY that known spelling; otherwise the name as the user said it. Match ACROSS SCRIPTS AND SPELLINGS — the user writes the same person differently from day to day, and every version must come back as the one known spelling: "بابا" and "Baba" are one person; "Nayer", "Nair" and "ناير" are one person; "Ahmad" and "Ahmed" are usually one person. A KNOWN PEOPLE line that lists "also written: …" is telling you exactly which spellings already belong to that person. Only give a new name when this really is somebody the list doesn't have. descriptor: a short "who they are" only if the user stated it ("your neighbor", "coworker") — null otherwise. note: one short sentence about what happened with this person this time — written in the exact same language as the entry itself; NEVER translate.
 
-"places" — short names of places the user was physically at ("Work", "Gym", "787 Coffee"). Not places merely mentioned ("a client in New Jersey" is not a visit).
+"places" — places the user was physically at in this entry. Not places merely mentioned ("a client in New Jersey" is not a visit). name: short, the way the user calls it ("Work", "Gym", "787 Coffee", "CityTech"); if it clearly matches one in KNOWN PLACES below, return EXACTLY that known spelling — across scripts and wordings, like people: "الجامعة", "college" and "uni" are the known "CityTech" when that is plainly where the user studies; "البيت" is "Home". Otherwise the name as the user said it. kind is exactly one of: home, work, school, cafe, food, gym, shop, outdoors, friend (someone else's home), health, worship, travel, fun, other. moment: one short line of what happened there this time, in the entry's own language, NEVER translated ("Prof talked about the final project", "اتغديت مع عمر") — null when the entry says nothing about it.
+
+"markers" — notable moments that HAPPENED in this entry, the kind a person would later want to find at a glance ("when did I last take my medicine?"). kind is exactly one of: medicine, workout, doctor, sick, travel, celebration, study, work, home, purchase, religious, holiday, dinner, call, car, pet, family, achievement, payday. Only things that already happened on the day of the entry — plans and reminders belong in "tasks", never here. label is 2–5 words in the entry's own language, NEVER translated: "أخدت الدوا", "Got paid", "روحت الجيم", "Flight to Cairo". Leave out ordinary routine nobody would look for later (commuting, an everyday meal, a normal workday). Birthdays and anniversaries never go here — they go in "recurring" — and neither does a party, cake or dinner held FOR a birthday or anniversary: the recurring entry already marks that day, and a second icon for the same occasion is clutter.
+
+"recurring" — dates that come back. ONLY two cases: (1) a birthday or anniversary the entry mentions — every "year", date "MM-DD", or "today" when the entry says it is today ("النهاردة عيد ميلاد عمر", "it's our anniversary"); (2) something the user explicitly says repeats ("I get paid on the 25th", "rent is due on the 1st of every month") — every "month" with day_of_month. NEVER turn a one-off into a repeat: "got paid today" on its own is a payday marker, not recurring; a party is a celebration marker, not an anniversary. kind uses the same list plus birthday and anniversary. person: whose birthday or anniversary it is, matched to KNOWN PEOPLE exactly like "people"; null when it is the user's own. label is short, in the entry's language: "Omar's birthday", "عيد جوازنا", "Payday".
 
 Empty arrays are correct when a section has nothing.`;
+
+export type ParsedPlace = { name: string; kind?: PlaceKind; moment?: string };
+
+export type ParsedRecurring = {
+  kind: SirKind;
+  label: string;
+  every: 'year' | 'month';
+  /** Yearly: the month and day. Absent when `onEntryDay` is set. */
+  month?: number;
+  day?: number;
+  /** The entry said "today" — resolved in code from the day the memory
+   *  belongs to, not by the model. A memory processed a week late by the
+   *  retry sweep would otherwise put the birthday on the wrong date for
+   *  every year to come. */
+  onEntryDay?: boolean;
+  person?: string;
+};
 
 export type IntakeResult = {
   polished?: string;
   tasks: ParsedTask[];
   people: { name: string; descriptor?: string; note?: string }[];
-  places: string[];
+  places: ParsedPlace[];
+  /** Smart Icon Reminders for this day — see src/dayMarkers.ts. */
+  markers: { kind: SirKind; label: string }[];
+  recurring: ParsedRecurring[];
 };
 
 const PERIOD_TIMES: Record<string, string> = {
@@ -69,6 +108,7 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
 
   const now = new Date();
   const known = await getKnownPeopleForPrompt();
+  const knownPlaces = await knownPlaceNames().catch(() => [] as string[]);
 
   // Who is writing. Without this the intake brain can pull the user's own
   // name out of their own entry and file them as somebody they met — you'd
@@ -91,7 +131,7 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
         messages: [
           {
             role: 'system',
-            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}. Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}`,
+            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}. Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}\n\nKNOWN PLACES:\n${knownPlaces.join('\n') || '(none yet)'}`,
           },
           { role: 'user', content: text },
         ],
@@ -105,8 +145,55 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
       polished?: string;
       tasks?: { title?: string; date?: string | null; period?: string | null; time?: string | null }[];
       people?: { name?: string; descriptor?: string | null; note?: string | null }[];
-      places?: string[];
+      places?: (string | { name?: string; kind?: string; moment?: string | null })[];
+      markers?: { kind?: string; label?: string }[];
+      recurring?: {
+        kind?: string;
+        label?: string;
+        every?: string;
+        date?: string | null;
+        day_of_month?: number | null;
+        person?: string | null;
+      }[];
     };
+
+    // Every kind is checked against the list the app can draw. A model that
+    // invents a kind ("coffee") gets it dropped rather than rendered as a
+    // blank icon.
+    const markers = (parsed.markers ?? [])
+      .filter((m): m is { kind: SirKind; label?: string } => isSirKind(m.kind))
+      // Birthdays and anniversaries are repeats by nature; if one arrives
+      // here as a one-day marker it is the model ignoring its instructions,
+      // and keeping it would draw the same cake twice on that day.
+      .filter((m) => m.kind !== 'birthday' && m.kind !== 'anniversary')
+      .map((m) => ({ kind: m.kind, label: (m.label ?? '').trim() || SIR_KINDS[m.kind].label }));
+
+    const recurring: ParsedRecurring[] = [];
+    for (const r of parsed.recurring ?? []) {
+      if (!isSirKind(r.kind)) continue;
+      const label = (r.label ?? '').trim() || SIR_KINDS[r.kind].label;
+      const person = r.person?.trim() || undefined;
+      if (r.every === 'month') {
+        const day = Number(r.day_of_month);
+        if (Number.isInteger(day) && day >= 1 && day <= 31) {
+          recurring.push({ kind: r.kind, label, every: 'month', day, person });
+        }
+        continue;
+      }
+      // Yearly. Anything that isn't a real month and day is dropped: a
+      // birthday on the wrong date is worse than no birthday, because it
+      // comes back wrong every year.
+      if (r.date === 'today') {
+        recurring.push({ kind: r.kind, label, every: 'year', onEntryDay: true, person });
+        continue;
+      }
+      const match = /^(\d{2})-(\d{2})$/.exec(r.date ?? '');
+      const month = match ? Number(match[1]) : NaN;
+      const day = match ? Number(match[2]) : NaN;
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        recurring.push({ kind: r.kind, label, every: 'year', month, day, person });
+      }
+    }
 
     const tasks: ParsedTask[] = (parsed.tasks ?? [])
       .filter((t): t is { title: string } & typeof t => !!t.title?.trim())
@@ -130,7 +217,21 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
           descriptor: p.descriptor?.trim() || undefined,
           note: p.note?.trim() || undefined,
         })),
-      places: (parsed.places ?? []).map((s) => s.trim()).filter(Boolean),
+      // Older answers were a plain list of names; both shapes are read.
+      places: (parsed.places ?? [])
+        .map((p): ParsedPlace | null => {
+          if (typeof p === 'string') return p.trim() ? { name: p.trim() } : null;
+          const name = p?.name?.trim();
+          if (!name) return null;
+          return {
+            name,
+            kind: isPlaceKind(p.kind) ? p.kind : undefined,
+            moment: p.moment?.trim() || undefined,
+          };
+        })
+        .filter((p): p is ParsedPlace => !!p),
+      markers,
+      recurring,
     };
   } catch {
     return null;
@@ -191,9 +292,43 @@ export async function processMemoryIntake(
       await addPersonMention(dayKey, p.name, p.descriptor, p.note);
     }
 
-    // 4 — Places mentioned land on this day's Places.
-    for (const label of result.places) {
-      await recordNamedPlaceForDay(dayKey, label);
+    // 4 — Places the user was at land on this day's Places. When the log
+    //     came with photos and names exactly one place, those photos are of
+    //     it — the user said so about these very pictures — which is what
+    //     gives a place its name, location and cover without anyone asking.
+    //     Two places named with the same photos is ambiguous: no link.
+    const placeIds: string[] = [];
+    for (const place of result.places) {
+      const id = await recordNamedPlaceForDay(dayKey, place);
+      if (id) placeIds.push(id);
+    }
+    if (placeIds.length === 1) {
+      const memory = (await getLoggedMemories()).find((m) => m.id === memoryId);
+      if (memory?.photoUris?.length) await linkPhotosToSaidPlace(memory.photoUris, placeIds[0]);
+    }
+
+    // 5 — Moments worth finding at a glance become icons beside this day.
+    for (const m of result.markers) {
+      await addDayMarker(dayKey, { kind: m.kind, label: m.label, source: 'log', memoryId });
+    }
+
+    // 6 — Dates that come back. "today" is resolved against the day this
+    //     memory belongs to, which is not always the day it is processed.
+    const [, entryMonth, entryDay] = dayKey.split('-').map(Number);
+    for (const r of result.recurring) {
+      const month = r.onEntryDay ? entryMonth : r.month;
+      const day = r.onEntryDay ? entryDay : r.day;
+      if (!day) continue;
+      await addRecurringMarker({
+        kind: r.kind,
+        label: r.label,
+        every: r.every,
+        month: r.every === 'year' ? month : undefined,
+        day,
+        person: r.person,
+        since: dayKey,
+        source: 'log',
+      });
     }
     return true;
   } catch {
@@ -278,7 +413,18 @@ export async function transcribePendingMemories(limit = 3): Promise<boolean> {
     let changed = false;
     for (const m of pending) {
       lastTranscribeAt.set(m.id, Date.now());
-      const result = await transcribeAudio(m.audioUri!, 'auto');
+
+      // A recording saved by a previous install is still on disk, under a
+      // container path that no longer exists. Repair the record itself, not
+      // just this read — and give it its attempts back, because every past
+      // failure was the app looking in the wrong place rather than anything
+      // wrong with the recording.
+      const repaired = localFile(m.audioUri);
+      if (repaired && repaired !== m.audioUri) {
+        await updateMemory(m.id, { audioUri: repaired, transcribeAttempts: 0 });
+      }
+
+      const result = await transcribeAudio(repaired || m.audioUri!, 'auto');
 
       if (!result.ok) {
         // Only a real failure counts against the attempt budget. No key, no

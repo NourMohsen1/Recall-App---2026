@@ -195,6 +195,16 @@ export async function readPhotoUris(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.photo_uri));
 }
 
+/** How many faces each read photo has. A photo not read yet is absent.
+ *  Places use this to pick a cover: the building, not the selfie. */
+export async function getPhotoFaceCounts(): Promise<Map<string, number>> {
+  const handle = await db();
+  const rows = await handle.getAllAsync<{ photo_uri: string; faces: number }>(
+    'SELECT photo_uri, faces FROM read_photos',
+  );
+  return new Map(rows.map((r) => [r.photo_uri, r.faces]));
+}
+
 export type IndexStatus = {
   /** Photos worth reading at all. */
   total: number;

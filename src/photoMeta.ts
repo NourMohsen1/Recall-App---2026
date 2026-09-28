@@ -23,6 +23,19 @@ export type PhotoMeta = {
   // A file path resolved from assetId, cached once so the same photo isn't
   // re-fetched every time it's shown.
   localUri?: string;
+  // Where the photo was taken, from its own GPS. Stays on the device: this
+  // is what Places are built from (see src/places.ts).
+  latitude?: number;
+  longitude?: number;
+  // True once the photo's location has been looked for — including when it
+  // had none — so the background sweep never asks the OS about it again.
+  locationRead?: boolean;
+  // The place this photo was taken at, once places.ts has filed it.
+  placeId?: string;
+  // The place the user NAMED in the log these photos came with ("coffee at
+  // Dunkin" + a photo). The strongest evidence there is of what a spot is
+  // called, because the user said it about these exact pictures.
+  saidPlaceId?: string;
 };
 
 const PHOTO_META_KEY = 'photoMeta';

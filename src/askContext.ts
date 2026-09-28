@@ -1,9 +1,10 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { PLACES, WEEKDAYS } from './data';
+import { getAllDayMarkers, getRecurringMarkers, occursOn } from './dayMarkers';
 import { getLoggedMemories } from './memoryLog';
 import { getAllGuesses } from './guessedPeople';
 import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
-import { getAllDayPlaces } from './placesFromPhotos';
+import { getAllDayPlaces, getPlaces, usualWeekday } from './places';
 import { formatDueTime, getTasks } from './tasks';
 import { getUserProfile, identityForPrompt } from './userProfile';
 import { ResolvedEvent, daysOfEvent } from './worldEvents';
@@ -91,6 +92,9 @@ type DayRecord = {
    *  did. */
   guessed: string[];
   places: string[];
+  /** Smart Icon Reminders on that day — "medicine: أخدت الدوا". Written
+   *  from what the user logged or added themselves, so these are facts. */
+  markers: string[];
   // How many real photos that day holds. Kept separately from `assumed` so
   // the model can tell "nothing happened" apart from "there are 14 photos
   // the app hasn't read yet" — two very different answers.
@@ -102,7 +106,14 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
   const get = (key: string): DayRecord => {
     const existing = days.get(key);
     if (existing) return existing;
-    const fresh: DayRecord = { logged: [], people: [], guessed: [], places: [], photoCount: 0 };
+    const fresh: DayRecord = {
+      logged: [],
+      people: [],
+      guessed: [],
+      places: [],
+      markers: [],
+      photoCount: 0,
+    };
     days.set(key, fresh);
     return fresh;
   };
@@ -139,10 +150,79 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
 
   for (const [key, places] of Object.entries(await getAllDayPlaces())) {
     const rec = get(key);
-    for (const p of places) rec.places.push(p.label);
+    // What happened there, when the user said — "Dunkin (coffee with Omar)".
+    for (const p of places) rec.places.push(p.moment ? `${p.label} (${p.moment})` : p.label);
+  }
+
+  // Moments marked on a day. Repeating ones (birthdays, paydays) are not
+  // copied onto every date they land on — that would put the same birthday
+  // on dozens of days of context. They go in their own list instead; see
+  // recurringBlock.
+  for (const [key, list] of Object.entries(await getAllDayMarkers())) {
+    const rec = get(key);
+    for (const m of list) rec.markers.push(`${m.kind}: ${m.label}`);
   }
 
   return days;
+}
+
+// Dates that come back, stated once. This is what answers "when is Omar's
+// birthday?" and "is the 25th payday?" — questions about the future that no
+// single day's record can.
+async function recurringBlock(): Promise<string> {
+  const all = await getRecurringMarkers();
+  if (all.length === 0) return '';
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+
+  // The NEXT time each one comes round, worked out here rather than left to
+  // the model. Tested: given only "every year on 1 October", it answered
+  // "your birthday is Wednesday 1 October" for a date that is a Thursday.
+  // The weekday and the count of days are the parts people act on, so they
+  // are computed, never guessed.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const next = (r: (typeof all)[number]): string => {
+    for (let i = 0; i <= 400; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() + i);
+      if (!occursOn(r, isoDate(d))) continue;
+      const when = i === 0 ? 'today' : i === 1 ? 'tomorrow' : `in ${i} days`;
+      return ` Next: ${longDate(d)} (${when}).`;
+    }
+    return '';
+  };
+
+  const lines = all.map((r) =>
+    r.every === 'year' && r.month
+      ? `- ${r.label} (${r.kind}) — every year on ${r.day} ${MONTH_NAMES[r.month - 1]}.${next(r)}`
+      : `- ${r.label} (${r.kind}) — every month on day ${r.day}.${next(r)}`,
+  );
+  return `DATES THAT REPEAT (from what the user logged or marked). Use the "Next" date and weekday exactly as given — never work them out yourself:\n${lines.join('\n')}`;
+}
+
+// The places the user goes, with when they were last there — what answers
+// "when was I last at Dunkin?" and "where do I usually go on Mondays?"
+// without the model counting days itself. Only places the user has been to
+// more than once or named: a street walked down once is noise here.
+async function placesBlock(): Promise<string> {
+  const all = (await getPlaces()).filter((p) => p.named || p.days.length > 1);
+  if (all.length === 0) return '';
+  const lines = all
+    .sort((a, b) => b.days.length - a.days.length)
+    .slice(0, 30)
+    .map((p) => {
+      const last = p.days[p.days.length - 1];
+      const weekday = usualWeekday(p.days);
+      const name = p.named ? p.label : `${p.label} (a spot the user hasn't named; this is its street)`;
+      return (
+        `- ${name}${p.kind ? ` [${p.kind}]` : ''}: ${p.days.length} day(s), first ${p.days[0]}, last ${last}` +
+        (weekday ? `, usually on ${weekday}s` : '')
+      );
+    });
+  return `PLACES THE USER GOES (from where their photos were taken and the places they named). Dates are exact — use them as given:\n${lines.join('\n')}`;
 }
 
 // Everything about one day, written out in full and clearly delimited so
@@ -168,6 +248,7 @@ function fullDayBlock(key: string, rec: DayRecord): string {
     );
   }
   if (rec.places.length > 0) lines.push(`Places that day: ${rec.places.join(', ')}`);
+  if (rec.markers.length > 0) lines.push(`Marked that day: ${rec.markers.join(', ')}`);
   if (lines.length === 1) lines.push('Nothing at all recorded for this day — no photos, no notes.');
   return lines.join('\n');
 }
@@ -181,7 +262,12 @@ function indexLine(key: string, rec: DayRecord): string {
   // is how the model decides which days to look at, and a day where someone
   // MIGHT appear is worth looking at — but it must not arrive here looking
   // like a day where they definitely did.
-  const extras = [...rec.places, ...rec.people, ...rec.guessed.map((n) => `${n}?`)].join(', ');
+  const extras = [
+    ...rec.markers,
+    ...rec.places,
+    ...rec.people,
+    ...rec.guessed.map((n) => `${n}?`),
+  ].join(', ');
   const text = [gist.slice(0, 70), extras.slice(0, 60)].filter(Boolean).join(' — ');
   return `- ${key}: ${text || '(nothing)'}`;
 }
@@ -210,6 +296,10 @@ function scoreDay(rec: DayRecord, keywords: string[]): number {
     rec.assumed ?? '',
     ...rec.people,
     ...rec.places,
+    // "medicine: أخدت الدوا" — both the kind and the user's own words are
+    // searchable, so "when did I last take my medicine?" finds a day marked
+    // by hand, where the icon is the only trace.
+    ...rec.markers,
   ]
     .join(' ')
     .toLowerCase();
@@ -261,7 +351,14 @@ function rangeDaysOf(plan?: QueryPlan): string[] {
 // How much a day is worth writing out in full — the user's own words beat a
 // photo guess, which beats bare photos.
 function contentWeight(rec: DayRecord): number {
-  return rec.logged.join(' ').length * 3 + (rec.assumed?.length ?? 0) + rec.photoCount;
+  // Markers are short but deliberate — a day someone marked "took medicine"
+  // is worth showing over a day with nothing, so each counts for a little.
+  return (
+    rec.logged.join(' ').length * 3 +
+    (rec.assumed?.length ?? 0) +
+    rec.photoCount +
+    rec.markers.length * 20
+  );
 }
 
 // How much each date can be leaned on. A calendar-table or web-verified
@@ -309,6 +406,14 @@ export async function buildMemoryContext(
   // person, and it has no standing context about their work or family.
   const identity = identityForPrompt(await getUserProfile());
   if (identity) sections.push(`WHO YOU ARE TALKING TO: ${identity}`);
+
+  // Birthdays, anniversaries, paydays. A few lines at most, and the only
+  // place "when is Omar's birthday?" can be answered from.
+  const repeats = await recurringBlock();
+  if (repeats) sections.push(repeats);
+
+  const placeLines = await placesBlock();
+  if (placeLines) sections.push(placeLines);
 
   const days = await buildDayIndex();
 

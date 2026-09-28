@@ -1,8 +1,9 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { WEEKDAYS } from './data';
 import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from './memoryLog';
+import { getMarkersForDay, getRecurringMarkers } from './dayMarkers';
 import { getGuessedDaysFor, getGuessesForDay } from './guessedPeople';
-import { getAllDayPlaces } from './placesFromPhotos';
+import { getAllDayPlaces, getPlace, getPlaces, usualWeekday } from './places';
 import {
   getAllPersonMeta,
   getPeopleSummaries,
@@ -184,7 +185,27 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
   }
   const days = await collectDays();
   const d = days.get(date);
+
+  // Smart Icon Reminders, including any birthday or payday that falls on
+  // this date — so a day in the future can still have something on it.
+  const marks = await getMarkersForDay(date);
+  const marked = marks.length
+    ? marks.map((m) => ({
+        what: m.label,
+        kind: m.kind,
+        repeats: m.recurring ? (m.recurring.every === 'year' ? 'every year' : 'every month') : undefined,
+      }))
+    : undefined;
+
   if (!d) {
+    if (marked) {
+      return {
+        date,
+        when: spokenWhen(date),
+        marked,
+        note: 'Nothing was logged on this day, but it is marked with the moments listed. Answer from those.',
+      };
+    }
     return {
       date,
       when: spokenWhen(date),
@@ -211,6 +232,7 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
         }
       : undefined,
     places: d.places,
+    marked,
   };
 }
 
@@ -238,10 +260,22 @@ async function findPerson(args: { name?: string }): Promise<ToolResult> {
   }
   const meta = (await getAllPersonMeta())[canonical];
   const days = await collectDays();
+
+  // Their birthday or anniversary, if one was ever mentioned. Answers "when
+  // is Omar's birthday?" out loud without the user having set anything up.
+  const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+  ];
+  const dates = (await getRecurringMarkers())
+    .filter((r) => r.person?.toLowerCase() === canonical.toLowerCase() && r.month)
+    .map((r) => ({ what: r.label, kind: r.kind, date: `${r.day} ${MONTH_NAMES[(r.month ?? 1) - 1]}` }));
+
   return {
     found: true,
     name: person.name,
     how_you_know_them: meta?.descriptor,
+    dates_that_repeat: dates.length ? dates : undefined,
     last_seen: person.lastSeenDay
       ? { date: person.lastSeenDay, when: spokenWhen(person.lastSeenDay) }
       : null,
@@ -326,6 +360,41 @@ async function daysWithPerson(args: { name?: string; limit?: number }): Promise<
   return person;
 }
 
+// One place: how often, when last, what happened there, who with.
+async function findPlace(args: { name?: string }): Promise<ToolResult> {
+  const asked = String(args.name ?? '').trim();
+  if (!asked) return { error: 'No place given.' };
+  const place = await getPlace(asked);
+  if (!place) {
+    const known = (await getPlaces()).filter((p) => p.named).slice(0, 15).map((p) => p.label);
+    return {
+      found: false,
+      asked,
+      places_the_user_has_named: known,
+      note: `No place called "${asked}" is in the app. If one of the listed places is plainly what they mean, look that one up; otherwise say you don't have it — do not guess.`,
+    };
+  }
+  const days = await collectDays();
+  const recent = [...place.days].reverse().slice(0, 6);
+  return {
+    found: true,
+    name: place.label,
+    named_by_user: place.named,
+    kind: place.kind,
+    days_there: place.days.length,
+    first_visit: { date: place.days[0], when: spokenWhen(place.days[0]) },
+    last_visit: { date: recent[0], when: spokenWhen(recent[0]) },
+    usually_on: usualWeekday(place.days) ?? undefined,
+    recent_visits: recent.map((k) => ({
+      date: k,
+      when: spokenWhen(k),
+      what_happened_there: place.moments[k],
+      what_happened_that_day: days.get(k)?.logged ?? [],
+      people: days.get(k)?.people ?? [],
+    })),
+  };
+}
+
 // The schemas handed to the model. Names and descriptions are written for it
 // to read, so they say when to reach for each one rather than only what it
 // does.
@@ -368,6 +437,17 @@ export const REALTIME_TOOLS = [
   },
   {
     type: 'function',
+    name: 'find_place',
+    description:
+      'What the app knows about one place: how often the user goes, when they were first and last there, which weekday they usually go, and what happened on recent visits. Use it for any question about a named place — "when was I last at Dunkin", "how often do I go to the gym".',
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'The place, as the user said it.' } },
+      required: ['name'],
+    },
+  },
+  {
+    type: 'function',
     name: 'list_people',
     description:
       'Everyone the app knows, most recently seen first. Use it for "who have I not seen in a while" or when the user refers to someone vaguely.',
@@ -400,6 +480,7 @@ const HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<ToolRe
   search_memories: searchMemories,
   get_day: getDay,
   find_person: findPerson,
+  find_place: findPlace,
   list_people: listPeople,
   list_tasks: listTasks,
   recent_days: recentDays,

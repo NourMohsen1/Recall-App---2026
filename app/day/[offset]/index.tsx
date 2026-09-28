@@ -5,6 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../../src/components/PeopleEditor';
+import { SirPicker, SirRow } from '../../../src/components/SirCluster';
+import {
+  getMarkersForDay,
+  markDay,
+  removeMarker,
+  type ShownMarker,
+  type SirKind,
+} from '../../../src/dayMarkers';
 import PhotoImage from '../../../src/components/PhotoImage';
 import {
   AssumedMemory,
@@ -46,7 +54,8 @@ import {
 import { approveGuess, getGuessesForDay, rejectGuess } from '../../../src/guessedPeople';
 import { ensureDayScanned, faceMatchingAvailable } from '../../../src/faceMatching';
 import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
-import { DetectedPlace, getPlacesForDay } from '../../../src/placesFromPhotos';
+import PlaceTile from '../../../src/components/PlaceTile';
+import { DayPlace, getPlacesForDay } from '../../../src/places';
 import { rtlIfArabic } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
 
@@ -57,7 +66,7 @@ export default function DayDetailScreen() {
   const date = dateWithOffset(offsetNum);
 
   const [real, setReal] = useState<LoggedMemory[]>([]);
-  const [places, setPlaces] = useState<DetectedPlace[]>([]);
+  const [places, setPlaces] = useState<DayPlace[]>([]);
   const [people, setPeople] = useState<string[]>([]);
   const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
@@ -68,9 +77,14 @@ export default function DayDetailScreen() {
   // matcher's confidence and source photo, which nothing here used.
   const [faceSuggestions, setFaceSuggestions] = useState<{ name: string }[]>([]);
   const [readingFaces, setReadingFaces] = useState(false);
+  // Smart Icon Reminders — the same markers the Timeline floats beside
+  // this day, from the same store. See src/dayMarkers.ts.
+  const [markers, setMarkers] = useState<ShownMarker[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const dayKey = dateKey(dateWithOffset(offsetNum));
   const reload = useCallback(() => {
     const key = dateKey(dateWithOffset(offsetNum));
+    getMarkersForDay(key).then(setMarkers);
     getMemoriesByDay().then((byDay) => setReal(byDay.get(key) ?? []));
     getPlacesForDay(key).then(setPlaces);
     getPeopleForDay(key).then(setPeople);
@@ -96,6 +110,16 @@ export default function DayDetailScreen() {
   const dismissSuggested = async (personName: string) => {
     await rejectGuess(dayKey, personName);
     reload();
+  };
+
+  const addSir = async (kind: SirKind) => {
+    setPickerOpen(false);
+    await markDay(dayKey, kind);
+    setMarkers(await getMarkersForDay(dayKey));
+  };
+  const removeSir = async (marker: ShownMarker) => {
+    await removeMarker(dayKey, marker);
+    setMarkers(await getMarkersForDay(dayKey));
   };
 
 
@@ -135,6 +159,8 @@ export default function DayDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       reload();
+      // A picker left open must not follow the user to the next screen.
+      return () => setPickerOpen(false);
     }, [reload]),
   );
 
@@ -426,14 +452,16 @@ export default function DayDetailScreen() {
             <Text style={styles.placesTitle}>Places</Text>
             <View style={styles.placeGrid}>
               {places.map((place) => (
-                <View key={`${place.label}-${place.latitude ?? 'named'}`} style={styles.placeCell}>
-                  <View style={styles.placePin}>
-                    <MaterialCommunityIcons name="map-marker" size={28} color={colors.teal} />
-                  </View>
-                  <Text numberOfLines={1} style={styles.placeLabel}>
-                    {place.label}
-                  </Text>
-                </View>
+                <PlaceTile
+                  key={place.placeId}
+                  label={place.label}
+                  cover={place.cover}
+                  kind={place.kind}
+                  size={100}
+                  onPress={() =>
+                    router.push({ pathname: '/place/[name]', params: { name: place.placeId } })
+                  }
+                />
               ))}
             </View>
           </>
@@ -457,6 +485,14 @@ export default function DayDetailScreen() {
           onAdd={addPerson}
           onRemove={removePerson}
         />
+
+        {/* Moments — the Smart Icon Reminders, as a labelled row. Always
+            shown, with its "+", because marking a day you logged nothing on
+            ("took my medicine") is one of the reasons it exists. */}
+        <View style={styles.divider} />
+        <Text style={styles.placesTitle}>Moments</Text>
+        <SirRow markers={markers} onAdd={() => setPickerOpen(true)} onRemove={removeSir} />
+        <SirPicker visible={pickerOpen} onPick={addSir} onClose={() => setPickerOpen(false)} />
 
         {/* Assumed Memory, maximized — deliberately its own section, well
             below the real logged content, dashed/tinted so it never reads
@@ -633,17 +669,7 @@ const styles = StyleSheet.create({
   },
   peopleReading: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
   placesTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111', marginBottom: 14 },
-  placeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 },
-  placeCell: { width: 88, alignItems: 'center' },
-  placePin: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: colors.pale,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  placeLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
+  placeGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 12 },
 
   empty: { paddingTop: 80, alignItems: 'center' },
   emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },

@@ -67,7 +67,7 @@ import {
   setPersonPhoto,
   verifyPerson,
 } from '../../src/peopleTags';
-import { DetectedPlace, getAllDayPlaces } from '../../src/placesFromPhotos';
+import { DayPlace, getAllDayPlaces } from '../../src/places';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
@@ -136,7 +136,7 @@ export default function PersonProfile() {
 
   const [person, setPerson] = useState<PersonSummary | null>(null);
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
-  const [dayPlaces, setDayPlaces] = useState<Record<string, DetectedPlace[]>>({});
+  const [dayPlaces, setDayPlaces] = useState<Record<string, DayPlace[]>>({});
   const [meta, setMeta] = useState<PersonMeta | null>(null);
   // Photo analysis per day, so the recap line can fall back to what the
   // photos showed when the user never wrote anything down themselves.

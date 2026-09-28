@@ -18,11 +18,40 @@ import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, persistFile, saveMemory } from '../../src/memoryLog';
 import { setPhotoMetaBatch, PhotoMeta } from '../../src/photoMeta';
 import { detectPhotoSource } from '../../src/photoSource';
-import { recordCurrentLocationForDay } from '../../src/placesFromPhotos';
+import { notePhotoLocations, recordCurrentLocationForDay, whereAmI } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
 import { useReturnTo } from '../../src/useReturnTo';
 
-type Picked = { uri: string; takenAt: Date; source?: PhotoMeta['source'] };
+type Picked = {
+  uri: string;
+  takenAt: Date;
+  source?: PhotoMeta['source'];
+  /** From the photo's own EXIF, when it has GPS. */
+  location?: { latitude: number; longitude: number };
+  /** The library asset, when picked from the library — lets the places
+   *  sweep ask the OS for a location the EXIF didn't carry. */
+  assetId?: string;
+  /** Taken just now with the camera, so the phone's position is where. */
+  fromCamera?: boolean;
+};
+
+// GPS from EXIF. iOS nests it under "{GPS}" with the hemisphere in a
+// separate Ref field; other sources flatten it as GPSLatitude and so on.
+function locationFromAsset(
+  asset: ImagePicker.ImagePickerAsset,
+): { latitude: number; longitude: number } | undefined {
+  const exif = (asset.exif ?? {}) as Record<string, any>;
+  const gps = exif['{GPS}'] ?? {};
+  const lat = Number(gps.Latitude ?? exif.GPSLatitude);
+  const lng = Number(gps.Longitude ?? exif.GPSLongitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || (lat === 0 && lng === 0)) return undefined;
+  const latRef = String(gps.LatitudeRef ?? exif.GPSLatitudeRef ?? 'N').toUpperCase();
+  const lngRef = String(gps.LongitudeRef ?? exif.GPSLongitudeRef ?? 'E').toUpperCase();
+  return {
+    latitude: latRef === 'S' ? -Math.abs(lat) : lat,
+    longitude: lngRef === 'W' ? -Math.abs(lng) : lng,
+  };
+}
 
 // EXIF timestamps look like "2026:07:02 14:31:08" (local time of the shot).
 // iOS sometimes nests them under "{Exif}". Fall back to "now" when missing.
@@ -58,12 +87,15 @@ export default function LogPhoto() {
   const [caption, setCaption] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const addAssets = (assets: ImagePicker.ImagePickerAsset[]) => {
+  const addAssets = (assets: ImagePicker.ImagePickerAsset[], fromCamera = false) => {
     setPicked((prev) => [
       ...prev,
       ...assets.map((a) => ({
         uri: a.uri,
         takenAt: takenAtFromAsset(a),
+        location: locationFromAsset(a),
+        assetId: a.assetId ?? undefined,
+        fromCamera,
         // The picker has no PHAsset mediaSubtypes, so screenshot detection
         // here relies on filename only — still catches Android's
         // "Screenshot_..." convention and iOS's rare literal-named ones.
@@ -94,7 +126,7 @@ export default function LogPhoto() {
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.8, exif: true });
-    if (!result.canceled) addAssets(result.assets);
+    if (!result.canceled) addAssets(result.assets, true);
   };
 
   const removeAt = (index: number) => {
@@ -109,6 +141,10 @@ export default function LogPhoto() {
     // photo was taken — each group becomes its own memory on that date.
     const groups = new Map<string, Picked[]>();
     const photoMetaEntries: [string, PhotoMeta][] = [];
+    const locations: [string, { latitude: number; longitude: number } | undefined][] = [];
+    // A photo just taken with the camera was taken where the phone is now —
+    // the camera itself rarely writes GPS into what it hands back.
+    const here = picked.some((p) => p.fromCamera && !p.location) ? await whereAmI() : null;
     for (const p of picked) {
       const permanent = { ...p, uri: await persistFile(p.uri, 'photo') };
       const key = dateKey(p.takenAt);
@@ -117,9 +153,15 @@ export default function LogPhoto() {
       else groups.set(key, [permanent]);
       const meta: PhotoMeta = { takenAt: permanent.takenAt.getTime() };
       if (permanent.source) meta.source = permanent.source;
+      if (permanent.assetId) meta.assetId = permanent.assetId;
       photoMetaEntries.push([permanent.uri, meta]);
+      const location = p.location ?? (p.fromCamera ? here ?? undefined : undefined);
+      // Known now, or none to find: file it. Otherwise leave it for the
+      // places sweep, which can ask the library about the asset.
+      if (location || !permanent.assetId) locations.push([permanent.uri, location]);
     }
     await setPhotoMetaBatch(photoMetaEntries);
+    await notePhotoLocations(locations);
     const today = dateKey(new Date());
     for (const [key, group] of groups) {
       const earliest = group.reduce((a, b) => (a.takenAt <= b.takenAt ? a : b));

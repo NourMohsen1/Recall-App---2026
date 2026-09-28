@@ -34,7 +34,8 @@ import {
   resumableSession,
   saveSession,
 } from '../src/chatSessions';
-import { MISC, placePhoto } from '../src/images';
+import { MISC } from '../src/images';
+import { PlaceThumb } from '../src/components/PlaceTile';
 import { avatarTint } from '../src/peopleTags';
 import { speakText, stopSpeaking } from '../src/speech';
 import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../src/transcription';
@@ -329,7 +330,7 @@ function ReferenceCard({ reference }: { reference: Reference }) {
         style={styles.cardRow}
         onPress={() => router.push({ pathname: '/place/[name]', params: { name: reference.name } })}
       >
-        <Image source={placePhoto(reference.name)} style={styles.cardAvatar} />
+        <PlaceThumb name={reference.name} radius={999} style={[styles.cardAvatar, { borderWidth: 0 }]} />
         <View style={{ flex: 1 }}>
           <Text style={styles.cardTitle}>{reference.name}</Text>
           <Text style={styles.cardBullet}>Tap to view this place</Text>
