@@ -116,9 +116,21 @@ on the same days. Unnamed spots show Apple's landmark/street label — the only
 thing that leaves the phone. A background sweep (`startPlaceIndexing`) reads
 locations of older photos and files everything.
 
+**Attachments** (`src/attachments.ts`, `app/log/attachment.tsx`): a screenshot
+or PDF saved as a `document` memory. The local native module
+`modules/text-reader` reads its text on the phone (Vision + PDFKit); only the
+words go to the intake, which turns upcoming appointments/tickets/bills into
+tasks with `notes` details, the attachment, early reminders (evening before,
+2 h before) and an icon on that day. Documents are never photo memories, so
+photo analysis and face indexing never see them. Changing the Swift module
+needs a native rebuild.
+
 **Photo analysis** (`src/assumedMemory.ts`) sends a day's photos to DeepSeek to
 describe them. That is deliberate and Nour's call — don't change it quietly,
-and it must be declared on Apple's privacy questionnaire. Face recognition and
+and it must be declared on Apple's privacy questionnaire.
+**Nour plans to move photo analysis on-device** so no photo leaves the phone.
+He is researching it and will approve the approach himself — don't start it.
+His iPhone 14 Pro Max can't run Apple Intelligence; measure before choosing. Face recognition and
 face cropping never leave the device.
 
 ## Rules learned the hard way
