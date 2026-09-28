@@ -300,15 +300,35 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
     // seconds of the original hold.
     pauseBackgroundAnalysis();
 
-    const headers = { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' };
+    // Who answers, in order: DeepSeek, DeepSeek again, then OpenAI.
+    //
+    // WHY THREE TRIES. DeepSeek's JSON mode sometimes replies with nothing —
+    // a few characters of blank space and finish_reason "stop" — and its own
+    // documentation admits it. Measured on the same follow-up question:
+    // 2 blank replies in 3 with the earlier answers replayed as plain text,
+    // 1 in 3 with them replayed as JSON. Replaying as JSON helps, so it is
+    // done below; it does not fix it, so a blank reply gets a second DeepSeek
+    // try and then OpenAI, which is the configured fallback and does not do
+    // this. Before, a blank reply was the end: "Something went wrong reaching
+    // your memory", on what was usually the user's second question.
+    const all = textProviders();
+    const deepseek = all.find((x) => x.name === 'deepseek');
+    const openai = all.find((x) => x.name === 'openai');
+    const attempts = [deepseek, deepseek, openai].filter((x): x is Provider => !!x);
 
-    const buildBody = async (mode: 'full' | 'compact') => {
+    const buildBody = async (prov: Provider, mode: 'full' | 'compact') => {
       const context = await buildMemoryContext(plan, mode);
       return JSON.stringify({
-        model: p.model,
+        model: prov.model,
         messages: [
           { role: 'system', content: `${SYSTEM_PROMPT}\n\n---\nMEMORY LOG:\n${context}` },
-          ...history.slice(-8).map((h) => ({ role: h.role, content: h.text })),
+          ...history.slice(-8).map((h) => ({
+            role: h.role,
+            // Earlier answers replayed in the JSON shape the model is asked
+            // to reply in. As plain sentences they contradict that format,
+            // which made blank replies twice as common on follow-ups.
+            content: h.role === 'assistant' ? JSON.stringify({ answer: h.text }) : h.text,
+          })),
           { role: 'user', content: question },
         ],
         response_format: { type: 'json_object' },
@@ -316,56 +336,85 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
       });
     };
 
-    let res = await fetch(p.url, { method: 'POST', headers, body: await buildBody('full') });
+    let lastReason: Exclude<AskResult, { ok: true }>['reason'] = 'failed';
 
-    // Rate limits here are on TOKENS per minute, not request count — so
-    // resending the SAME oversized payload was never going to work, it
-    // just burned more of the budget it was already short of. Each retry
-    // now sends the compact context instead (only the days actually
-    // retrieved for this question — a fraction of the size), which is what
-    // actually gets an answer through a tight budget. A genuine
-    // "out of credits" case skips retrying entirely.
-    for (const backoffMs of [1500, 4000]) {
-      if (res.status !== 429 || (await readErrorReason(res.clone())) !== 'rate-limited') break;
-      pauseBackgroundAnalysis();
-      await sleep(backoffMs);
-      res = await fetch(p.url, { method: 'POST', headers, body: await buildBody('compact') });
+    for (const prov of attempts) {
+      const headers = { Authorization: `Bearer ${prov.key}`, 'Content-Type': 'application/json' };
+      let res = await fetch(prov.url, { method: 'POST', headers, body: await buildBody(prov, 'full') });
+
+      // Rate limits here are on TOKENS per minute, not request count — so
+      // resending the SAME oversized payload was never going to work, it
+      // just burned more of the budget it was already short of. Each retry
+      // sends the compact context instead (only the days actually retrieved
+      // for this question — a fraction of the size), which is what actually
+      // gets an answer through a tight budget. A genuine "out of credits"
+      // case skips retrying and moves to the next provider.
+      for (const backoffMs of [1500, 4000]) {
+        if (res.status !== 429 || (await readErrorReason(res.clone())) !== 'rate-limited') break;
+        pauseBackgroundAnalysis();
+        await sleep(backoffMs);
+        res = await fetch(prov.url, { method: 'POST', headers, body: await buildBody(prov, 'compact') });
+      }
+
+      // Each failure says what it was. They all reach the user as the same
+      // "something went wrong", and while none of them was logged there was
+      // no telling a refusal from a blank reply from a crash.
+      if (res.status === 429) {
+        lastReason = await readErrorReason(res);
+        console.warn(`[ask] ${prov.name}: ${lastReason}`);
+        continue;
+      }
+      if (!res.ok) {
+        console.warn(`[ask] ${prov.name} refused: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
+        continue;
+      }
+
+      const json = await res.json();
+      const content: string = (json.choices?.[0]?.message?.content ?? '').trim();
+      let parsed: {
+        answer?: string;
+        sources?: { date?: string; kind?: string }[];
+        reference?: Reference | null;
+        suggestions?: string[];
+      };
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        console.warn(
+          `[ask] ${prov.name} sent ${content ? 'unreadable JSON' : 'a blank reply'} — trying again`,
+        );
+        continue;
+      }
+      if (!parsed.answer) {
+        console.warn(`[ask] ${prov.name} returned no answer: ${content.slice(0, 200)}`);
+        continue;
+      }
+
+      const sources: Source[] = (parsed.sources ?? [])
+        .filter((s): s is { date: string; kind?: string } => !!s?.date && /^\d{4}-\d{2}-\d{2}$/.test(s.date))
+        .map<Source>((s) => ({
+          date: s.date,
+          label: sourceLabel(s.date),
+          kind: s.kind === 'photoAnalysis' ? 'photoAnalysis' : 'logged',
+        }))
+        // The model sometimes repeats a day; one row per day is enough.
+        .filter((s, i, arr) => arr.findIndex((o) => o.date === s.date) === i)
+        .slice(0, 5);
+
+      return {
+        ok: true,
+        answer: parsed.answer,
+        sources,
+        reference: parsed.reference ?? null,
+        suggestions: Array.isArray(parsed.suggestions)
+          ? parsed.suggestions.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3)
+          : [],
+      };
     }
 
-    if (res.status === 429) return { ok: false, reason: await readErrorReason(res) };
-    if (!res.ok) return { ok: false, reason: 'failed' };
-
-    const json = await res.json();
-    const content: string = json.choices?.[0]?.message?.content ?? '';
-    const parsed = JSON.parse(content) as {
-      answer?: string;
-      sources?: { date?: string; kind?: string }[];
-      reference?: Reference | null;
-      suggestions?: string[];
-    };
-    if (!parsed.answer) return { ok: false, reason: 'failed' };
-
-    const sources: Source[] = (parsed.sources ?? [])
-      .filter((s): s is { date: string; kind?: string } => !!s?.date && /^\d{4}-\d{2}-\d{2}$/.test(s.date))
-      .map<Source>((s) => ({
-        date: s.date,
-        label: sourceLabel(s.date),
-        kind: s.kind === 'photoAnalysis' ? 'photoAnalysis' : 'logged',
-      }))
-      // The model sometimes repeats a day; one row per day is enough.
-      .filter((s, i, arr) => arr.findIndex((o) => o.date === s.date) === i)
-      .slice(0, 5);
-
-    return {
-      ok: true,
-      answer: parsed.answer,
-      sources,
-      reference: parsed.reference ?? null,
-      suggestions: Array.isArray(parsed.suggestions)
-        ? parsed.suggestions.filter((s) => typeof s === 'string' && s.trim()).slice(0, 3)
-        : [],
-    };
-  } catch {
+    return { ok: false, reason: lastReason };
+  } catch (e) {
+    console.warn(`[ask] failed: ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: 'failed' };
   }
 }
