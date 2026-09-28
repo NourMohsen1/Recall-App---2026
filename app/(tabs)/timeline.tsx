@@ -495,6 +495,7 @@ export default function Timeline() {
   const texts = real.filter((m) => m.kind === 'text');
   const voices = real.filter((m) => m.kind === 'voice');
   const photoMemories = real.filter((m) => m.kind === 'photo');
+  const documents = real.filter((m) => m.kind === 'document');
   const realPhotoUris = photoMemories.flatMap((m) => m.photoUris ?? []);
   // What the user already wrote/said themselves, if anything — handed to
   // the assumed-memory analysis so it complements rather than duplicates.
@@ -620,6 +621,7 @@ export default function Timeline() {
   const bullets = [
     ...texts.map((t) => memoryDisplayText(t)),
     ...voices.map((v) => memoryDisplayText(v)),
+    ...documents.map((d) => memoryDisplayText(d)),
     ...photoCaptions,
   ].filter(Boolean) as string[];
 
@@ -629,9 +631,13 @@ export default function Timeline() {
   // card this small and wrong for a day logged more than one way — a voice
   // note in the morning and a typed one at night would need two sentences.
   // The icons just mark which methods were used and open the Source page.
-  const captureMethods: { key: string; icon: 'microphone-outline' | 'keyboard-outline' }[] = [
+  const captureMethods: {
+    key: string;
+    icon: 'microphone-outline' | 'keyboard-outline' | 'paperclip';
+  }[] = [
     ...(voices.length > 0 ? [{ key: 'voice', icon: 'microphone-outline' as const }] : []),
     ...(texts.length > 0 ? [{ key: 'typed', icon: 'keyboard-outline' as const }] : []),
+    ...(documents.length > 0 ? [{ key: 'document', icon: 'paperclip' as const }] : []),
   ];
 
   const latestPhotoMemory = photoMemories[photoMemories.length - 1];

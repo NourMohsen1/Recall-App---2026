@@ -7,7 +7,7 @@ import {
   isSirKind,
   type SirKind,
 } from './dayMarkers';
-import { dateKey, getLoggedMemories, localFile, updateMemory } from './memoryLog';
+import { dateKey, getLoggedMemories, localFile, updateMemory, type LoggedMemory } from './memoryLog';
 import { addPersonMention, getKnownPeopleForPrompt } from './peopleTags';
 import {
   isPlaceKind,
@@ -48,7 +48,7 @@ const INTAKE_PROMPT = `You are the intake brain of Recall, a personal memory-log
 Respond with ONLY a JSON object in this exact shape:
 {
   "polished": "...",
-  "tasks": [{"title": "...", "date": "YYYY-MM-DD" | null, "period": "morning"|"afternoon"|"evening"|"night" | null, "time": "HH:MM" | null}],
+  "tasks": [{"title": "...", "date": "YYYY-MM-DD" | null, "period": "morning"|"afternoon"|"evening"|"night" | null, "time": "HH:MM" | null, "details": "..." | null, "kind": "..." | null}],
   "people": [{"name": "...", "descriptor": "..." | null, "note": "..."}],
   "places": [{"name": "...", "kind": "...", "moment": "..." | null}],
   "markers": [{"kind": "...", "label": "..."}],
@@ -67,7 +67,20 @@ Respond with ONLY a JSON object in this exact shape:
 
 "recurring" — dates that come back. ONLY two cases: (1) a birthday or anniversary the entry mentions — every "year", date "MM-DD", or "today" when the entry says it is today ("النهاردة عيد ميلاد عمر", "it's our anniversary"); (2) something the user explicitly says repeats ("I get paid on the 25th", "rent is due on the 1st of every month") — every "month" with day_of_month. NEVER turn a one-off into a repeat: "got paid today" on its own is a payday marker, not recurring; a party is a celebration marker, not an anniversary. kind uses the same list plus birthday and anniversary. person: whose birthday or anniversary it is, matched to KNOWN PEOPLE exactly like "people"; null when it is the user's own. label is short, in the entry's language: "Omar's birthday", "عيد جوازنا", "Payday".
 
+"details" and "kind" on a task are only for ATTACHED DOCUMENT entries (below); null otherwise.
+
+ATTACHED DOCUMENT — when the entry contains a block marked ATTACHED DOCUMENT, that block is text the user's phone read from a screenshot or file they saved. It may contain reading mistakes and screen clutter (clock, battery, buttons, app menus) — ignore those. The user saved it to remember it, so:
+· Every UPCOMING appointment, booking, reservation, flight, ticketed event, bill due date or deadline in it is a task, even though nobody wrote "remind me". title: short and specific, in the document's language ("Dentist appointment — Dr. Lee", "Flight to Cairo MS986"). date and time come from the document itself; resolve relative words against TODAY. details: every practical detail, one per line — who, the full address, phone, what to bring or prepare, confirmation or booking number, cost, gate or seat — copied exactly, nothing invented; null if there are none. kind: the icon that fits — doctor, travel, work, study, purchase, dinner, call, car, pet, family, holiday, celebration, payday, religious — or null.
+· Anything in the document that is already past is not a task.
+· polished: one or two first-person sentences saying what the user saved ("Saved my dentist appointment with Dr. Lee on Thursday 3 October at 2:30 pm."), followed by the user's own note if they wrote one. Never paste the document.
+· People and places named in the document are NOT people the user met or places they were at. Leave them out of "people" and "places" unless the user's own note says so.
+· No markers or recurring entries for what the document describes, unless the user's own note describes something that happened.
+
 Empty arrays are correct when a section has nothing.`;
+
+/** A task, plus what only a saved document gives: its details, and the icon
+ *  for the day it happens on. */
+export type IntakeTask = ParsedTask & { details?: string; icon?: SirKind };
 
 export type ParsedPlace = { name: string; kind?: PlaceKind; moment?: string };
 
@@ -88,7 +101,7 @@ export type ParsedRecurring = {
 
 export type IntakeResult = {
   polished?: string;
-  tasks: ParsedTask[];
+  tasks: IntakeTask[];
   people: { name: string; descriptor?: string; note?: string }[];
   places: ParsedPlace[];
   /** Smart Icon Reminders for this day — see src/dayMarkers.ts. */
@@ -143,7 +156,14 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
   try {
     const parsed = JSON.parse(result.content) as {
       polished?: string;
-      tasks?: { title?: string; date?: string | null; period?: string | null; time?: string | null }[];
+      tasks?: {
+        title?: string;
+        date?: string | null;
+        period?: string | null;
+        time?: string | null;
+        details?: string | null;
+        kind?: string | null;
+      }[];
       people?: { name?: string; descriptor?: string | null; note?: string | null }[];
       places?: (string | { name?: string; kind?: string; moment?: string | null })[];
       markers?: { kind?: string; label?: string }[];
@@ -195,7 +215,7 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
       }
     }
 
-    const tasks: ParsedTask[] = (parsed.tasks ?? [])
+    const tasks: IntakeTask[] = (parsed.tasks ?? [])
       .filter((t): t is { title: string } & typeof t => !!t.title?.trim())
       .map((t) => {
         const dueDate = t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : undefined;
@@ -204,7 +224,13 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
         else if (t.period && PERIOD_TIMES[t.period.toLowerCase()]) {
           dueTime = PERIOD_TIMES[t.period.toLowerCase()];
         }
-        return { title: t.title.trim(), dueDate, dueTime };
+        return {
+          title: t.title.trim(),
+          dueDate,
+          dueTime,
+          details: t.details?.trim() || undefined,
+          icon: isSirKind(t.kind) ? t.kind : undefined,
+        };
       });
 
     return {
@@ -238,6 +264,26 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
   }
 }
 
+// What the AI reads for a saved document: the user's note, then the words
+// the phone read from the file, clearly fenced off as the document's.
+// Capped: a long PDF is mostly small print, and the useful part — who, when,
+// where — is nearly always near the top.
+const DOCUMENT_TEXT_LIMIT = 6000;
+
+export function documentEntry(note: string, memory: LoggedMemory): string {
+  const a = memory.attachments?.[0];
+  const what = a?.kind === 'pdf' ? `a file${a.name ? ` ("${a.name}")` : ''}` : 'a screenshot';
+  const text = (a?.text ?? '').trim().slice(0, DOCUMENT_TEXT_LIMIT) || '(no readable text was found in it)';
+  return [
+    note.trim() ? `The user's note: ${note.trim()}` : 'The user added no note.',
+    '',
+    `ATTACHED DOCUMENT (${what}, read on the phone):`,
+    '<<<',
+    text,
+    '>>>',
+  ].join('\n');
+}
+
 // A memory logging screen calls this directly right after saving, and the
 // retroactive sweep (below) can ALSO pick up that same still-unrefined
 // memory moments later on the very next screen focus — without this guard
@@ -257,7 +303,12 @@ export async function processMemoryIntake(
   if (inFlight.has(memoryId)) return false;
   inFlight.add(memoryId);
   try {
-    const result = await analyzeMemory(rawText);
+    // A saved screenshot or file: the AI reads the user's note and the words
+    // the phone read from the file. `rawText` stays the user's own note — the
+    // document's text is kept on the attachment, not passed off as theirs.
+    const memory = (await getLoggedMemories()).find((m) => m.id === memoryId);
+    const attachment = memory?.kind === 'document' ? memory.attachments?.[0] : undefined;
+    const result = await analyzeMemory(attachment ? documentEntry(rawText, memory!) : rawText);
     // Analysis unavailable (no key / network) — leave the memory unrefined
     // so the sweep retries it next time the app opens.
     if (!result) return false;
@@ -276,14 +327,34 @@ export async function processMemoryIntake(
     // 2 — Commitments become tasks. Ones without a date are flagged so the
     //     Tasks page can ask the user to confirm a due date.
     for (const t of result.tasks) {
+      const { details, icon, ...task } = t;
       await addTask({
-        ...t,
+        ...task,
+        notes: details,
         source: 'memory',
-        sourceText: rawText,
+        sourceText: rawText || undefined,
         sourceDate: dayKey,
         seen: false,
         needsDueDate: !t.dueDate,
+        ...(attachment
+          ? {
+              attachment: {
+                uri: attachment.uri,
+                kind: attachment.kind,
+                name: attachment.name,
+                previewUri: attachment.previewUri,
+              },
+              memoryId,
+              // Something that happens at a set time needs warning ahead.
+              remindEarly: !!t.dueDate,
+            }
+          : {}),
       });
+      // The day it happens gets its icon — the stethoscope on the day of
+      // the appointment — so the Timeline shows it coming.
+      if (attachment && icon && t.dueDate) {
+        await addDayMarker(t.dueDate, { kind: icon, label: t.title, source: 'log', memoryId });
+      }
     }
 
     // 3 — People get tagged on this day; brand-new names are created
@@ -361,7 +432,7 @@ export async function polishPendingMemories(limit = 6): Promise<boolean> {
           !m.refined &&
           // rawText set means an older pipeline version already processed it.
           !m.rawText &&
-          !!m.text?.trim() &&
+          (!!m.text?.trim() || m.kind === 'document') &&
           !inFlight.has(m.id) &&
           now - (lastAttemptAt.get(m.id) ?? 0) > RETRY_COOLDOWN_MS,
       )
@@ -370,7 +441,7 @@ export async function polishPendingMemories(limit = 6): Promise<boolean> {
     let changed = false;
     for (const m of pending) {
       lastAttemptAt.set(m.id, Date.now());
-      const ok = await processMemoryIntake(m.id, m.text!, dateKey(new Date(m.takenAt)));
+      const ok = await processMemoryIntake(m.id, m.text ?? '', dateKey(new Date(m.takenAt)));
       changed = changed || ok;
     }
     return changed;

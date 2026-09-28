@@ -54,6 +54,7 @@ import {
 import { approveGuess, getGuessesForDay, rejectGuess } from '../../../src/guessedPeople';
 import { ensureDayScanned, faceMatchingAvailable } from '../../../src/faceMatching';
 import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
+import { AttachmentThumb } from '../../../src/components/AttachmentViewer';
 import PlaceTile from '../../../src/components/PlaceTile';
 import { DayPlace, getPlacesForDay } from '../../../src/places';
 import { rtlIfArabic } from '../../../src/transcription';
@@ -361,7 +362,15 @@ export default function DayDetailScreen() {
                   <View style={styles.segmentHeader}>
                     {/* Voice is just an input method — once transcribed it reads
                         as a plain note, not a distinct "voice note" type. */}
-                    <Text style={styles.segmentTitle}>{m.kind === 'photo' ? 'Photos' : 'Note'}</Text>
+                    <Text style={styles.segmentTitle}>
+                      {m.kind === 'photo'
+                        ? 'Photos'
+                        : m.kind === 'document'
+                          ? m.attachments?.[0]?.kind === 'pdf'
+                            ? 'From a file'
+                            : 'From a screenshot'
+                          : 'Note'}
+                    </Text>
                     <View style={styles.timePill}>
                       <Text style={styles.timePillText}>
                         ≈ {formatClockTime(new Date(m.takenAt))}
@@ -381,6 +390,12 @@ export default function DayDetailScreen() {
                   )}
 
                   {m.note && <Text style={[styles.noteText, rtlIfArabic(m.note)]}>📝 {m.note}</Text>}
+
+                  {m.kind === 'document' && m.attachments?.[0] && (
+                    <View style={{ marginTop: 10 }}>
+                      <AttachmentThumb attachment={m.attachments[0]} size={56} />
+                    </View>
+                  )}
 
                   {m.kind === 'voice' && (
                     <Pressable

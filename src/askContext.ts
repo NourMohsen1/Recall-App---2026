@@ -123,6 +123,9 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
     const rec = get(key);
     if (m.kind === 'text' && m.text) rec.logged.push(m.text);
     else if (m.kind === 'voice') rec.logged.push(m.text ?? '(voice memory, no transcript)');
+    // A saved screenshot or file: what the intake understood it to be
+    // ("Saved my dentist appointment…"), never the raw document text.
+    else if (m.kind === 'document' && m.text) rec.logged.push(m.text);
     else if (m.kind === 'photo') {
       if (m.text) rec.logged.push(m.text);
       rec.photoCount += m.photoUris?.length ?? 0;

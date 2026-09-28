@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { chatCompletion, textAvailable, textProviders } from './aiProviders';
-import { cancelTaskReminder, scheduleTaskReminder } from './taskNotifications';
+import { cancelTaskReminder, scheduleEarlyReminders, scheduleTaskReminder } from './taskNotifications';
 
 // Local-first task store. Tasks come from two doors: the user creates one
 // deliberately (+ button on the Tasks page), or the app notices a commitment
@@ -24,7 +24,27 @@ export type StoredTask = {
   // The user never said when — the Tasks page asks them to confirm a due
   // date (or explicitly choose to keep it dateless).
   needsDueDate?: boolean;
+  // Created from a screenshot or file the user saved: the original, so the
+  // task can show where it came from, and the memory it belongs to.
+  attachment?: { uri: string; kind: 'image' | 'pdf'; name?: string; previewUri?: string };
+  memoryId?: string;
+  // Something that happens AT a time (an appointment): also reminded the
+  // evening before and two hours before. See scheduleEarlyReminders.
+  remindEarly?: boolean;
+  earlyReminderIds?: string[];
 };
+
+// Every reminder a task has, set or cleared together.
+async function scheduleAll(t: StoredTask): Promise<Pick<StoredTask, 'notificationId' | 'earlyReminderIds'>> {
+  const notificationId = (await scheduleTaskReminder(t.title, t.dueDate, t.dueTime)) ?? undefined;
+  const early = t.remindEarly ? await scheduleEarlyReminders(t.title, t.dueDate, t.dueTime) : [];
+  return { notificationId, earlyReminderIds: early.length > 0 ? early : undefined };
+}
+
+async function cancelAll(t: StoredTask): Promise<void> {
+  await cancelTaskReminder(t.notificationId);
+  for (const id of t.earlyReminderIds ?? []) await cancelTaskReminder(id);
+}
 
 const STORAGE_KEY = 'storedTasks';
 
@@ -48,7 +68,7 @@ async function writeTasks(tasks: StoredTask[]): Promise<void> {
 }
 
 export async function addTask(
-  task: Omit<StoredTask, 'id' | 'createdAt' | 'done' | 'notificationId'>,
+  task: Omit<StoredTask, 'id' | 'createdAt' | 'done' | 'notificationId' | 'earlyReminderIds'>,
 ): Promise<StoredTask> {
   const existing = await getTasks();
 
@@ -70,8 +90,7 @@ export async function addTask(
     createdAt: new Date().toISOString(),
     done: false,
   };
-  entry.notificationId =
-    (await scheduleTaskReminder(entry.title, entry.dueDate, entry.dueTime)) ?? undefined;
+  Object.assign(entry, await scheduleAll(entry));
   await writeTasks([entry, ...existing]);
   return entry;
 }
@@ -85,7 +104,7 @@ export async function updateTask(
   const target = existing.find((t) => t.id === id);
   if (!target) return;
 
-  await cancelTaskReminder(target.notificationId);
+  await cancelAll(target);
   const updated: StoredTask = {
     ...target,
     title: patch.title,
@@ -93,13 +112,11 @@ export async function updateTask(
     dueDate: patch.dueDate,
     dueTime: patch.dueTime,
     notificationId: undefined,
+    earlyReminderIds: undefined,
     // Editing IS the confirmation — whatever the user saved is the answer.
     needsDueDate: false,
   };
-  if (!updated.done) {
-    updated.notificationId =
-      (await scheduleTaskReminder(updated.title, updated.dueDate, updated.dueTime)) ?? undefined;
-  }
+  if (!updated.done) Object.assign(updated, await scheduleAll(updated));
   await writeTasks(existing.map((t) => (t.id === id ? updated : t)));
 }
 
@@ -111,11 +128,11 @@ export async function toggleTask(id: string): Promise<void> {
   const updated: StoredTask = { ...target, done: !target.done };
   if (updated.done) {
     // No point reminding about something already finished.
-    await cancelTaskReminder(updated.notificationId);
+    await cancelAll(updated);
     updated.notificationId = undefined;
+    updated.earlyReminderIds = undefined;
   } else {
-    updated.notificationId =
-      (await scheduleTaskReminder(updated.title, updated.dueDate, updated.dueTime)) ?? undefined;
+    Object.assign(updated, await scheduleAll(updated));
   }
   await writeTasks(existing.map((t) => (t.id === id ? updated : t)));
 }
@@ -123,7 +140,7 @@ export async function toggleTask(id: string): Promise<void> {
 export async function deleteTask(id: string): Promise<void> {
   const existing = await getTasks();
   const target = existing.find((t) => t.id === id);
-  if (target) await cancelTaskReminder(target.notificationId);
+  if (target) await cancelAll(target);
   await writeTasks(existing.filter((t) => t.id !== id));
 }
 

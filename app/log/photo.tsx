@@ -11,7 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import PillButton from '../../src/components/PillButton';
 import { ICONS } from '../../src/images';
 import { processMemoryIntake } from '../../src/memoryIntake';
@@ -83,6 +84,8 @@ function dayLabel(d: Date) {
 
 export default function LogPhoto() {
   const returnTo = useReturnTo();
+  const router = useRouter();
+  const { from } = useLocalSearchParams<{ from?: string }>();
   const [picked, setPicked] = useState<Picked[]>([]);
   const [caption, setCaption] = useState('');
   const [saving, setSaving] = useState(false);
@@ -212,6 +215,22 @@ export default function LogPhoto() {
           </Pressable>
         </View>
 
+        {/* A screenshot or file to READ rather than keep as a photo — an
+            appointment, a ticket. Goes to Tasks; never to photo analysis. */}
+        {picked.length === 0 && (
+          <Pressable
+            style={styles.docBtn}
+            onPress={() => router.replace({ pathname: '/log/attachment', params: from ? { from } : {} })}
+          >
+            <MaterialCommunityIcons name="file-document-outline" size={24} color={colors.teal} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.docTitle}>Screenshot or file to read</Text>
+              <Text style={styles.docHint}>Appointments, tickets, bills — anything coming up goes to Tasks</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.soft} />
+          </Pressable>
+        )}
+
         {/* Selected thumbnails */}
         {picked.length > 0 && (
           <>
@@ -277,6 +296,19 @@ const styles = StyleSheet.create({
   headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
 
   scroll: { padding: 24, paddingBottom: 40 },
+  docBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.pale,
+    backgroundColor: '#F7FAFA',
+  },
+  docTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B' },
+  docHint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 17, color: '#6B7475', marginTop: 2 },
 
   sourceRow: { flexDirection: 'row', gap: 14 },
   sourceBtn: {

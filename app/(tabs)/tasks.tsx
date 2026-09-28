@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { AttachmentThumb } from '../../src/components/AttachmentViewer';
 import { MONTHS_SHORT } from '../../src/data';
 import {
   StoredTask,
@@ -101,6 +102,21 @@ function TaskCard({
 
       <View style={styles.cardBottom}>
         <View style={{ flex: 1 }}>
+          {/* The details a saved document gave — address, what to bring,
+              confirmation number — and the document itself, one tap away. */}
+          {task.notes ? (
+            <Text numberOfLines={10} style={[styles.notesPreview, muted && styles.mutedText, rtlIfArabic(task.notes)]}>
+              {task.notes}
+            </Text>
+          ) : null}
+          {task.attachment ? (
+            <View style={styles.attachRow}>
+              <AttachmentThumb attachment={task.attachment} size={34} />
+              <Text style={[styles.sourceText, muted && styles.mutedText]}>
+                From your {task.attachment.kind === 'pdf' ? 'file' : 'screenshot'} — tap it to view
+              </Text>
+            </View>
+          ) : null}
           {/* Where this task came from — a spoken/typed memory keeps its
               original sentence as the citation; tap it to open that day. */}
           {task.source === 'memory' && task.sourceText ? (
@@ -420,6 +436,14 @@ const styles = StyleSheet.create({
   cardBottom: { flexDirection: 'row', marginTop: 10, gap: 12 },
 
   sourceRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 2 },
+  notesPreview: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#3A4243',
+    marginBottom: 8,
+  },
+  attachRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   sourceText: {
     flex: 1,
     fontFamily: fonts.regular,

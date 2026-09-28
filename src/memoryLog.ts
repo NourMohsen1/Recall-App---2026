@@ -9,11 +9,23 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 export type TranscriptWord = { word: string; start: number; end: number };
 
+/** A screenshot or file the user saved as a memory. Read on the phone —
+ *  see modules/text-reader. The file never leaves the device. */
+export type Attachment = {
+  uri: string;
+  kind: 'image' | 'pdf';
+  name?: string;
+  /** PDFs: page one as an image, so it can be shown without a PDF viewer. */
+  previewUri?: string;
+  /** The words the phone read from it. */
+  text?: string;
+};
+
 export type LoggedMemory = {
   id: string;
   createdAt: string; // ISO — when the user logged it
   takenAt: string; // ISO — when the moment happened; drives Timeline placement
-  kind: 'text' | 'photo' | 'voice';
+  kind: 'text' | 'photo' | 'voice' | 'document';
   text?: string;
   // When AI intake polished the entry, `text` holds the cleaned memory and
   // `rawText` keeps the verbatim words — the source screen shows the
@@ -23,6 +35,8 @@ export type LoggedMemory = {
   // Unrefined memories get swept up retroactively when the app opens.
   refined?: boolean;
   photoUris?: string[];
+  // Document memories only: what was attached, and what was read from it.
+  attachments?: Attachment[];
   audioUri?: string;
   durationMillis?: number;
   // Voice memories only: per-word timing for the transcript (from Whisper),
@@ -112,6 +126,7 @@ export function memoryDisplayText(m: LoggedMemory): string | null {
   // the machinery is not the user's problem, and the line is replaced by
   // the real memory the moment it lands.
   if (m.kind === 'voice' && m.audioUri) return PENDING_MEMORY_TEXT;
+  if (m.kind === 'document') return PENDING_MEMORY_TEXT;
   return null;
 }
 
