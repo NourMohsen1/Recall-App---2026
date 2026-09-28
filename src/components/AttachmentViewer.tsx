@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
 import type { Attachment } from '../memoryLog';
@@ -35,19 +35,22 @@ export default function AttachmentViewer({
   onClose: () => void;
 }) {
   const [showText, setShowText] = useState(false);
+  // A Modal is its own window: SafeAreaView measures nothing inside it, so
+  // the header sat under the Dynamic Island with its button untappable.
+  // The insets are applied by hand instead.
+  const insets = useSafeAreaInsets();
   if (!attachment) return null;
   const image = attachment.kind === 'image' ? attachment.uri : attachment.previewUri;
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.safe}>
+      <View style={[styles.safe, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Pressable onPress={onClose} hitSlop={12}>
-            <Ionicons name="close" size={26} color={colors.primary} />
+          <Pressable onPress={onClose} hitSlop={12} style={styles.back}>
+            <Ionicons name="arrow-back" size={28} color={colors.primary} />
           </Pressable>
           <Text numberOfLines={1} style={styles.title}>
-            {attachment.name ?? (attachment.kind === 'pdf' ? 'Document' : 'Screenshot')}
+            {attachment.kind === 'pdf' ? 'Document' : 'Screenshot'}
           </Text>
-          <View style={{ width: 26 }} />
         </View>
         <ScrollView contentContainerStyle={styles.body}>
           {image ? (
@@ -71,7 +74,7 @@ export default function AttachmentViewer({
             </>
           )}
         </ScrollView>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 }
@@ -87,17 +90,20 @@ const styles = StyleSheet.create({
     borderColor: colors.pale,
   },
   safe: { flex: 1, backgroundColor: colors.white },
+  // The same header as every other screen: back arrow left, title centred
+  // on the screen (not between the arrow and the edge).
   header: {
-    flexDirection: 'row',
+    paddingTop: 12,
+    paddingBottom: 16,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8E8',
   },
-  title: { flex: 1, textAlign: 'center', fontFamily: fonts.medium, fontSize: 17, color: '#2B2B2B' },
-  body: { padding: 20, paddingBottom: 60 },
-  image: { width: '100%', aspectRatio: 0.62, borderRadius: 14, backgroundColor: '#F1F6F6' },
+  back: { position: 'absolute', left: 20, top: 14 },
+  title: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B', maxWidth: '70%' },
+  body: { padding: 20, paddingBottom: 60 + 34 },
+  image: { width: '100%', aspectRatio: 0.62, borderRadius: 14 },
   noImage: { height: 200, alignItems: 'center', justifyContent: 'center' },
   caption: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', textAlign: 'center', marginTop: 8 },
   textToggle: { alignSelf: 'center', marginTop: 18, paddingVertical: 10, paddingHorizontal: 16 },

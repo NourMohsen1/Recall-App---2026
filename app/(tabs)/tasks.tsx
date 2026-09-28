@@ -1,14 +1,13 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { AttachmentThumb } from '../../src/components/AttachmentViewer';
+import AttachmentViewer from '../../src/components/AttachmentViewer';
 import { MONTHS_SHORT } from '../../src/data';
 import {
   StoredTask,
   confirmNoDueDate,
-  deleteTask,
   formatDueTime,
   getTasks,
   markTasksSeen,
@@ -41,24 +40,95 @@ function isOverdue(task: StoredTask): boolean {
   return task.dueDate < todayKey;
 }
 
-function Toggle({ on, muted, onPress }: { on: boolean; muted: boolean; onPress: () => void }) {
-  // The track itself must light up when on, not just the knob — otherwise a
-  // completed task never reads as "done" at a glance.
-  const trackColor = on
-    ? muted
-      ? '#C7CBCB'
-      : colors.accent
-    : muted
-      ? '#E4E6E6'
-      : '#DCE6E7';
+// Monday-first weeks, as a planner reads them.
+function startOfWeek(d: Date): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - ((x.getDay() + 6) % 7));
+  return x;
+}
+
+function keyOf(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function addDays(d: Date, n: number): Date {
+  const x = new Date(d);
+  x.setDate(x.getDate() + n);
+  return x;
+}
+
+// "OCT 1 - 7", or "SEP 28 - OCT 4" across a month.
+function rangeLabel(from: Date, to: Date): string {
+  const a = `${MONTHS_SHORT[from.getMonth()]} ${from.getDate()}`;
+  if (keyOf(from) === keyOf(to)) return a;
+  return from.getMonth() === to.getMonth()
+    ? `${a} - ${to.getDate()}`
+    : `${a} - ${MONTHS_SHORT[to.getMonth()]} ${to.getDate()}`;
+}
+
+type Section = { key: string; title: string; range?: string; past: boolean; tasks: StoredTask[] };
+
+// The design groups tasks by week: what is coming, this week, and what has
+// passed. Newest date first inside each week, like the design. Undated tasks
+// sit together under "Anytime", after this week.
+function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
+  const thisWeek = startOfWeek(now);
+  const nextWeek = addDays(thisWeek, 7);
+  const weekAfter = addDays(thisWeek, 14);
+  const lastWeek = addDays(thisWeek, -7);
+  const bounds = {
+    thisWeek: keyOf(thisWeek),
+    nextWeek: keyOf(nextWeek),
+    weekAfter: keyOf(weekAfter),
+    lastWeek: keyOf(lastWeek),
+  };
+  const sections: Section[] = [
+    { key: 'later', title: 'Later', past: false, tasks: [] },
+    { key: 'next', title: 'Next Week', range: rangeLabel(nextWeek, addDays(nextWeek, 6)), past: false, tasks: [] },
+    { key: 'this', title: 'This Week', range: rangeLabel(thisWeek, addDays(thisWeek, 6)), past: false, tasks: [] },
+    { key: 'anytime', title: 'Anytime', past: false, tasks: [] },
+    { key: 'last', title: 'Last Week', range: rangeLabel(lastWeek, addDays(lastWeek, 6)), past: true, tasks: [] },
+    { key: 'earlier', title: 'Earlier', past: true, tasks: [] },
+  ];
+  const at = (k: string) => sections.find((s) => s.key === k)!;
+  for (const t of tasks) {
+    const d = t.dueDate;
+    if (!d) at('anytime').tasks.push(t);
+    else if (d >= bounds.weekAfter) at('later').tasks.push(t);
+    else if (d >= bounds.nextWeek) at('next').tasks.push(t);
+    else if (d >= bounds.thisWeek) at('this').tasks.push(t);
+    else if (d >= bounds.lastWeek) at('last').tasks.push(t);
+    else at('earlier').tasks.push(t);
+  }
+  const when = (t: StoredTask) => `${t.dueDate ?? ''} ${t.dueTime ?? '00:00'}`;
+  for (const s of sections) {
+    s.tasks.sort((a, b) => when(b).localeCompare(when(a)));
+    // Earlier covers everything before last week: its range is what is in it.
+    if (s.key === 'earlier' && s.tasks.length > 0) {
+      const days = s.tasks.map((t) => t.dueDate!).sort();
+      const [y1, m1, d1] = days[0].split('-').map(Number);
+      const [y2, m2, d2] = days[days.length - 1].split('-').map(Number);
+      s.range = rangeLabel(new Date(y1, m1 - 1, d1), new Date(y2, m2 - 1, d2));
+    }
+  }
+  return sections.filter((s) => s.tasks.length > 0);
+}
+
+// The switch in the design is ON for a task still to do and OFF once it is
+// done — done tasks turn grey, as the past weeks do in the design.
+function Toggle({ on, onPress }: { on: boolean; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.track, { backgroundColor: trackColor }]}>
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={[styles.track, { backgroundColor: on ? '#D6E6E8' : '#E4E6E6' }]}
+    >
       <View
         style={[
           styles.knob,
           on
-            ? { alignSelf: 'flex-end', backgroundColor: colors.white }
-            : { alignSelf: 'flex-start', backgroundColor: muted ? '#B4B8B8' : '#AEB6B7' },
+            ? { alignSelf: 'flex-end', backgroundColor: colors.accent }
+            : { alignSelf: 'flex-start', backgroundColor: '#B4B8B8' },
         ]}
       />
     </Pressable>
@@ -67,91 +137,69 @@ function Toggle({ on, muted, onPress }: { on: boolean; muted: boolean; onPress: 
 
 function TaskCard({
   task,
-  muted,
   isNew,
   onToggle,
-  onDelete,
   onEdit,
   onOpenSource,
 }: {
   task: StoredTask;
-  muted: boolean;
   isNew: boolean;
   onToggle: () => void;
-  onDelete: () => void;
   onEdit: () => void;
   onOpenSource: (() => void) | null;
 }) {
+  const [viewing, setViewing] = useState(false);
+  const muted = task.done;
   const overdue = isOverdue(task);
+  // One short line of what it is: the details a document gave, or the words
+  // it came from. Two lines at most — the full text is one tap away.
+  const description = task.notes?.trim() || task.sourceText?.trim();
+  // The small icon after the title, as in the design: the original
+  // screenshot or file, else the memory it came from, else edit.
+  const icon = task.attachment
+    ? { name: 'paperclip' as const, onPress: () => setViewing(true) }
+    : onOpenSource
+      ? { name: 'link-variant' as const, onPress: onOpenSource }
+      : { name: 'pencil-outline' as const, onPress: onEdit };
+
   return (
-    <View style={[styles.card, isNew && styles.cardNew]}>
+    <Pressable onPress={onEdit} style={[styles.card, isNew && !muted && styles.cardNew]}>
       <View style={styles.cardTop}>
-        <Pressable style={styles.titleRow} onPress={onEdit}>
-          {isNew && (
-            <View style={styles.newBadge}>
-              <Text style={styles.newBadgeText}>New</Text>
-            </View>
-          )}
-          <Text style={[styles.taskTitle, muted && styles.mutedText, rtlIfArabic(task.title)]}>
+        <View style={styles.titleRow}>
+          <Text
+            numberOfLines={2}
+            style={[styles.taskTitle, muted && styles.mutedText, rtlIfArabic(task.title)]}
+          >
             {task.title}
           </Text>
-          <Ionicons name="pencil-outline" size={14} color={muted ? '#B4B8B8' : '#9AA4A5'} />
-        </Pressable>
-        <Toggle on={task.done} muted={muted} onPress={onToggle} />
-      </View>
-
-      <View style={styles.cardBottom}>
-        <View style={{ flex: 1 }}>
-          {/* The details a saved document gave — address, what to bring,
-              confirmation number — and the document itself, one tap away. */}
-          {task.notes ? (
-            <Text numberOfLines={10} style={[styles.notesPreview, muted && styles.mutedText, rtlIfArabic(task.notes)]}>
-              {task.notes}
-            </Text>
-          ) : null}
-          {task.attachment ? (
-            <View style={styles.attachRow}>
-              <AttachmentThumb attachment={task.attachment} size={34} />
-              <Text style={[styles.sourceText, muted && styles.mutedText]}>
-                From your {task.attachment.kind === 'pdf' ? 'file' : 'screenshot'} — tap it to view
-              </Text>
-            </View>
-          ) : null}
-          {/* Where this task came from — a spoken/typed memory keeps its
-              original sentence as the citation; tap it to open that day. */}
-          {task.source === 'memory' && task.sourceText ? (
-            <Pressable
-              style={styles.sourceRow}
-              onPress={onOpenSource ?? undefined}
-              disabled={!onOpenSource}
-            >
-              <MaterialCommunityIcons
-                name="text-long"
-                size={14}
-                color={muted ? '#B4B8B8' : colors.teal}
-              />
-              <Text
-                numberOfLines={2}
-                style={[styles.sourceText, muted && styles.mutedText, rtlIfArabic(task.sourceText)]}
-              >
-                From your memory: “{task.sourceText}”
-                {onOpenSource ? '  — tap to view that day' : ''}
-              </Text>
-            </Pressable>
-          ) : null}
-          {task.dueTime && (
-            <Text style={[styles.taskTime, muted && styles.mutedText]}>
-              {formatDueTime(task.dueTime)}
-            </Text>
-          )}
-          {overdue && <Text style={styles.overdueText}>Overdue</Text>}
-          <Pressable style={styles.deleteBtn} onPress={onDelete} hitSlop={8}>
-            <Ionicons name="trash-outline" size={15} color="#B24545" />
-            <Text style={styles.deleteText}>Remove</Text>
+          <Pressable onPress={icon.onPress} hitSlop={10}>
+            <MaterialCommunityIcons name={icon.name} size={14} color={muted ? '#C2C7C8' : '#9AA4A5'} />
           </Pressable>
         </View>
+        <Toggle on={!task.done} onPress={onToggle} />
+      </View>
+
+      {/* Description and time on the left, the date chip beside them on
+          the right — the design's layout, which keeps each card short. */}
+      <View style={styles.cardBottom}>
+        <View style={{ flex: 1 }}>
+          {description ? (
+            <Text
+              numberOfLines={2}
+              style={[styles.description, muted && styles.mutedText, rtlIfArabic(description)]}
+            >
+              {description}
+            </Text>
+          ) : null}
+          {task.dueTime ? (
+            <Text style={[styles.taskTime, muted && styles.mutedText, overdue && styles.overdueTime]}>
+              {formatDueTime(task.dueTime)}
+            </Text>
+          ) : null}
+          {overdue && <Text style={styles.overdueText}>Overdue</Text>}
+        </View>
         {task.dueDate ? (
-          <View style={[styles.dateChip, overdue && styles.dateChipOverdue]}>
+          <View style={[styles.dateChip, muted && styles.dateChipMuted]}>
             <Text style={[styles.dateMonth, muted && styles.mutedText]}>
               {dueDateParts(task.dueDate).month}
             </Text>
@@ -161,17 +209,17 @@ function TaskCard({
           </View>
         ) : task.needsDueDate && !task.done ? (
           // The user never said when — a soft nudge to confirm a due date.
-          <Pressable style={[styles.dateChip, styles.dateChipAsk]} onPress={onEdit}>
+          <View style={[styles.dateChip, styles.dateChipAsk]}>
             <MaterialCommunityIcons name="calendar-question" size={20} color="#8A6D3B" />
             <Text style={styles.dateAskText}>Set date</Text>
-          </Pressable>
-        ) : (
-          <View style={styles.dateChip}>
-            <MaterialCommunityIcons name="calendar-blank-outline" size={20} color="#9AA4A5" />
           </View>
-        )}
+        ) : null}
       </View>
-    </View>
+
+      {task.attachment && (
+        <AttachmentViewer attachment={viewing ? task.attachment : null} onClose={() => setViewing(false)} />
+      )}
+    </Pressable>
   );
 }
 
@@ -179,9 +227,9 @@ export default function Tasks() {
   const router = useRouter();
   const [tasks, setTasks] = useState<StoredTask[]>([]);
   const [loaded, setLoaded] = useState(false);
-  // Ids that were unseen when this visit started — they keep their "New"
-  // badge for the whole visit, while storage is already marked seen so the
-  // badge is gone next time.
+  // Ids that were unseen when this visit started — they keep their
+  // highlight for the whole visit, while storage is already marked seen so
+  // it is gone next time.
   const [newIds, setNewIds] = useState<Set<string>>(new Set());
 
   const reload = useCallback(() => {
@@ -206,10 +254,6 @@ export default function Tasks() {
     await toggleTask(id);
     reload();
   };
-  const onDelete = async (id: string) => {
-    await deleteTask(id);
-    reload();
-  };
 
   // Tasks the AI created without a due date get one confirmation popup each
   // per visit — set a date, or keep it dateless and stop being asked.
@@ -231,11 +275,22 @@ export default function Tasks() {
     router.push({ pathname: '/log/task-edit', params: { id: askTask.id } });
   };
 
-  // Open tasks first (soonest due date up top, undated last), done ones below.
-  const open = tasks
-    .filter((t) => !t.done)
-    .sort((a, b) => (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999'));
-  const done = tasks.filter((t) => t.done);
+  const sections = groupByWeek(tasks);
+
+  // Open on this week, like the design: what is coming sits above it, what
+  // has passed below. Once per visit, so it never jumps while reading.
+  const scrollRef = useRef<ScrollView>(null);
+  const scrolled = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      scrolled.current = false;
+    }, []),
+  );
+  const onSectionLayout = (key: string, y: number) => {
+    if (key !== 'this' || scrolled.current) return;
+    scrolled.current = true;
+    if (y > 40) scrollRef.current?.scrollTo({ y: y - 8, animated: false });
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -254,7 +309,7 @@ export default function Tasks() {
         </Pressable>
       </View>
 
-      <ScrollView style={styles.body} contentContainerStyle={styles.scroll}>
+      <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.scroll}>
         {loaded && tasks.length === 0 && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="checkbox-marked-circle-plus-outline" size={40} color="#AEB6B7" />
@@ -266,69 +321,33 @@ export default function Tasks() {
           </View>
         )}
 
-        {open.length > 0 && (
-          <>
+        {sections.map((section) => (
+          <View key={section.key} onLayout={(e) => onSectionLayout(section.key, e.nativeEvent.layout.y)}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>To Do</Text>
-              <Text style={styles.sectionRange}>{open.length}</Text>
+              <Text style={[styles.sectionTitle, section.past && styles.sectionPast]}>{section.title}</Text>
+              {section.range ? (
+                <Text style={[styles.sectionRange, section.past && styles.sectionPast]}>{section.range}</Text>
+              ) : null}
             </View>
-            {open.map((task) => (
+            {section.tasks.map((task) => (
               <TaskCard
                 key={task.id}
                 task={task}
-                muted={false}
                 isNew={newIds.has(task.id)}
                 onToggle={() => onToggle(task.id)}
-                onDelete={() => onDelete(task.id)}
-                onEdit={() =>
-                  router.push({ pathname: '/log/task-edit', params: { id: task.id } })
-                }
+                onEdit={() => router.push({ pathname: '/log/task-edit', params: { id: task.id } })}
                 onOpenSource={
                   task.sourceDate
                     ? () =>
                         router.push(
-                          `/day/${offsetFromDate(task.sourceDate!)}` as Parameters<
-                            typeof router.push
-                          >[0],
+                          `/day/${offsetFromDate(task.sourceDate!)}` as Parameters<typeof router.push>[0],
                         )
                     : null
                 }
               />
             ))}
-          </>
-        )}
-
-        {done.length > 0 && (
-          <>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, styles.mutedText]}>Done</Text>
-              <Text style={[styles.sectionRange, styles.mutedText]}>{done.length}</Text>
-            </View>
-            {done.map((task) => (
-              <TaskCard
-                key={task.id}
-                task={task}
-                muted
-                isNew={false}
-                onToggle={() => onToggle(task.id)}
-                onDelete={() => onDelete(task.id)}
-                onEdit={() =>
-                  router.push({ pathname: '/log/task-edit', params: { id: task.id } })
-                }
-                onOpenSource={
-                  task.sourceDate
-                    ? () =>
-                        router.push(
-                          `/day/${offsetFromDate(task.sourceDate!)}` as Parameters<
-                            typeof router.push
-                          >[0],
-                        )
-                    : null
-                }
-              />
-            ))}
-          </>
-        )}
+          </View>
+        ))}
       </ScrollView>
 
       {/* "When is this due?" — confirmation for AI-created dateless tasks */}
@@ -394,83 +413,71 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  // Week headers: a thin rule above and below, the week's name left and its
+  // dates right. Weeks that have passed are drawn quieter.
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#9AA4A5',
-    paddingVertical: 14,
-    marginTop: 24,
+    borderColor: '#AEB6B7',
+    paddingVertical: 12,
+    marginTop: 22,
   },
-  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 18, color: '#2B2B2B' },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#2B2B2B' },
   sectionRange: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B' },
+  sectionPast: { color: '#8B9394' },
   mutedText: { color: '#A6ACAD' },
 
   card: {
     backgroundColor: colors.white,
     borderRadius: 20,
-    padding: 18,
-    marginTop: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginTop: 14,
+    borderWidth: 2,
+    borderColor: colors.white,
   },
-  cardNew: { borderWidth: 2, borderColor: colors.accent },
-  newBadge: {
-    backgroundColor: colors.accent,
-    borderRadius: 999,
-    paddingVertical: 3,
-    paddingHorizontal: 9,
-  },
-  newBadgeText: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.ink },
+  // Just added from a memory: outlined, as the design outlines the current
+  // task, until the page has been seen.
+  cardNew: { borderColor: colors.accent },
   cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  taskTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#2B2B2B', flexShrink: 1 },
+  taskTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B', flexShrink: 1 },
   track: {
-    width: 58,
-    height: 30,
-    borderRadius: 15,
+    width: 50,
+    height: 26,
+    borderRadius: 13,
     padding: 3,
     justifyContent: 'center',
   },
-  knob: { width: 24, height: 24, borderRadius: 12 },
-  cardBottom: { flexDirection: 'row', marginTop: 10, gap: 12 },
-
-  sourceRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 2 },
-  notesPreview: {
-    fontFamily: fonts.regular,
-    fontSize: 13,
-    lineHeight: 19,
-    color: '#3A4243',
-    marginBottom: 8,
-  },
-  attachRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
-  sourceText: {
-    flex: 1,
+  knob: { width: 20, height: 20, borderRadius: 10 },
+  description: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#7C8586',
-    fontStyle: 'italic',
+    color: '#3A4243',
+    marginBottom: 8,
   },
-  taskTime: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.teal, marginTop: 10 },
-  overdueText: { fontFamily: fonts.medium, fontSize: 12, color: '#B24545', marginTop: 4 },
-  deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
-  deleteText: { fontFamily: fonts.regular, fontSize: 12, color: '#B24545' },
+  cardBottom: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 6, gap: 14 },
+  taskTime: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.teal },
+  overdueTime: { color: '#B24545' },
+  overdueText: { fontFamily: fonts.medium, fontSize: 12, color: '#B24545', marginTop: 2 },
 
   dateChip: {
     backgroundColor: '#DCE3E3',
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    borderRadius: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-end',
-    minWidth: 58,
+    minWidth: 54,
   },
-  dateChipOverdue: { backgroundColor: '#F3E3E3' },
+  dateChipMuted: { backgroundColor: '#EEF1F1' },
   dateChipAsk: { backgroundColor: '#F5EEDC', gap: 2 },
   dateAskText: { fontFamily: fonts.medium, fontSize: 11, color: '#8A6D3B' },
-  dateMonth: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.primary },
+  dateMonth: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.primary },
   dateDay: { fontFamily: fonts.bold, fontSize: 20, color: colors.primary, lineHeight: 24 },
 
   modalBackdrop: {

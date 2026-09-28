@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ActionMenuSheet, { type MenuAction } from '../../src/components/ActionMenuSheet';
@@ -59,6 +59,7 @@ function cap(s: string) {
 export default function PlaceProfile() {
   const router = useRouter();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { name } = useLocalSearchParams<{ name: string }>();
   const [place, setPlace] = useState<PlaceSummary | null | undefined>(undefined);
   const [companions, setCompanions] = useState<Companion[]>([]);
@@ -426,7 +427,8 @@ export default function PlaceProfile() {
 
       {/* Choosing the cover from the user's own photos of the place. */}
       <Modal visible={picking} animationType="slide" onRequestClose={() => setPicking(false)}>
-        <SafeAreaView style={styles.safe}>
+        {/* Insets by hand: SafeAreaView measures nothing inside a Modal. */}
+        <View style={[styles.safe, { paddingTop: insets.top }]}>
           <View style={styles.pickHeader}>
             <Pressable onPress={() => setPicking(false)} hitSlop={12}>
               <Ionicons name="close" size={26} color={colors.primary} />
@@ -447,7 +449,7 @@ export default function PlaceProfile() {
               </Pressable>
             ))}
           </ScrollView>
-        </SafeAreaView>
+        </View>
       </Modal>
 
       {/* Naming, in place. */}
