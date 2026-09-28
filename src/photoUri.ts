@@ -1,4 +1,5 @@
 import * as MediaLibrary from 'expo-media-library/legacy';
+import { localFile } from './memoryLog';
 import { getPhotoMeta, setPhotoMeta } from './photoMeta';
 
 // Turns a stored photo URI into one that can actually be rendered or
@@ -29,9 +30,14 @@ export function needsResolving(uri: string): boolean {
 const inFlight = new Map<string, Promise<string | null>>();
 
 export async function resolvePhotoUri(uri: string): Promise<string | null> {
+  // Repair first. A path saved by a previous install points into a
+  // container that no longer exists; see localFile.
+  const repaired = localFile(uri) || uri;
+
   // Already a readable file (or a data URI) — nothing to do. This is the
   // common case: anything still stored on the device resolved at sync time.
-  if (!uri || !needsResolving(uri)) return uri || null;
+  if (!repaired || !needsResolving(repaired)) return repaired || null;
+  uri = repaired;
 
   const existing = inFlight.get(uri);
   if (existing) return existing;

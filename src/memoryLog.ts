@@ -128,6 +128,44 @@ export function formatClockTime(d: Date): string {
 // URI, or the original one if copying isn't possible (e.g. on web, or if the
 // copy fails for any reason — better to keep a working link to the cache
 // copy than to silently point at a file that was never actually written).
+// Repairs a stored file path after the app has been reinstalled.
+//
+// THE BUG THIS EXISTS FOR, because it is invisible until it has already
+// destroyed something. Files saved by persistFile are recorded as absolute
+// paths:
+//
+//   file:///var/mobile/Containers/Data/Application/<UUID>/Documents/voice-1.m4a
+//
+// iOS gives an app a NEW <UUID> every time it is installed — including
+// every ordinary App Store update. The file survives; the path does not. So
+// after an update every voice recording, every imported photo, every
+// person's picture and the user's own avatar point at an address that no
+// longer exists, and the app reports them as missing. The user sees their
+// memories quietly disappear on an update they did not ask for.
+//
+// This re-bases any such path onto the container the app is in NOW. It is
+// cheap, synchronous and safe to call on anything: a path already in the
+// current container, an iCloud asset reference, a data URI or a web URL all
+// come back untouched.
+export function localFile(uri: string | undefined | null): string {
+  if (!uri) return '';
+  const docs = FileSystem.documentDirectory;
+  if (Platform.OS === 'web' || !docs) return uri;
+  if (uri.startsWith(docs)) return uri;
+
+  // Only file paths that lived in some Documents directory are ours to
+  // repair. Anything else is somebody else's address.
+  const marker = '/Documents/';
+  const at = uri.indexOf(marker);
+  if (!uri.startsWith('file://') || at === -1) return uri;
+
+  const name = uri.slice(at + marker.length);
+  // A nested path means this was not one of our flat persistFile names;
+  // leaving it alone is better than inventing a location for it.
+  if (!name || name.includes('/')) return uri;
+  return docs + name;
+}
+
 export async function persistFile(uri: string, prefix: string): Promise<string> {
   if (Platform.OS === 'web' || !FileSystem.documentDirectory) return uri;
   try {

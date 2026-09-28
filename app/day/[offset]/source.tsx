@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import {
   deleteMemory,
   formatClockTime,
   getMemoriesByDay,
+  localFile,
   updateMemory,
 } from '../../../src/memoryLog';
 import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../../../src/transcription';
@@ -45,18 +46,37 @@ function RealSource({
   onRemoved: () => void;
   onUpdated: () => void;
 }) {
-  const player = useAudioPlayer(voice.audioUri!);
+  // Repaired before it is opened: a recording saved by a previous install
+  // is still on disk, but under a container path that no longer exists.
+  // Without this it reads as "this recording can't be found", which is how
+  // an ordinary app update looks like lost memories.
+  const audioUri = localFile(voice.audioUri);
+  const player = useAudioPlayer(audioUri);
   const status = useAudioPlayerStatus(player);
   const [unavailable, setUnavailable] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
 
+  // Whether the player has loaded, readable from inside a timer.
+  //
+  // THE BUG THIS FIXES, because it read as lost data. The timeout below
+  // used to close over `status` from the render that started it — always
+  // "not loaded yet", since that is why a timer was needed. It never saw
+  // the current state, so five seconds later it declared the recording
+  // missing whether or not it had loaded. The user played their memory,
+  // heard it, and was then told it was gone.
+  const loaded = useRef(false);
+  useEffect(() => {
+    loaded.current = status.isLoaded;
+  }, [status.isLoaded]);
+
   useEffect(() => {
     setUnavailable(false);
+    loaded.current = false;
     const timer = setTimeout(() => {
-      if (!status.isLoaded) setUnavailable(true);
+      if (!loaded.current) setUnavailable(true);
     }, LOAD_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [voice.audioUri]);
+  }, [audioUri]);
 
   useEffect(() => {
     if (status.isLoaded) setUnavailable(false);
@@ -88,9 +108,9 @@ function RealSource({
   };
 
   const generateTranscript = async () => {
-    if (!voice.audioUri || transcribing) return;
+    if (!audioUri || transcribing) return;
     setTranscribing(true);
-    const result = await transcribeAudio(voice.audioUri, 'auto');
+    const result = await transcribeAudio(audioUri, 'auto');
     setTranscribing(false);
     if (result.ok) {
       await updateMemory(voice.id, { text: result.text, words: result.words });
@@ -113,8 +133,8 @@ function RealSource({
         <View style={styles.unavailableBox}>
           <Ionicons name="alert-circle-outline" size={28} color="#8B9394" />
           <Text style={styles.unavailableText}>
-            This recording can’t be found on your device anymore — it may have been made before
-            an app update changed how recordings are stored.
+            This recording isn’t on your device any more. The words are kept either way —
+            only the audio is gone.
           </Text>
           <Pressable style={styles.removeBtn} onPress={removeMemory}>
             <Text style={styles.removeBtnText}>Remove this memory</Text>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Image, ImageResizeMode, ImageStyle, StyleProp, View } from 'react-native';
+import { localFile } from '../memoryLog';
 import { needsResolving, resolvePhotoUri } from '../photoUri';
 
 // Renders a stored photo URI, fetching a real file path first when the
@@ -20,13 +21,17 @@ export default function PhotoImage({
 }) {
   // Start with the URI itself when it's directly usable, so the common case
   // renders on the first frame instead of flashing a placeholder.
+  //
+  // A file path goes through localFile() even here: a photo saved before the
+  // last reinstall points into the old app container, and without the repair
+  // it renders blank while the file is sitting right there. See memoryLog.ts.
   const [resolved, setResolved] = useState<string | null>(() =>
-    needsResolving(uri) ? null : uri,
+    needsResolving(uri) ? null : localFile(uri),
   );
 
   useEffect(() => {
     if (!needsResolving(uri)) {
-      setResolved(uri);
+      setResolved(localFile(uri));
       return;
     }
     let live = true;
