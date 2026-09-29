@@ -1,14 +1,29 @@
 import { useEffect, useState } from 'react';
-import { Image, ImageResizeMode, ImageStyle, StyleProp, View } from 'react-native';
+import { ImageResizeMode, ImageStyle, StyleProp, View } from 'react-native';
+import { Image } from 'expo-image';
 import { localFile } from '../memoryLog';
-import { needsResolving, resolvePhotoUri } from '../photoUri';
+import { displayUriFor, needsResolving } from '../photoUri';
 
-// Renders a stored photo URI, fetching a real file path first when the
-// stored value is only an OS asset reference (`ph://…` for a photo whose
-// original still lives in iCloud). See src/photoUri.ts for why those exist.
+// Renders a stored photo.
 //
-// Anything already stored as a file path renders immediately with no extra
-// work — which is every photo that was on the device at sync time.
+// A photo from the library is shown through the Photos library by its asset
+// id, never through the file path stored at import: that path stops being
+// readable when the app restarts, which blanked every imported photo after a
+// relaunch. See src/photoUri.ts. The app's own files (photos the user
+// picked, recordings' covers) render straight from their repaired path.
+
+const CONTENT_FIT: Record<ImageResizeMode, 'cover' | 'contain' | 'fill' | 'none'> = {
+  cover: 'cover',
+  contain: 'contain',
+  stretch: 'fill',
+  center: 'none',
+  repeat: 'cover',
+  none: 'none',
+};
+
+// One warning per photo per session: enough to name a failure in the logs
+// without a scroll through the Timeline flooding them.
+const reported = new Set<string>();
 
 export default function PhotoImage({
   uri,
@@ -19,34 +34,41 @@ export default function PhotoImage({
   style?: StyleProp<ImageStyle>;
   resizeMode?: ImageResizeMode;
 }) {
-  // Start with the URI itself when it's directly usable, so the common case
-  // renders on the first frame instead of flashing a placeholder.
-  //
-  // A file path goes through localFile() even here: a photo saved before the
-  // last reinstall points into the old app container, and without the repair
-  // it renders blank while the file is sitting right there. See memoryLog.ts.
-  const [resolved, setResolved] = useState<string | null>(() =>
-    needsResolving(uri) ? null : localFile(uri),
+  // The app's own files render on the first frame; only library photos wait
+  // for their id, which is an in-memory lookup after the first.
+  const [source, setSource] = useState<string | null>(() =>
+    needsResolving(uri) ? (uri.startsWith('ph://') ? uri : null) : localFile(uri),
   );
 
   useEffect(() => {
+    let live = true;
     if (!needsResolving(uri)) {
-      setResolved(localFile(uri));
+      setSource(localFile(uri));
       return;
     }
-    let live = true;
-    setResolved(null);
-    resolvePhotoUri(uri).then((next) => {
-      if (live) setResolved(next);
+    displayUriFor(uri).then((next) => {
+      if (live) setSource(next);
     });
     return () => {
       live = false;
     };
   }, [uri]);
 
-  // A photo that can't be resolved (removed from the library, or an iCloud
-  // fetch that failed) shows as an empty frame rather than an error.
-  if (!resolved) return <View style={style} />;
+  // Not resolved yet, or gone from the library: an empty frame, not an error.
+  if (!source) return <View style={style} />;
 
-  return <Image source={{ uri: resolved }} style={style} resizeMode={resizeMode} />;
+  return (
+    <Image
+      source={{ uri: source }}
+      style={style}
+      contentFit={CONTENT_FIT[resizeMode] ?? 'cover'}
+      recyclingKey={uri}
+      transition={120}
+      onError={(e) => {
+        if (reported.has(uri)) return;
+        reported.add(uri);
+        console.warn(`[photos] could not show a photo (${source.slice(0, 60)}…): ${e.error}`);
+      }}
+    />
+  );
 }

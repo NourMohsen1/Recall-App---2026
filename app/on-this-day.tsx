@@ -167,12 +167,7 @@ function EventImage({
   const [failed, setFailed] = useState(false);
   if (uri && !failed) {
     return (
-      <Image
-        source={{ uri }}
-        style={style as any}
-        resizeMode="cover"
-        onError={() => setFailed(true)}
-      />
+      <PhotoImage uri={uri} style={style as any} />
     );
   }
   return (

@@ -141,6 +141,13 @@ Each of these cost real time once.
   `persistFile` stores absolute paths, and iOS changes the app container's UUID
   on every reinstall and App Store update — so recordings, photos and avatars
   look "missing" after an update while the files are still on disk.
+- **Never show or store a library photo by its file path.** A
+  `…/Media/DCIM/…` path from the Photos library is readable only in the app
+  session that received it; after a restart every imported photo went blank
+  until an import re-asked the library. Show library photos through
+  `PhotoImage` (it uses `ph://<assetId>` via expo-image) and get pixels with
+  `resolvePhotoUri()`, which asks for a fresh path each session. The
+  simulator does not enforce this, so it can't catch it.
 - **Don't upload files with `FormData` `{ uri, name, type }`.** React Native
   0.86 rejects it with `Unsupported FormDataPart implementation`. Use
   `FileSystem.uploadAsync` from `expo-file-system/legacy`. This broke all voice

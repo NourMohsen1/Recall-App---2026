@@ -20,8 +20,9 @@ export type PhotoMeta = {
   // src/photoUri.ts resolve one on demand, for just the photo being
   // looked at. See the note there.
   assetId?: string;
-  // A file path resolved from assetId, cached once so the same photo isn't
-  // re-fetched every time it's shown.
+  // No longer written or read: a path resolved from assetId is only valid
+  // for the app session that asked for it (see src/photoUri.ts). Old
+  // entries may still carry one; it is ignored.
   localUri?: string;
   // Where the photo was taken, from its own GPS. Stays on the device: this
   // is what Places are built from (see src/places.ts).
@@ -45,6 +46,36 @@ async function readAll(): Promise<Record<string, PhotoMeta>> {
   return raw ? (JSON.parse(raw) as Record<string, PhotoMeta>) : {};
 }
 
+// Photo → library asset id, kept in memory. Every photo on screen asks for
+// its id (see src/photoUri.ts), and reading this whole store once per photo
+// would be hundreds of reads for one scroll of the Timeline.
+let assetIndex: Promise<Map<string, string>> | null = null;
+
+function loadAssetIndex(): Promise<Map<string, string>> {
+  if (!assetIndex) {
+    assetIndex = readAll().then(
+      (all) => new Map(Object.entries(all).flatMap(([uri, m]) => (m.assetId ? [[uri, m.assetId] as const] : []))),
+    );
+    assetIndex.catch(() => {
+      assetIndex = null;
+    });
+  }
+  return assetIndex;
+}
+
+function noteAssetIds(entries: [string, Partial<PhotoMeta>][]) {
+  if (!assetIndex) return;
+  assetIndex.then((index) => {
+    for (const [uri, m] of entries) if (m.assetId) index.set(uri, m.assetId);
+  });
+}
+
+/** The library asset a stored photo came from, when it came from one. */
+export async function assetIdForUri(uri: string): Promise<string | undefined> {
+  if (uri.startsWith('ph://')) return uri.slice('ph://'.length);
+  return (await loadAssetIndex()).get(uri);
+}
+
 export async function getAllPhotoMeta(): Promise<Record<string, PhotoMeta>> {
   return readAll();
 }
@@ -61,6 +92,7 @@ export async function setPhotoMeta(uri: string, meta: Partial<PhotoMeta>): Promi
   const all = await readAll();
   all[uri] = { ...all[uri], ...meta } as PhotoMeta;
   await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  noteAssetIds([[uri, meta]]);
 }
 
 // Removes a label entirely — "this is just a normal photo, not saved from
@@ -80,6 +112,7 @@ export async function setPhotoMetaBatch(entries: [string, Partial<PhotoMeta>][])
   const all = await readAll();
   for (const [uri, meta] of entries) all[uri] = { ...all[uri], ...meta } as PhotoMeta;
   await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  noteAssetIds(entries);
 }
 
 // Every known photo timestamp in one read — used by the bulk analysis pass,

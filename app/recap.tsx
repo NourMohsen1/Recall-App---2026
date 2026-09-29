@@ -6,6 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../src/components/AnalyzingBanner';
 import ScreenHeader from '../src/components/ScreenHeader';
 import { MONTHS_SHORT } from '../src/data';
+import PhotoImage from '../src/components/PhotoImage';
 import { useMemoryPolish } from '../src/memoryIntake';
 import {
   LoggedMemory,
@@ -126,7 +127,7 @@ function WeeklyRecap({ memories }: { memories: LoggedMemory[] }) {
                   <View key={i} style={styles.dayPill}>
                     <Text style={styles.dayPillNum}>{String(d.getDate()).padStart(2, '0')}</Text>
                     {uri ? (
-                      <Image source={{ uri }} style={styles.dayPillPhoto} resizeMode="cover" />
+                      <PhotoImage uri={uri} style={styles.dayPillPhoto} />
                     ) : (
                       <EmptyTile style={styles.dayPillPhoto} />
                     )}
@@ -163,7 +164,7 @@ function MonthlyRecap({ memories }: { memories: LoggedMemory[] }) {
               <Text style={styles.monthTitle}>{m.year}</Text>
             </View>
             {uri ? (
-              <Image source={{ uri }} style={styles.monthPhoto} resizeMode="cover" />
+              <PhotoImage uri={uri} style={styles.monthPhoto} />
             ) : (
               <EmptyTile style={styles.monthPhoto} />
             )}
@@ -185,7 +186,7 @@ function YearlyRecap({ memories }: { memories: LoggedMemory[] }) {
           <View key={i} style={styles.monthCard}>
             <View>
               {uri ? (
-                <Image source={{ uri }} style={styles.yearPhoto} resizeMode="cover" />
+                <PhotoImage uri={uri} style={styles.yearPhoto} />
               ) : (
                 <EmptyTile style={styles.yearPhoto} />
               )}
