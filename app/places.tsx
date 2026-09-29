@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import {
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import ActionMenuSheet from '../src/components/ActionMenuSheet';
@@ -9,6 +18,7 @@ import ScreenHeader from '../src/components/ScreenHeader';
 import {
   PLACE_KINDS,
   getPlaces,
+  mergePlaces,
   onPlacesChanged,
   relativeDay,
   type PlaceKind,
@@ -35,8 +45,26 @@ export default function Places() {
   const [places, setPlaces] = useState<PlaceSummary[] | null>(null);
   const [kind, setKind] = useState<PlaceKind | 'all'>('all');
   const [year, setYear] = useState<string | null>(null);
-  const [menu, setMenu] = useState<'kind' | 'year' | null>(null);
+  const [menu, setMenu] = useState<'kind' | 'year' | 'merge' | null>(null);
   const [showOnce, setShowOnce] = useState(false);
+  // Choosing places that are really one, to merge them.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [naming, setNaming] = useState<string | null>(null);
+  const [merging, setMerging] = useState(false);
+
+  const startSelecting = (id?: string) => {
+    setSelecting(true);
+    setSelected(id ? [id] : []);
+  };
+  const stopSelecting = () => {
+    setSelecting(false);
+    setSelected([]);
+    setNaming(null);
+    setMenu(null);
+  };
+  const toggle = (id: string) =>
+    setSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   const load = useCallback(() => {
     getPlaces().then(setPlaces);
@@ -92,6 +120,23 @@ export default function Places() {
 
   const open = (id: string) => router.push({ pathname: '/place/[name]', params: { name: id } });
 
+  const chosen = (places ?? []).filter((p) => selected.includes(p.id));
+  const merge = async (keepId: string, name: string) => {
+    const clean = name.trim();
+    if (!clean || chosen.length < 2) return;
+    setMenu(null);
+    setNaming(null);
+    await mergePlaces(
+      chosen.map((p) => p.id),
+      keepId,
+      clean,
+    );
+    stopSelecting();
+    load();
+  };
+  // A typed name goes on the place with the most history.
+  const busiest = [...chosen].sort((a, b) => b.days.length - a.days.length)[0];
+
   const renderGrid = (items: typeof shown) => (
     <View style={styles.grid}>
       {items.map(({ place, days }) => (
@@ -104,7 +149,12 @@ export default function Places() {
           radius={18}
           labelSize={14}
           caption={cap(relativeDay(days[days.length - 1]).replace(/^on /, ''))}
-          onPress={() => open(place.id)}
+          onPress={() => (selecting ? toggle(place.id) : open(place.id))}
+          // Always a long-press handler, even while choosing: swapping it out
+          // mid-touch (the press that starts choosing) made the finger's
+          // release count as a tap, which unchecked the place just chosen.
+          onLongPress={() => (selecting ? toggle(place.id) : startSelecting(place.id))}
+          selected={selecting ? selected.includes(place.id) : undefined}
         />
       ))}
     </View>
@@ -112,7 +162,7 @@ export default function Places() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title="Places" />
+      <ScreenHeader title={selecting ? 'Select places' : 'Places'} />
       <ScrollView style={styles.body} contentContainerStyle={styles.scroll}>
         <View style={styles.filterRow}>
           <FilterPill
@@ -122,7 +172,20 @@ export default function Places() {
           <FilterPill label={activeYear} onPress={() => setMenu('year')} />
         </View>
 
-        {summary && <Text style={styles.summary}>{summary}</Text>}
+        {(summary || selecting) && (
+          <View style={styles.summaryRow}>
+            <Text style={[styles.summary, { flex: 1 }]}>
+              {selecting ? 'Tap the places that are really one place, then merge them.' : summary}
+            </Text>
+            <Pressable
+              onPress={selecting ? stopSelecting : () => startSelecting()}
+              hitSlop={10}
+              style={styles.selectBtn}
+            >
+              <Text style={styles.selectText}>{selecting ? 'Cancel' : 'Select'}</Text>
+            </Pressable>
+          </View>
+        )}
 
         {places && places.length === 0 && (
           <View style={styles.empty}>
@@ -149,7 +212,7 @@ export default function Places() {
                   : `${once.length} ${once.length === 1 ? 'place' : 'places'} you went to once`}
               </Text>
             </Pressable>
-            {showOnce && renderGrid(once)}
+            {(showOnce || selecting) && renderGrid(once)}
           </>
         )}
       </ScrollView>
@@ -193,6 +256,72 @@ export default function Places() {
           },
         }))}
       />
+      {selecting && (
+        <View style={styles.mergeBar}>
+          <Pressable
+            style={[styles.mergeBtn, chosen.length < 2 && styles.mergeBtnOff]}
+            disabled={chosen.length < 2 || merging}
+            onPress={() => setMenu('merge')}
+          >
+            <Text style={styles.mergeBtnText}>
+              {chosen.length < 2 ? 'Select 2 or more to merge' : `Merge ${chosen.length} places`}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+
+      <ActionMenuSheet
+        visible={menu === 'merge'}
+        title="Which name should they go by?"
+        onClose={() => setMenu(null)}
+        actions={[
+          ...chosen.map((p) => ({
+            key: p.id,
+            icon: (p.named ? 'map-marker-check-outline' : 'map-marker-outline') as 'map-marker-outline',
+            label: p.label,
+            hint: `${p.days.length} ${p.days.length === 1 ? 'day' : 'days'}${p.named ? '' : ' · street name'}`,
+            onPress: () => {
+              setMerging(true);
+              merge(p.id, p.label).finally(() => setMerging(false));
+            },
+          })),
+          {
+            key: 'new',
+            icon: 'pencil-outline' as const,
+            label: 'A new name…',
+            onPress: () => {
+              setMenu(null);
+              setNaming('');
+            },
+          },
+        ]}
+      />
+
+      <Modal visible={naming != null} transparent animationType="fade" onRequestClose={() => setNaming(null)}>
+        <Pressable style={styles.backdrop} onPress={() => setNaming(null)}>
+          <Pressable style={styles.nameCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.nameTitle}>Name this place</Text>
+            <TextInput
+              value={naming ?? ''}
+              onChangeText={setNaming}
+              placeholder="Home, College, Dunkin…"
+              placeholderTextColor="#9AA3A4"
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => busiest && merge(busiest.id, naming ?? '')}
+              style={styles.nameInput}
+            />
+            <View style={styles.nameButtons}>
+              <Pressable onPress={() => setNaming(null)} hitSlop={8}>
+                <Text style={styles.nameCancel}>Cancel</Text>
+              </Pressable>
+              <Pressable onPress={() => busiest && merge(busiest.id, naming ?? '')} hitSlop={8}>
+                <Text style={styles.nameSave}>Merge</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -202,11 +331,18 @@ const styles = StyleSheet.create({
   body: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 120 },
   filterRow: { flexDirection: 'row', justifyContent: 'space-between' },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
+  selectBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: colors.white,
+  },
+  selectText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.primary },
   summary: {
     fontFamily: fonts.regular,
     fontSize: 13,
     color: '#4A5253',
-    marginTop: 16,
   },
   grid: {
     flexDirection: 'row',
@@ -234,4 +370,43 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   onceText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
+
+  mergeBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 34,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E8E8',
+  },
+  mergeBtn: {
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingVertical: 15,
+    alignItems: 'center',
+  },
+  mergeBtnOff: { backgroundColor: colors.soft },
+  mergeBtnText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.white },
+
+  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.35)', justifyContent: 'center', padding: 28 },
+  nameCard: { backgroundColor: colors.white, borderRadius: 20, padding: 20 },
+  nameTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
+  nameInput: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: colors.soft,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    color: '#1B1B1B',
+  },
+  nameButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, marginTop: 18 },
+  nameCancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
+  nameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
 });

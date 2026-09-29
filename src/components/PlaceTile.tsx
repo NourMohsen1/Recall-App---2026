@@ -87,6 +87,8 @@ export default function PlaceTile({
   labelSize = 12,
   caption,
   onPress,
+  onLongPress,
+  selected,
 }: {
   label: string;
   cover?: string;
@@ -97,10 +99,27 @@ export default function PlaceTile({
   /** A second, quieter line: "12 days". */
   caption?: string;
   onPress?: () => void;
+  onLongPress?: () => void;
+  /** Choosing places to merge: true/false draws the check; undefined means
+   *  the grid is not in choosing mode. */
+  selected?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={{ width: size, alignItems: 'center' }}>
-      <PlaceCover cover={cover} kind={kind} size={size} radius={radius} />
+    <Pressable
+      onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
+      disabled={!onPress && !onLongPress}
+      style={{ width: size, alignItems: 'center' }}
+    >
+      <View style={selected === false && { opacity: 0.55 }}>
+        <PlaceCover cover={cover} kind={kind} size={size} radius={radius} />
+        {selected !== undefined && (
+          <View style={[styles.check, selected && styles.checkOn]}>
+            {selected && <MaterialCommunityIcons name="check" size={16} color={colors.white} />}
+          </View>
+        )}
+      </View>
       <Text numberOfLines={1} style={[styles.label, { fontSize: labelSize }]}>
         {label}
       </Text>
@@ -120,6 +139,20 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: colors.white,
   },
+  check: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: colors.white,
+    backgroundColor: 'rgba(8,17,18,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkOn: { backgroundColor: colors.teal },
   empty: {
     backgroundColor: '#EEF1F1',
     alignItems: 'center',

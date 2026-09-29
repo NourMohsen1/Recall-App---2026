@@ -91,6 +91,10 @@ export type Place = {
    *  has one — a place only ever mentioned stays without. */
   latitude?: number;
   longitude?: number;
+  /** Other spots that are this same place — kept when the user merges
+   *  places, so a later photo from any of them joins this place instead of
+   *  starting the duplicate all over again. */
+  moreSpots?: { latitude: number; longitude: number }[];
   /** A cover the user chose. Otherwise the best photo taken there is used. */
   coverUri?: string;
   createdAt: string;
@@ -227,10 +231,12 @@ function nearest(places: Record<string, Place>, lat: number, lng: number): Place
   let bestDistance = SAME_PLACE_METERS;
   for (const p of Object.values(places)) {
     if (p.latitude == null || p.longitude == null) continue;
-    const d = metersBetween(lat, lng, p.latitude, p.longitude);
-    if (d <= bestDistance) {
-      best = p;
-      bestDistance = d;
+    for (const spot of [{ latitude: p.latitude, longitude: p.longitude }, ...(p.moreSpots ?? [])]) {
+      const d = metersBetween(lat, lng, spot.latitude, spot.longitude);
+      if (d <= bestDistance) {
+        best = p;
+        bestDistance = d;
+      }
     }
   }
   return best;
@@ -284,9 +290,21 @@ function mergeInto(
   to.aliases = uniq([...to.aliases, ...from.aliases, from.named ? placeKey(from.name) : ''].filter(Boolean));
   to.kind = to.kind ?? from.kind;
   to.coverUri = to.coverUri ?? from.coverUri;
-  if (to.latitude == null && from.latitude != null) {
-    to.latitude = from.latitude;
-    to.longitude = from.longitude;
+  // Every spot the two covered stays covered.
+  const spots = [
+    ...(from.latitude != null && from.longitude != null ? [{ latitude: from.latitude, longitude: from.longitude }] : []),
+    ...(from.moreSpots ?? []),
+  ];
+  for (const spot of spots) {
+    if (to.latitude == null || to.longitude == null) {
+      to.latitude = spot.latitude;
+      to.longitude = spot.longitude;
+      continue;
+    }
+    const known = [{ latitude: to.latitude, longitude: to.longitude }, ...(to.moreSpots ?? [])];
+    // One spot per ~20 m is plenty; closer ones add nothing.
+    if (known.some((k) => metersBetween(k.latitude, k.longitude, spot.latitude, spot.longitude) < 20)) continue;
+    to.moreSpots = [...(to.moreSpots ?? []), spot];
   }
   for (const list of Object.values(days)) {
     for (const e of list) {
@@ -1011,6 +1029,28 @@ export function renamePlace(id: string, newName: string): Promise<string> {
     changed();
     return survivor;
   });
+}
+
+/** The user says several places are one. Everything — visits, photos,
+ *  spots, names — moves into `keepId`, which is then called `name`.
+ *  Returns the id of the place that remains. */
+export async function mergePlaces(ids: string[], keepId: string, name: string): Promise<string> {
+  await locked(async () => {
+    const [places, days, meta] = await Promise.all([readPlaces(), readDays(), getAllPhotoMeta()]);
+    if (!places[keepId]) return;
+    const metaUpdates: [string, Partial<PhotoMeta>][] = [];
+    let merged = 0;
+    for (const id of ids) {
+      if (id === keepId || !places[id]) continue;
+      mergeInto(places, days, meta, metaUpdates, id, keepId);
+      merged += 1;
+    }
+    await Promise.all([writePlaces(places), writeDays(days), setPhotoMetaBatch(metaUpdates)]);
+    console.log(`[places] merged ${merged} places into one (${metaUpdates.length} photos moved)`);
+  });
+  // Naming goes through rename, so a name another place already has folds
+  // that one in too — "Home" is one place however many times it is merged.
+  return renamePlace(keepId, name);
 }
 
 /** "This spot is Dunkin" — the answer to a place's question. */
