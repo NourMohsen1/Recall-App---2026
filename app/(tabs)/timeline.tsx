@@ -1095,7 +1095,7 @@ export default function Timeline() {
                       looking like analysis will never arrive. */}
                   {(assumedStatus === 'ask' || readingDay) && !assumedMemory && (
                     <ReadDayCard
-                      photoCount={askPhotoCount}
+                      photoUris={realPhotoUris}
                       reading={readingDay}
                       onRead={readThisDay}
                       style={{ position: 'absolute', left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w }}

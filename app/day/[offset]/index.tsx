@@ -592,7 +592,7 @@ export default function DayDetailScreen() {
         {(assumedStatus === 'ask' || readingDay) && !assumedMemory && (
           <>
             <View style={styles.divider} />
-            <ReadDayCard photoCount={askPhotoCount} reading={readingDay} onRead={readThisDay} />
+            <ReadDayCard photoUris={realPhotoUris} reading={readingDay} onRead={readThisDay} />
           </>
         )}
 
