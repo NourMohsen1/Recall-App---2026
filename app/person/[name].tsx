@@ -70,6 +70,7 @@ import {
 import { DayPlace, getAllDayPlaces } from '../../src/places';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
+import { withAppNav } from '../../src/components/AppNav';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -130,7 +131,7 @@ function reachLabel(dayKey: string): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
-export default function PersonProfile() {
+function PersonProfile() {
   const router = useRouter();
   const { name } = useLocalSearchParams<{ name: string }>();
 
@@ -894,3 +895,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(PersonProfile);

@@ -39,6 +39,7 @@ import {
   type PlaceSummary,
 } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
+import { withAppNav } from '../../src/components/AppNav';
 
 // A place's profile: what it looks like, how often the user goes, what
 // happened last time, who they go with, and every day they were there.
@@ -58,7 +59,7 @@ function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export default function PlaceProfile() {
+function PlaceProfile() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -638,3 +639,6 @@ const styles = StyleSheet.create({
   renameCancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
   renameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(PlaceProfile);

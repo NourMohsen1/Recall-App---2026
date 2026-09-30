@@ -19,6 +19,7 @@ import { LoggedMemory, dateKey, getMemoriesByDay, persistFile } from '../src/mem
 import { UserProfile, getUserProfile, setUserProfile } from '../src/userProfile';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
+import { withAppNav } from '../src/components/AppNav';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -49,7 +50,7 @@ function railLabel(key: string): string {
 
 // The user's own profile — the same shape as everyone else's, because they
 // are a person in their own memory log, not a settings screen.
-export default function MyProfile() {
+function MyProfile() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile>({});
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
@@ -239,3 +240,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(MyProfile);

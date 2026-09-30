@@ -26,6 +26,7 @@ import { DuplicateSuggestion, findDuplicatePeople } from '../src/personIdentity'
 import { DayPlace, getAllDayPlaces } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
+import { withAppNav } from '../src/components/AppNav';
 
 // Wraps a name in Unicode direction isolates so an Arabic name dropped into
 // an English sentence doesn't drag the punctuation and surrounding words
@@ -100,7 +101,7 @@ function PersonCard({
   );
 }
 
-export default function People() {
+function People() {
   const router = useRouter();
   const [people, setPeople] = useState<PersonSummary[]>([]);
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
@@ -396,3 +397,6 @@ const styles = StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
   metaText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(People);

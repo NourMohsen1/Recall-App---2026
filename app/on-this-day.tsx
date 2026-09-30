@@ -46,6 +46,7 @@ import {
 } from '../src/onThisDay';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
+import { withAppNav } from '../src/components/AppNav';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -314,7 +315,7 @@ function TopicCard({
   );
 }
 
-export default function OnThisDay() {
+function OnThisDay() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
   const [feeds, setFeeds] = useState<Record<string, TopicItem[]>>({});
@@ -766,3 +767,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(OnThisDay);

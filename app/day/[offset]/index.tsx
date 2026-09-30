@@ -62,8 +62,9 @@ import { askToReadDay, offerAllIfTime } from '../../../src/readDayPrompt';
 import { DayPlace, getPlacesForDay } from '../../../src/places';
 import { rtlIfArabic } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
+import { withAppNav } from '../../../src/components/AppNav';
 
-export default function DayDetailScreen() {
+function DayDetailScreen() {
   const router = useRouter();
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
@@ -769,3 +770,6 @@ const styles = StyleSheet.create({
   },
   assumedTranslateText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(DayDetailScreen);

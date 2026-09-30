@@ -19,6 +19,7 @@ import {
   memoryDisplayText,
 } from '../src/memoryLog';
 import { colors, fonts } from '../src/theme';
+import { withAppNav } from '../src/components/AppNav';
 
 const PERIODS = ['Today', 'Weekly', 'Monthly', 'Yearly'] as const;
 type Period = (typeof PERIODS)[number];
@@ -103,7 +104,7 @@ function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
 
 const KIND: Record<Exclude<Period, 'Today'>, RecapKind> = { Weekly: 'week', Monthly: 'month', Yearly: 'year' };
 
-export default function Recap() {
+function Recap() {
   const router = useRouter();
   // A recap notification opens straight onto its own tab.
   const params = useLocalSearchParams<{ period?: string; offset?: string }>();
@@ -311,3 +312,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(Recap);

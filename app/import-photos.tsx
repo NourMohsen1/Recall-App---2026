@@ -17,13 +17,14 @@ import {
   requestLibraryPermission,
 } from '../src/photoImport';
 import { colors, fonts } from '../src/theme';
+import { withAppNav } from '../src/components/AppNav';
 
 // Matches the Timeline's own "at least a year back" window — one flat sync
 // window instead of asking the user to pick a day count.
 
 type Phase = 'idle' | 'scanning' | 'done' | 'error';
 
-export default function ImportPhotos() {
+function ImportPhotos() {
   const router = useRouter();
   const [syncOn, setSyncOn] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -196,7 +197,7 @@ const styles = StyleSheet.create({
   back: { position: 'absolute', left: 20, top: 14 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
 
-  scroll: { padding: 28, alignItems: 'center' },
+  scroll: { padding: 28, paddingBottom: 140, alignItems: 'center' },
   iconBadge: {
     width: 76,
     height: 76,
@@ -256,3 +257,6 @@ const styles = StyleSheet.create({
   doneRow: { flexDirection: 'row', gap: 12, marginTop: 20 },
   doneBtn: { flex: 1 },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(ImportPhotos);

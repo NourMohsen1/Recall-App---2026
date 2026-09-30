@@ -25,6 +25,7 @@ import {
   type PlaceSummary,
 } from '../src/places';
 import { colors, fonts } from '../src/theme';
+import { withAppNav } from '../src/components/AppNav';
 
 // Every place the user has been, from their own photos and their own words
 // (src/places.ts). Most visited first: the places someone goes to are the
@@ -37,7 +38,7 @@ function cap(s: string) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export default function Places() {
+function Places() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const tile = Math.floor((width - 40 - GAP * 2) / 3);
@@ -371,14 +372,15 @@ const styles = StyleSheet.create({
   },
   onceText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
 
+  // Above the bottom menu.
   mergeBar: {
     position: 'absolute',
     left: 0,
     right: 0,
-    bottom: 0,
+    bottom: 84,
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 34,
+    paddingBottom: 12,
     backgroundColor: colors.white,
     borderTopWidth: 1,
     borderTopColor: '#E5E8E8',
@@ -410,3 +412,6 @@ const styles = StyleSheet.create({
   nameCancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
   nameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(Places);

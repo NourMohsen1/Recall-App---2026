@@ -18,6 +18,7 @@ import {
 } from '../../../src/memoryLog';
 import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
+import { withAppNav } from '../../../src/components/AppNav';
 
 function Header({ onBack }: { onBack: () => void }) {
   return (
@@ -202,7 +203,7 @@ function EmptySource() {
   );
 }
 
-export default function SourceScreen() {
+function SourceScreen() {
   const router = useRouter();
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
@@ -341,3 +342,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 });
+
+// The app's bottom menu over this screen, like the main tabs.
+export default withAppNav(SourceScreen);
