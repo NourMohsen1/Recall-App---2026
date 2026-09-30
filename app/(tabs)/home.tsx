@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   // The artwork has wide empty margins; scaled up so the brain fills the
   // circle as in the design.
-  chatAvatarImg: { width: 84, height: 84 },
+  chatAvatarImg: { width: 66, height: 66 },
   chatPill: {
     flex: 1,
     backgroundColor: colors.primary,
