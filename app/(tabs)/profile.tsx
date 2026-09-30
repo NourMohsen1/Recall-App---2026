@@ -115,6 +115,14 @@ export default function Profile() {
             who is in them. */}
         <FaceIndexCard />
 
+        {/* The on-device photo test. Development builds only — never in a
+            TestFlight or App Store build. */}
+        {__DEV__ && (
+          <Pressable style={styles.devLink} onPress={() => router.push('/dev/photo-pilot')}>
+            <Text style={styles.devLinkText}>Photo understanding test (development)</Text>
+          </Pressable>
+        )}
+
         {/* Devices */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Devices</Text>
@@ -149,6 +157,16 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  devLink: {
+    marginTop: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.muted,
+  },
+  devLinkText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
   safe: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingBottom: 130 },
   back: { marginTop: 12 },
