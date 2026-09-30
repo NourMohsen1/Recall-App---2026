@@ -57,7 +57,9 @@ async function place(cadence: RecapCadence, on: boolean): Promise<void> {
       title: 'Recall',
       body: COPY[cadence],
       sound: true,
-      data: { recap: RECAP_TAB[cadence] },
+      // Weekly fires on Sunday evening: this week, now complete. Monthly
+      // fires on the 1st: the month just finished.
+      data: { recap: RECAP_TAB[cadence], offset: cadence === 'monthly' ? -1 : cadence === 'weekly' ? 0 : undefined },
     },
     trigger: trigger(cadence),
   });
@@ -101,7 +103,7 @@ export async function syncRecapNotifications(): Promise<void> {
  *  that tapping one opens the Recap. */
 export async function sendTestRecapNotification(): Promise<void> {
   await Notifications.scheduleNotificationAsync({
-    content: { title: 'Recall', body: COPY.weekly, data: { recap: RECAP_TAB.weekly } },
+    content: { title: 'Recall', body: COPY.weekly, data: { recap: RECAP_TAB.weekly, offset: 0 } },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },
   });
 }

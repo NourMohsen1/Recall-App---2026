@@ -118,7 +118,11 @@ export default function RecapView({
         {rows === null ? (
           <ActivityIndicator color={colors.teal} style={{ marginVertical: 30 }} />
         ) : shown.length === 0 ? (
-          <Text style={styles.empty}>Nothing recorded in this {kind} yet.</Text>
+          <Text style={styles.empty}>
+            {tiles.some((t) => t.photo) || slides.length > 0
+              ? `Only photos from this ${kind} so far. Turn on Reading your photos in Profile and Recall will tell their story.`
+              : `Nothing recorded in this ${kind} yet.`}
+          </Text>
         ) : (
           <>
             {shown.map((r, i) => (

@@ -64,7 +64,11 @@ function RootLayout() {
       const tab = response?.notification.request.content.data?.recap;
       if (typeof tab !== 'string') return;
       console.log(`[recap] notification opened the ${tab} recap`);
-      router.push({ pathname: '/recap', params: { period: tab } });
+      const offset = response?.notification.request.content.data?.offset;
+      router.push({
+        pathname: '/recap',
+        params: typeof offset === 'number' ? { period: tab, offset: String(offset) } : { period: tab },
+      });
     };
     Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(open);

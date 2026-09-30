@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../src/components/AnalyzingBanner';
+import RecapOverview from '../src/components/RecapOverview';
 import RecapView from '../src/components/RecapView';
 import ScreenHeader from '../src/components/ScreenHeader';
 import type { RecapKind, RecapUnit } from '../src/recap';
@@ -105,17 +106,20 @@ const KIND: Record<Exclude<Period, 'Today'>, RecapKind> = { Weekly: 'week', Mont
 export default function Recap() {
   const router = useRouter();
   // A recap notification opens straight onto its own tab.
-  const params = useLocalSearchParams<{ period?: string }>();
+  const params = useLocalSearchParams<{ period?: string; offset?: string }>();
   const [period, setPeriod] = useState<Period>(
     PERIODS.includes(params.period as Period) ? (params.period as Period) : 'Today',
   );
-  const [offset, setOffset] = useState(0);
+  // null: the tab's overview (a card per week, month or year). A number:
+  // that period's full recap, 0 = the current one.
+  const [offset, setOffset] = useState<number | null>(null);
   useEffect(() => {
     if (PERIODS.includes(params.period as Period)) {
       setPeriod(params.period as Period);
-      setOffset(0);
+      const o = Number(params.offset);
+      setOffset(params.offset != null && Number.isFinite(o) ? o : null);
     }
-  }, [params.period]);
+  }, [params.period, params.offset]);
 
   // Tapping a row goes one level in: a day opens that day, a week its
   // weekly recap, a month its monthly recap.
@@ -163,7 +167,7 @@ export default function Recap() {
                 key={p}
                 onPress={() => {
                   setPeriod(p);
-                  setOffset(0);
+                  setOffset(null);
                 }}
                 style={[styles.switchBtn, period === p && styles.switchBtnActive]}
               >
@@ -175,8 +179,17 @@ export default function Recap() {
           </View>
 
           {period === 'Today' && <TodayRecap memories={memories} />}
-          {period !== 'Today' && (
-            <RecapView kind={KIND[period]} offset={offset} onOffset={setOffset} onOpenUnit={openUnit} />
+          {period !== 'Today' && offset === null && <RecapOverview kind={KIND[period]} onOpen={setOffset} />}
+          {period !== 'Today' && offset !== null && (
+            <>
+              <Pressable onPress={() => setOffset(null)} hitSlop={8} style={styles.allBack}>
+                <Ionicons name="chevron-back" size={16} color={colors.primary} />
+                <Text style={styles.allBackText}>
+                  {period === 'Weekly' ? 'All weeks' : period === 'Monthly' ? 'All months' : 'All years'}
+                </Text>
+              </Pressable>
+              <RecapView kind={KIND[period]} offset={offset} onOffset={setOffset} onOpenUnit={openUnit} />
+            </>
           )}
         </ScrollView>
       </View>
@@ -185,6 +198,8 @@ export default function Recap() {
 }
 
 const styles = StyleSheet.create({
+  allBack: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 16, alignSelf: 'flex-start' },
+  allBackText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.primary },
   safe: { flex: 1, backgroundColor: colors.white },
   body: { flex: 1, backgroundColor: colors.pale },
   scroll: { padding: 16, paddingBottom: 140 },
