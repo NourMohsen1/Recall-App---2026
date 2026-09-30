@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
+import PhotoSlideshow from './PhotoSlideshow';
 import {
+  periodPhotos,
   recapLine,
   recapPeriod,
   unitsWithContent,
@@ -33,12 +35,14 @@ export default function RecapView({
   const period = recapPeriod(kind, offset);
   const [tiles, setTiles] = useState<RecapUnit[]>(period.units);
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [slides, setSlides] = useState<string[]>([]);
 
   useEffect(() => {
     let live = true;
     setRows(null);
     setTiles(period.units);
     (async () => {
+      if (kind === 'month') periodPhotos(period).then((p) => live && setSlides(p));
       const units = await unitsWithContent(period);
       if (!live) return;
       setTiles(units.map((u) => u.unit));
@@ -98,7 +102,10 @@ export default function RecapView({
             <Ionicons name="chevron-forward" size={20} color={colors.primary} />
           </Pressable>
         </View>
-        {scrollTiles ? (
+        {/* A month is one photo at a time, fading through the month. */}
+        {kind === 'month' ? (
+          <PhotoSlideshow uris={slides} style={styles.slideshow} />
+        ) : scrollTiles ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripScroll}>
             {strip}
           </ScrollView>
@@ -167,11 +174,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#C9D5D6',
   },
-  header: { backgroundColor: colors.pale, paddingHorizontal: 16, paddingTop: 18, paddingBottom: 16 },
+  header: { backgroundColor: '#ADC3C5', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 },
   headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   arrow: { paddingVertical: 4 },
-  title: { fontFamily: fonts.bold, fontSize: 26, lineHeight: 28, color: '#1B1B1B' },
-  range: { fontFamily: fonts.bold, fontSize: 26, lineHeight: 28, color: '#1B1B1B', textAlign: 'right' },
+  // Sized against the rest of the page: the day titles are 17.
+  title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: '#1B1B1B' },
+  range: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: '#1B1B1B', textAlign: 'right' },
+  slideshow: { width: '100%', aspectRatio: 2.4, borderRadius: 18, marginTop: 14 },
   strip: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   stripScroll: { gap: 8, marginTop: 14 },
   tile: {

@@ -243,6 +243,19 @@ export async function unitsWithContent(period: RecapPeriod): Promise<{ unit: Rec
   });
 }
 
+/** Photos from across the whole period, shuffled — the monthly header's
+ *  slideshow. Days that have not happened yet have none. */
+export async function periodPhotos(period: RecapPeriod, limit = 40): Promise<string[]> {
+  const w = await world();
+  const all = period.units.flatMap((u) => daysIn(u).flatMap((d) => w.get(d)?.photos ?? []));
+  const unique = [...new Set(all)];
+  for (let i = unique.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [unique[i], unique[j]] = [unique[j], unique[i]];
+  }
+  return unique.slice(0, limit);
+}
+
 // ── Writing the lines ─────────────────────────────────────────────────────
 
 const PROMPT_VERSION = 4;
