@@ -252,3 +252,21 @@ export function startBackgroundIndexing(): void {
     await group();
   })().catch(() => {});
 }
+
+let catchingUp = false;
+
+/** New photos just arrived (a sync): read them for faces now rather than
+ *  at the next launch, then look for people in them. Quiet and safe to call
+ *  often — one catch-up at a time. */
+export function indexNewPhotos(): void {
+  if (catchingUp || !faceEmbedderAvailable()) return;
+  catchingUp = true;
+  (async () => {
+    const outcome = await indexUntilDone();
+    if (outcome.status === 'done') await group();
+  })()
+    .catch((e) => console.warn('[faces] reading new photos failed:', e))
+    .finally(() => {
+      catchingUp = false;
+    });
+}

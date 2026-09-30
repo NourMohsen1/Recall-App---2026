@@ -207,6 +207,25 @@ Each of these cost real time once.
 - **`grep` treats `src/peopleTags.ts` as binary** and silently skips it. Use
   `grep -a`.
 
+## Backup, restore and scale
+
+- **Backup is the iPhone's own iCloud Backup**, as most apps do. Keep user
+  data in Application Support (AsyncStorage) and Documents; never in Caches
+  or tmp, which iOS does not back up.
+- **Photo asset ids are per device.** A restored or new phone can give every
+  photo a new id. Each photo also stores its `cloudId` (PHCloudIdentifier);
+  missing photos are looked up by it before anything is removed. The
+  deleted-photo sync never acts without full photo access, and never on a
+  loss of more than 20% at once — either would wipe a library.
+- **Stress-tested at 2,000 photos** (Sept 2026, simulator): import with the
+  privacy check 2 min 39 s; Places builds in under 150 ms; photo details
+  are ~310 bytes a photo and cached in memory (`photoMeta.ts`). At 20,000
+  photos that is ~6 MB; if screens slow down, move photo details to SQLite.
+- **Crash reports: Sentry**, off until `EXPO_PUBLIC_SENTRY_DSN` is set. Never
+  send console breadcrumbs, screenshots or bodies — they carry memories.
+  Local builds need `SENTRY_DISABLE_AUTO_UPLOAD=true` until there is an
+  auth token for symbol upload.
+
 ## Before TestFlight
 
 - Hard spend caps on the OpenAI and DeepSeek dashboards (Nour's to do). The

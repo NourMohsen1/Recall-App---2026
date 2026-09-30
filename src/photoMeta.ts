@@ -47,9 +47,33 @@ export type PhotoMeta = {
 
 const PHOTO_META_KEY = 'photoMeta';
 
+// Parsed once and kept. Every read and write of this store goes through
+// this file, so the copy in memory is always what storage holds — and a
+// library of 20,000 photos (about 6 MB here) is not re-read from disk and
+// re-parsed on every call, which several background passes make hundreds
+// of times. Callers get the live object: change it only on the way to
+// writing it back, as every caller does.
+let cache: Record<string, PhotoMeta> | null = null;
+let loading: Promise<Record<string, PhotoMeta>> | null = null;
+
 async function readAll(): Promise<Record<string, PhotoMeta>> {
-  const raw = await AsyncStorage.getItem(PHOTO_META_KEY);
-  return raw ? (JSON.parse(raw) as Record<string, PhotoMeta>) : {};
+  if (cache) return cache;
+  if (!loading) {
+    loading = AsyncStorage.getItem(PHOTO_META_KEY)
+      .then((raw) => {
+        cache = raw ? (JSON.parse(raw) as Record<string, PhotoMeta>) : {};
+        return cache;
+      })
+      .finally(() => {
+        loading = null;
+      });
+  }
+  return loading;
+}
+
+async function writeAll(all: Record<string, PhotoMeta>): Promise<void> {
+  cache = all;
+  await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
 }
 
 // Photo → library asset id, kept in memory. Every photo on screen asks for
@@ -97,7 +121,7 @@ export async function getPhotoMeta(uri: string): Promise<PhotoMeta | null> {
 export async function setPhotoMeta(uri: string, meta: Partial<PhotoMeta>): Promise<void> {
   const all = await readAll();
   all[uri] = { ...all[uri], ...meta } as PhotoMeta;
-  await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  await writeAll(all);
   noteAssetIds([[uri, meta]]);
 }
 
@@ -107,7 +131,7 @@ export async function clearPhotoMeta(uri: string): Promise<void> {
   const all = await readAll();
   if (!(uri in all)) return;
   delete all[uri];
-  await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  await writeAll(all);
 }
 
 /** Forgets these photos entirely. */
@@ -121,7 +145,7 @@ export async function removePhotoMeta(uris: Set<string>): Promise<void> {
     }
   }
   if (!changed) return;
-  await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  await writeAll(all);
   assetIndex = null;
 }
 
@@ -132,7 +156,7 @@ export async function setPhotoMetaBatch(entries: [string, Partial<PhotoMeta>][])
   if (entries.length === 0) return;
   const all = await readAll();
   for (const [uri, meta] of entries) all[uri] = { ...all[uri], ...meta } as PhotoMeta;
-  await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  await writeAll(all);
   noteAssetIds(entries);
 }
 

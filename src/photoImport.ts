@@ -10,6 +10,7 @@ import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLo
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
 import { photoGuardAvailable, privateAssetIds } from './photoGuard';
+import { indexNewPhotos } from './faceIndexing';
 import { startPlaceIndexing, toLocation } from './places';
 
 // Bulk-imports photos from the device's library into the Timeline, grouped
@@ -99,8 +100,11 @@ export function syncNewPhotosIfOn(): Promise<ImportResult | null> {
     if (!(await getPhotoSync())) return null;
     const perm = await MediaLibrary.getPermissionsAsync();
     if (!perm.granted) return null;
+    const started = Date.now();
     const res = await importRecentPhotos(SYNC_DAYS);
-    if (res.imported > 0) console.log(`[photos] synced ${res.imported} new photos`);
+    if (res.imported > 0) {
+      console.log(`[photos] synced ${res.imported} new photos across ${res.days} days in ${Math.round((Date.now() - started) / 1000)}s`);
+    }
     return res;
   })()
     .catch((e) => {
@@ -320,8 +324,12 @@ export async function importRecentPhotos(
     after = page.endCursor;
   }
 
-  // File the new photos under their places, in the background.
-  if (importedCount > 0) startPlaceIndexing();
+  // File the new photos under their places and read them for faces, in the
+  // background.
+  if (importedCount > 0) {
+    startPlaceIndexing();
+    indexNewPhotos();
+  }
   if (privateSkipped > 0) console.log(`[privacy] ${privateSkipped} private photos skipped during import`);
   return { imported: importedCount, days: allDays.size, privateSkipped };
 }

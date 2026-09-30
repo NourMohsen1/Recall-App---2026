@@ -792,7 +792,14 @@ type World = {
 async function world(): Promise<World> {
   // Several parts of a screen ask at once; one build serves them all.
   if (cached && Date.now() - cached.at < 3000) return cached.world;
-  const built = buildWorld();
+  const t0 = Date.now();
+  const built = buildWorld().then((w) => {
+    const ms = Date.now() - t0;
+    // Said only when it is slow enough to feel: the size of a library is the
+    // thing most likely to make this grow.
+    if (ms > 150) console.log(`[perf] places took ${ms}ms (${w.summaries.size} places)`);
+    return w;
+  });
   cached = { at: Date.now(), world: built };
   built.catch(() => {
     cached = null;
