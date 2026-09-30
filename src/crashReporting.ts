@@ -17,6 +17,13 @@ const DSN = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 export const crashReportingOn = !!DSN;
 
+/** A deliberate test report, so it can be confirmed reports arrive. */
+export function sendTestCrashReport(): void {
+  if (!DSN) return;
+  Sentry.captureException(new Error('Recall test report — safe to ignore'));
+  console.log('[crash] test report sent');
+}
+
 export function startCrashReporting(): void {
   if (!DSN) return;
   Sentry.init({

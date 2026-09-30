@@ -14,11 +14,17 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview"
+      "channel": "preview",
+      "env": {
+        "EXPO_PUBLIC_SENTRY_DSN": "https://8e1b44936d190cd732e4411f404702f4@o4512173813792768.ingest.us.sentry.io/4512173818773504"
+      }
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_SENTRY_DSN": "https://8e1b44936d190cd732e4411f404702f4@o4512173813792768.ingest.us.sentry.io/4512173818773504"
+      }
     }
   },
   "submit": {

@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FaceIndexCard from '../../src/components/FaceIndexCard';
 import { localFile } from '../../src/memoryLog';
+import { crashReportingOn, sendTestCrashReport } from '../../src/crashReporting';
 import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/photoReading';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
@@ -141,6 +142,13 @@ export default function Profile() {
             who is in them. */}
         <FaceIndexCard />
 
+        {/* Development builds only: confirms crash reports reach Sentry. */}
+        {__DEV__ && crashReportingOn && (
+          <Pressable onPress={sendTestCrashReport} style={styles.devLink}>
+            <Text style={styles.devLinkText}>Send a test crash report (development)</Text>
+          </Pressable>
+        )}
+
         {/* Devices */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Devices</Text>
@@ -175,6 +183,8 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  devLink: { marginTop: 12, paddingVertical: 10, alignItems: 'center' },
+  devLinkText: { fontFamily: fonts.medium, fontSize: 12, color: '#8B9394', textDecorationLine: 'underline' },
   rowHint: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
   safe: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingBottom: 130 },
