@@ -246,17 +246,20 @@ const styles = StyleSheet.create({
 
   chatRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   chatAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 54,
+    height: 54,
+    borderRadius: 27,
     borderWidth: 2,
-    borderColor: colors.accent,
+    borderColor: '#7FB8BF',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.ink,
+    // White, like the design — the brain sits on the page, not on black.
+    backgroundColor: colors.white,
     overflow: 'hidden',
   },
-  chatAvatarImg: { width: 48, height: 48 },
+  // The artwork has wide empty margins; scaled up so the brain fills the
+  // circle as in the design.
+  chatAvatarImg: { width: 84, height: 84 },
   chatPill: {
     flex: 1,
     backgroundColor: colors.primary,
