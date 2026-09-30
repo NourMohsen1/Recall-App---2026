@@ -76,6 +76,43 @@ async function saveImportedIds(ids: Set<string>) {
   await AsyncStorage.setItem(IMPORTED_IDS_KEY, JSON.stringify([...ids]));
 }
 
+// "Sync photos" on the import screen: once on, it stays on, and new photos
+// are brought in quietly each time the app opens.
+const SYNC_ON_KEY = 'photoSyncOn';
+export const SYNC_DAYS = 365;
+
+export async function getPhotoSync(): Promise<boolean> {
+  return (await AsyncStorage.getItem(SYNC_ON_KEY)) === '1';
+}
+
+export async function setPhotoSync(on: boolean): Promise<void> {
+  await AsyncStorage.setItem(SYNC_ON_KEY, on ? '1' : '0');
+}
+
+let quietSync: Promise<ImportResult | null> | null = null;
+
+/** Brings in photos taken since the last sync, when Sync photos is on.
+ *  Silent: nothing on screen waits for it. */
+export function syncNewPhotosIfOn(): Promise<ImportResult | null> {
+  if (quietSync) return quietSync;
+  quietSync = (async () => {
+    if (!(await getPhotoSync())) return null;
+    const perm = await MediaLibrary.getPermissionsAsync();
+    if (!perm.granted) return null;
+    const res = await importRecentPhotos(SYNC_DAYS);
+    if (res.imported > 0) console.log(`[photos] synced ${res.imported} new photos`);
+    return res;
+  })()
+    .catch((e) => {
+      console.warn('[photos] background sync failed:', e);
+      return null;
+    })
+    .finally(() => {
+      quietSync = null;
+    });
+  return quietSync;
+}
+
 export async function requestLibraryPermission(): Promise<boolean> {
   const perm = await MediaLibrary.requestPermissionsAsync();
   return perm.granted;

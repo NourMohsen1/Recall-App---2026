@@ -14,6 +14,7 @@ import { installFaceEmbedder } from '../src/faceEmbedderTflite';
 import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
+import { syncNewPhotosIfOn } from '../src/photoImport';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -49,9 +50,11 @@ export default function RootLayout() {
   // Photos deleted from Photos leave Recall, and any photo not yet checked
   // for privacy is checked — on open, and whenever the app comes back.
   useEffect(() => {
-    syncPhotosWithLibrary();
+    // Then, when Sync photos is on, bring in anything new (photoImport.ts).
+    const sync = () => syncPhotosWithLibrary().then(() => syncNewPhotosIfOn());
+    sync();
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'active') syncPhotosWithLibrary();
+      if (state === 'active') sync();
     });
     return () => sub.remove();
   }, []);

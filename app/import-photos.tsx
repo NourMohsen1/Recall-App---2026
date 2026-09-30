@@ -1,22 +1,25 @@
-import { useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Toggle from '../src/components/Toggle';
 import PillButton from '../src/components/PillButton';
 import { holdBackgroundAnalysis } from '../src/assumedMemory';
 import { runPhotoAnalysisNow } from '../src/photoAnalysisQueue';
 import {
   ImportProgress,
   backfillPhotoMeta,
+  SYNC_DAYS,
+  getPhotoSync,
   importRecentPhotos,
+  setPhotoSync,
   requestLibraryPermission,
 } from '../src/photoImport';
 import { colors, fonts } from '../src/theme';
 
 // Matches the Timeline's own "at least a year back" window — one flat sync
 // window instead of asking the user to pick a day count.
-const SYNC_DAYS = 365;
 
 type Phase = 'idle' | 'scanning' | 'done' | 'error';
 
@@ -27,10 +30,16 @@ export default function ImportPhotos() {
   const [progress, setProgress] = useState<ImportProgress>({ scanned: 0, imported: 0 });
   const [result, setResult] = useState<{ imported: number; days: number; privateSkipped?: number } | null>(null);
 
+  // Remembered: once on, Sync photos stays on (see src/photoImport.ts).
+  useEffect(() => {
+    getPhotoSync().then(setSyncOn);
+  }, []);
+
   const runImport = async () => {
     const granted = await requestLibraryPermission();
     if (!granted) {
       setSyncOn(false);
+      setPhotoSync(false);
       Alert.alert(
         'Photo access needed',
         'Allow photo library access in Settings so Recall can import your photos.',
@@ -68,11 +77,12 @@ export default function ImportPhotos() {
     }
   };
 
-  // The toggle IS the trigger: flipping it on starts the sync immediately.
-  // Flipping it off before/after a sync is just a visual reset — there's no
-  // import to undo, so it's harmless either way.
+  // The toggle IS the trigger: flipping it on starts the sync straight away
+  // and keeps new photos coming in on every open. Off stops that; nothing
+  // already imported is removed.
   const handleToggle = (value: boolean) => {
     setSyncOn(value);
+    setPhotoSync(value);
     if (value && phase !== 'scanning') runImport();
   };
 
@@ -103,26 +113,20 @@ export default function ImportPhotos() {
           so your past days fill in automatically, without you logging them one by one.
         </Text>
 
-        {phase === 'idle' && (
-          <>
-            <View style={styles.toggleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.toggleTitle}>Sync photos</Text>
-                <Text style={styles.toggleSubtitle}>Imports everything from the last 12 months</Text>
-              </View>
-              <Switch
-                value={syncOn}
-                onValueChange={handleToggle}
-                trackColor={{ false: '#DCE0E0', true: colors.accent }}
-                thumbColor={colors.white}
-              />
-            </View>
-
-            <Text style={styles.hint}>
-              A full year the first time may take a moment — after that, running it again only
-              picks up what's new.
+        <View style={styles.toggleRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.toggleTitle}>Sync photos</Text>
+            <Text style={styles.toggleSubtitle}>
+              {syncOn ? 'On — new photos come in each time you open Recall' : 'Imports the last 12 months'}
             </Text>
-          </>
+          </View>
+          <Toggle value={syncOn} onChange={handleToggle} />
+        </View>
+
+        {phase === 'idle' && !syncOn && (
+          <Text style={styles.hint}>
+            A full year the first time may take a moment — after that, only what's new comes in.
+          </Text>
         )}
 
         {phase === 'scanning' && (
