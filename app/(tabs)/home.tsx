@@ -49,7 +49,7 @@ export default function Home() {
       // Someone who had Recall before this question existed is asked once,
       // here. Until they answer, no photos are sent.
       getPhotoReading().then((mode) => {
-        if (mode === null) router.push('/photo-reading');
+        if (mode === null) router.push({ pathname: '/photo-reading', params: { from: 'home' } });
       });
     }, [router]),
   );

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import BackArrow from '../src/components/BackArrow';
 import OnboardingBackground from '../src/components/OnboardingBackground';
 import PillButton from '../src/components/PillButton';
@@ -20,9 +20,11 @@ import { colors, fonts } from '../src/theme';
 // Home opens for someone who already had the app) and reachable any time
 // from Profile. See src/photoReading.ts.
 //
-// Built like the onboarding screens it follows: dark teal, one title, one
-// line, and the choices doing the talking. The privacy facts are two short
-// lines with icons, not a paragraph — still complete, still on screen.
+// Two looks, one layout. During onboarding it is dark teal like the screens
+// around it; opened inside the app (Profile, or the one-time question for
+// someone who already had Recall) it is light like every other app screen.
+// One title, one line, the choices doing the talking, and the privacy facts
+// as two short icon lines.
 
 type IconName = keyof typeof MaterialCommunityIcons.glyphMap;
 
@@ -38,6 +40,8 @@ export default function PhotoReadingScreen() {
   // question, which leads on to Home.
   const { from } = useLocalSearchParams<{ from?: string }>();
   const changing = from === 'profile';
+  const dark = from === 'onboarding';
+  const t = dark ? DARK : LIGHT;
   const [picked, setPicked] = useState<PhotoReading | null>(null);
 
   useEffect(() => {
@@ -52,13 +56,20 @@ export default function PhotoReadingScreen() {
     else router.replace('/home');
   };
 
-  return (
-    <OnboardingBackground>
-      <SafeAreaView style={styles.safe}>
-        <BackArrow />
+  const screen = (
+      <SafeAreaView style={[styles.safe, !dark && { backgroundColor: t.background }]}>
+        {dark ? (
+          <BackArrow />
+        ) : (
+          router.canGoBack() && (
+            <Pressable onPress={() => router.back()} hitSlop={12} style={styles.lightBack}>
+              <Ionicons name="arrow-back" size={28} color={colors.primary} />
+            </Pressable>
+          )
+        )}
         <View style={styles.content}>
-          <Text style={styles.title}>Bring your past back</Text>
-          <Text style={styles.body}>
+          <Text style={[styles.title, { color: t.title }]}>Bring your past back</Text>
+          <Text style={[styles.body, { color: t.body }]}>
             Recall can read the photos you already have and write the story of each day.
           </Text>
 
@@ -66,25 +77,33 @@ export default function PhotoReadingScreen() {
             {CHOICES.map((c, i) => {
               const on = picked === c.mode;
               return (
-                <Pressable key={c.mode} onPress={() => setPicked(c.mode)} style={[styles.choice, on && styles.choiceOn]}>
-                  <View style={[styles.choiceIcon, on && styles.choiceIconOn]}>
-                    <MaterialCommunityIcons name={c.icon} size={22} color={on ? colors.ink : colors.white} />
+                <Pressable
+                  key={c.mode}
+                  onPress={() => setPicked(c.mode)}
+                  style={[
+                    styles.choice,
+                    { backgroundColor: t.card, borderColor: t.cardBorder },
+                    on && styles.choiceOn,
+                  ]}
+                >
+                  <View style={[styles.choiceIcon, { backgroundColor: t.iconBg }, on && styles.choiceIconOn]}>
+                    <MaterialCommunityIcons name={c.icon} size={22} color={on ? colors.ink : t.icon} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <View style={styles.choiceTitleRow}>
-                      <Text style={[styles.choiceTitle, on && styles.choiceTitleOn]}>{c.title}</Text>
-                      {i === 0 && (
-                        <View style={styles.badge}>
-                          <Text style={styles.badgeText}>Recommended</Text>
+                      <Text style={[styles.choiceTitle, { color: t.title }, on && styles.choiceTitleOn]}>{c.title}</Text>
+                      {i === 0 && !on && (
+                        <View style={[styles.badge, { backgroundColor: t.badgeBg }]}>
+                          <Text style={[styles.badgeText, { color: t.badgeText }]}>Recommended</Text>
                         </View>
                       )}
                     </View>
-                    <Text style={[styles.choiceHint, on && styles.choiceHintOn]}>{c.hint}</Text>
+                    <Text style={[styles.choiceHint, { color: t.hint }, on && styles.choiceHintOn]}>{c.hint}</Text>
                   </View>
                   <MaterialCommunityIcons
                     name={on ? 'check-circle' : 'circle-outline'}
                     size={22}
-                    color={on ? colors.ink : 'rgba(255,255,255,0.45)'}
+                    color={on ? colors.ink : t.radio}
                   />
                 </Pressable>
               );
@@ -94,14 +113,14 @@ export default function PhotoReadingScreen() {
           {/* The facts, short: who reads the photos, and what never goes. */}
           <View style={styles.facts}>
             <View style={styles.fact}>
-              <MaterialCommunityIcons name="earth" size={16} color={colors.accent} />
-              <Text style={styles.factText}>
+              <MaterialCommunityIcons name="earth" size={16} color={t.factIcon} />
+              <Text style={[styles.factText, { color: t.fact }]}>
                 Read by {PHOTO_READER.name} ({PHOTO_READER.where}), only to write each day's story
               </Text>
             </View>
             <View style={styles.fact}>
-              <MaterialCommunityIcons name="lock-outline" size={16} color={colors.accent} />
-              <Text style={styles.factText}>Your notes, contacts and location never leave the phone</Text>
+              <MaterialCommunityIcons name="lock-outline" size={16} color={t.factIcon} />
+              <Text style={[styles.factText, { color: t.fact }]}>Your notes, contacts and location never leave the phone</Text>
             </View>
           </View>
 
@@ -110,15 +129,52 @@ export default function PhotoReadingScreen() {
             onPress={confirm}
             style={[styles.button, !picked && { opacity: 0.4 }]}
           />
-          <Text style={styles.footnote}>You can change this any time in Profile.</Text>
+          <Text style={[styles.footnote, { color: t.footnote }]}>You can change this any time in Profile.</Text>
         </View>
       </SafeAreaView>
-    </OnboardingBackground>
   );
+
+  return dark ? <OnboardingBackground>{screen}</OnboardingBackground> : screen;
 }
+
+// The same screen in the onboarding's dark teal and in the app's light look.
+const DARK = {
+  background: 'transparent',
+  title: colors.white,
+  body: colors.white,
+  card: 'rgba(255,255,255,0.08)',
+  cardBorder: 'rgba(255,255,255,0.35)',
+  iconBg: 'rgba(255,255,255,0.12)',
+  icon: colors.white,
+  hint: 'rgba(255,255,255,0.7)',
+  radio: 'rgba(255,255,255,0.45)',
+  badgeBg: 'rgba(99,188,198,0.25)',
+  badgeText: colors.accent,
+  factIcon: colors.accent,
+  fact: 'rgba(255,255,255,0.8)',
+  footnote: 'rgba(255,255,255,0.5)',
+};
+
+const LIGHT = {
+  background: '#EFF3F3',
+  title: '#1B1B1B',
+  body: '#3A4243',
+  card: colors.white,
+  cardBorder: colors.white,
+  iconBg: colors.pale,
+  icon: colors.primary,
+  hint: '#6B7475',
+  radio: colors.soft,
+  badgeBg: colors.pale,
+  badgeText: colors.primary,
+  factIcon: colors.teal,
+  fact: '#4A5253',
+  footnote: '#8B9394',
+};
 
 const styles = StyleSheet.create({
   safe: { flex: 1, paddingHorizontal: 28 },
+  lightBack: { marginTop: 24, alignSelf: 'flex-start' },
   content: { flex: 1, justifyContent: 'center' },
   title: { color: colors.white, fontFamily: fonts.bold, fontSize: 28, lineHeight: 38 },
   body: { color: colors.white, fontFamily: fonts.regular, fontSize: 15, lineHeight: 24, marginTop: 12 },

@@ -74,7 +74,7 @@ export default function Quiz() {
       ['quizAnswers', JSON.stringify(answers)],
     ]);
     // The last question of setup: whether Recall may read past photos.
-    router.replace('/photo-reading');
+    router.replace({ pathname: '/photo-reading', params: { from: 'onboarding' } });
   };
 
   return (
