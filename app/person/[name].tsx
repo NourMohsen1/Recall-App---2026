@@ -453,7 +453,7 @@ export default function PersonProfile() {
                 tile, at the same size so the layout never shifts. */}
             <Pressable onPress={() => setSheetOpen(true)} style={styles.heroWrap}>
               {meta?.photoUri ? (
-                <Image source={{ uri: meta.photoUri }} style={styles.hero} resizeMode="cover" />
+                <PhotoImage uri={meta.photoUri} style={styles.hero} />
               ) : (
                 <View style={[styles.hero, styles.heroEmpty, { backgroundColor: avatarTint(person.name) }]}>
                   <Text style={styles.heroInitials}>{initials(person.name)}</Text>

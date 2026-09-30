@@ -1,6 +1,7 @@
 import { Image, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { avatarTint } from '../peopleTags';
 import { colors, fonts } from '../theme';
+import PhotoImage from './PhotoImage';
 
 // One person's face, everywhere the app shows a person.
 //
@@ -45,7 +46,7 @@ export default function PersonAvatar({
   if (photoUri) {
     return (
       <View style={[box, styles.clip, unconfirmed && styles.unconfirmedRing, style]}>
-        <Image source={{ uri: photoUri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        <PhotoImage uri={photoUri} style={{ width: '100%', height: '100%' }} />
       </View>
     );
   }

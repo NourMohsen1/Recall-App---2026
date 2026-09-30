@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FaceIndexCard from '../../src/components/FaceIndexCard';
+import { localFile } from '../../src/memoryLog';
 import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/photoReading';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
@@ -71,7 +72,9 @@ export default function Profile() {
             which is where the photo and the name are actually set. */}
         <Pressable style={styles.headerBlock} onPress={openMe}>
           <Image
-            source={profile.photoUri ? { uri: profile.photoUri } : PERSON_PLACEHOLDER}
+            // Through localFile: the stored path points into the app container,
+            // which iOS renames on every reinstall and update (memoryLog.ts).
+            source={profile.photoUri ? { uri: localFile(profile.photoUri) } : PERSON_PLACEHOLDER}
             style={styles.avatar}
             resizeMode="cover"
           />

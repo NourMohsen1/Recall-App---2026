@@ -115,7 +115,7 @@ export default function MyProfile() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Pressable onPress={pickPhoto} style={styles.heroWrap}>
           {profile.photoUri ? (
-            <Image source={{ uri: profile.photoUri }} style={styles.hero} resizeMode="cover" />
+            <PhotoImage uri={profile.photoUri} style={styles.hero} />
           ) : (
             <View style={[styles.hero, styles.heroEmpty]}>
               <MaterialCommunityIcons name="camera-plus-outline" size={40} color={colors.white} />
