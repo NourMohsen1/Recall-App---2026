@@ -128,9 +128,15 @@ needs a native rebuild.
 **Photo analysis** (`src/assumedMemory.ts`) sends a day's photos to DeepSeek to
 describe them. That is deliberate and Nour's call — don't change it quietly,
 and it must be declared on Apple's privacy questionnaire.
-**Nour plans to move photo analysis on-device** so no photo leaves the phone.
-He is researching it and will approve the approach himself — don't start it.
-His iPhone 14 Pro Max can't run Apple Intelligence; measure before choosing. Face recognition and
+**Decided (Sept 2026): photo analysis becomes hybrid.** Default for everyone
+is on-device — Apple Vision + a small MobileCLIP model, results kept on the
+phone, day summaries written by the app itself from the facts (no on-device
+LLM). An optional switch on the Profile page sends photos to an external AI
+for richer summaries, with the provider chosen by the user and declared
+honestly (DeepSeek runs from China; OpenAI is the alternative). Not built
+yet — the restore point is tag `v0.9-before-photo-analysis`. Measure on
+Nour's iPhone before committing to a model; his 14 Pro Max can't run Apple
+Intelligence, which this plan doesn't need. Face recognition and
 face cropping never leave the device.
 
 ## Rules learned the hard way
