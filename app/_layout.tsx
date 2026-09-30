@@ -16,8 +16,12 @@ import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { syncNewPhotosIfOn } from '../src/photoImport';
+import { startCrashReporting, wrapWithCrashReporting } from '../src/crashReporting';
 
-export default function RootLayout() {
+// Before anything else, so a crash during startup is reported too.
+startCrashReporting();
+
+function RootLayout() {
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
@@ -86,3 +90,5 @@ export default function RootLayout() {
     </>
   );
 }
+
+export default wrapWithCrashReporting(RootLayout);

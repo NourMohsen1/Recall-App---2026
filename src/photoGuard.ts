@@ -1,12 +1,18 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { checkAssets, checkFile, existingAssets, photoGuardAvailable } from '../modules/photo-guard';
-import { forgetAssumedMemory } from './assumedMemory';
+import {
+  checkAssets,
+  checkFile,
+  cloudIds,
+  existingAssets,
+  libraryAccess,
+  localIdsForCloudIds,
+  photoGuardAvailable,
+} from '../modules/photo-guard';
 import { noticePeople } from './facePeople';
 import { forgetPhotos } from './faceIndex';
 import { dropGuessesFromPhotos } from './guessedPeople';
 import { localFile, removePhotosFromMemories } from './memoryLog';
 import { getAllPhotoMeta, removePhotoMeta, setPhotoMetaBatch } from './photoMeta';
-import { runPhotoAnalysisNow } from './photoAnalysisQueue';
 import { getPhotoReading } from './photoReading';
 import { isLibraryPath } from './photoUri';
 import { forgetPlaceCovers } from './places';
@@ -80,6 +86,9 @@ export async function removePhotos(uris: string[], why: 'deleted' | 'private'): 
   await forgetPhotos(uris);
   const guesses = await dropGuessesFromPhotos(set);
   await forgetPlaceCovers(set);
+  // Loaded here rather than at the top: the story code imports this file
+  // for its own last check, and a two-way import at load time is a cycle.
+  const { forgetAssumedMemory } = await import('./assumedMemory');
   for (const day of days) await forgetAssumedMemory(day);
   // Files the app owns (a private photo picked by hand) are deleted too.
   for (const uri of uris) {
@@ -91,7 +100,9 @@ export async function removePhotos(uris: string[], why: 'deleted' | 'private'): 
   );
   // Guesses come back from the day's other photos, if there are any.
   noticePeople().catch((e) => console.warn('[faces] re-matching after removal failed:', e));
-  if (days.length > 0 && (await getPhotoReading()) === 'all') runPhotoAnalysisNow();
+  if (days.length > 0 && (await getPhotoReading()) === 'all') {
+    (await import('./photoAnalysisQueue')).runPhotoAnalysisNow();
+  }
 }
 
 let syncing = false;
@@ -106,9 +117,64 @@ export async function syncPhotosWithLibrary(): Promise<void> {
     const library = Object.entries(meta).filter(([uri, m]) => isLibraryPhoto(uri) && m.assetId);
 
     // 1 — Deleted from Photos (or in Recently Deleted).
-    const still = new Set(await existingAssets(library.map(([, m]) => m.assetId!)));
-    const gone = library.filter(([, m]) => !still.has(m.assetId!)).map(([uri]) => uri);
-    if (gone.length > 0) await removePhotos(gone, 'deleted');
+    //
+    // Two things look exactly like "deleted" and are not, and either would
+    // wipe the user's photos if believed: limited photo access (most of the
+    // library is hidden), and a restored or new phone (the same photos with
+    // new ids). So: nothing is removed without full access; missing photos
+    // are first looked for by their cross-device id; and a sudden large
+    // loss is never acted on.
+    // Photos visible right now. Stays empty without full access, so nothing
+    // hidden is judged — neither deleted nor checked for privacy.
+    let still = new Set<string>();
+    if (libraryAccess() !== 'full') {
+      console.log('[photos] photo access is not full — not checking for deleted photos');
+    } else {
+      still = new Set(await existingAssets(library.map(([, m]) => m.assetId!)));
+      let missing = library.filter(([, m]) => !still.has(m.assetId!));
+
+      // Found again under a new id? (restored or new phone)
+      const withCloud = missing.filter(([, m]) => m.cloudId);
+      if (withCloud.length > 0) {
+        const found = await localIdsForCloudIds(withCloud.map(([, m]) => m.cloudId!));
+        const moved: [string, { assetId: string }][] = [];
+        for (const [uri, m] of withCloud) {
+          const local = found[m.cloudId!];
+          if (local) {
+            moved.push([uri, { assetId: local }]);
+            still.add(local);
+            m.assetId = local;
+          }
+        }
+        if (moved.length > 0) {
+          await setPhotoMetaBatch(moved);
+          console.log(`[photos] found ${moved.length} photos again under new ids`);
+        }
+        missing = missing.filter(([, m]) => !still.has(m.assetId!));
+      }
+
+      const gone = missing.map(([uri]) => uri);
+      const tooMany = gone.length > 25 && gone.length > library.length * 0.2;
+      if (tooMany) {
+        console.warn(
+          `[photos] ${gone.length} of ${library.length} photos look deleted at once — not removing anything, ` +
+            'this is far more likely a restored phone or a library problem than a real deletion',
+        );
+      } else if (gone.length > 0) {
+        await removePhotos(gone, 'deleted');
+      }
+
+      // Remember the cross-device id of photos that don't have one yet.
+      const needCloud = library.filter(([, m]) => !m.cloudId && still.has(m.assetId!));
+      for (let i = 0; i < needCloud.length; i += 200) {
+        const page = needCloud.slice(i, i + 200);
+        const map = await cloudIds(page.map(([, m]) => m.assetId!));
+        await setPhotoMetaBatch(
+          page.filter(([, m]) => map[m.assetId!]).map(([uri, m]) => [uri, { cloudId: map[m.assetId!] }]),
+        );
+      }
+    }
+
 
     // 2 — Never checked for privacy: photos from before this existed.
     const unchecked = library.filter(([uri, m]) => !m.privacyChecked && still.has(m.assetId!));

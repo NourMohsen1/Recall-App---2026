@@ -9,6 +9,9 @@ type Native = {
   checkAssets(ids: string[]): Promise<AssetCheck[]>;
   checkFile(uri: string): Promise<{ score: number; apple: boolean }>;
   existingAssets(ids: string[]): Promise<string[]>;
+  libraryAccess(): 'full' | 'limited' | 'none';
+  cloudIds(ids: string[]): Promise<Record<string, string>>;
+  localIdsForCloudIds(cloud: string[]): Promise<Record<string, string>>;
 };
 
 const native = requireOptionalNativeModule<Native>('PhotoGuard');
@@ -28,4 +31,19 @@ export function checkFile(uri: string): Promise<{ score: number; apple: boolean 
 export function existingAssets(ids: string[]): Promise<string[]> {
   if (!native) throw new Error('photo-guard is not in this build');
   return native.existingAssets(ids);
+}
+
+export function libraryAccess(): 'full' | 'limited' | 'none' {
+  if (!native) return 'none';
+  return native.libraryAccess();
+}
+
+export function cloudIds(ids: string[]): Promise<Record<string, string>> {
+  if (!native) throw new Error('photo-guard is not in this build');
+  return native.cloudIds(ids);
+}
+
+export function localIdsForCloudIds(cloud: string[]): Promise<Record<string, string>> {
+  if (!native) throw new Error('photo-guard is not in this build');
+  return native.localIdsForCloudIds(cloud);
 }

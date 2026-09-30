@@ -33,6 +33,10 @@ export type PhotoMeta = {
   locationRead?: boolean;
   // The place this photo was taken at, once places.ts has filed it.
   placeId?: string;
+  // The photo's cross-device id (PHCloudIdentifier). assetId is per device
+  // and changes on a restored or new phone; this is how the photo is found
+  // again there. See src/photoGuard.ts.
+  cloudId?: string;
   // Checked on the phone for nudity (src/photoGuard.ts) and found fine.
   privacyChecked?: boolean;
   // The place the user NAMED in the log these photos came with ("coffee at

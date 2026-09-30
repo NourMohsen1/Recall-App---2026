@@ -42,6 +42,40 @@ public class PhotoGuardModule: Module {
       return ["score": try self.score(image), "apple": Self.appleFlags(image)]
     }
 
+    // "full", "limited" or "none". With limited access most of the library
+    // is invisible, which must never read as "those photos were deleted".
+    Function("libraryAccess") { () -> String in
+      switch PHPhotoLibrary.authorizationStatus(for: .readWrite) {
+      case .authorized: return "full"
+      case .limited: return "limited"
+      default: return "none"
+      }
+    }
+
+    // Local ids are per device: a phone restored from a backup, or a new
+    // phone with iCloud Photos, gives the same photos new ones. Cloud ids
+    // survive that. These two map between them.
+    AsyncFunction("cloudIds") { (ids: [String]) -> [String: String] in
+      guard #available(iOS 15.0, *) else { return [:] }
+      var out: [String: String] = [:]
+      let mappings = PHPhotoLibrary.shared().cloudIdentifierMappings(forLocalIdentifiers: ids)
+      for (local, result) in mappings {
+        if case .success(let cloud) = result { out[local] = cloud.stringValue }
+      }
+      return out
+    }
+
+    AsyncFunction("localIdsForCloudIds") { (cloud: [String]) -> [String: String] in
+      guard #available(iOS 15.0, *) else { return [:] }
+      var out: [String: String] = [:]
+      let ids = cloud.map { PHCloudIdentifier(stringValue: $0) }
+      let mappings = PHPhotoLibrary.shared().localIdentifierMappings(for: ids)
+      for (cloudId, result) in mappings {
+        if case .success(let local) = result { out[cloudId.stringValue] = local }
+      }
+      return out
+    }
+
     // The ids that still exist in the Photos library. Photos in "Recently
     // Deleted" are not returned, so they count as deleted.
     AsyncFunction("existingAssets") { (ids: [String]) -> [String] in

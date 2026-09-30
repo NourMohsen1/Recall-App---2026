@@ -115,7 +115,8 @@
             "enableSceneSupport": true
           }
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "extra": {
       "router": {},
