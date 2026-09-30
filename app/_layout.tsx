@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { DEFAULT_STATUS_BAR } from '../src/statusBar';
 import {
@@ -16,6 +17,7 @@ import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { syncNewPhotosIfOn } from '../src/photoImport';
+import { syncRecapNotifications } from '../src/recapNotifications';
 import { startCrashReporting, wrapWithCrashReporting } from '../src/crashReporting';
 
 // Before anything else, so a crash during startup is reported too.
@@ -51,6 +53,23 @@ function RootLayout() {
   useEffect(() => {
     startPlaceIndexing();
   }, []);
+
+  // "Your recap is ready": keep the schedule matching Profile's switches,
+  // and open the Recap on the right tab when one is tapped — including the
+  // tap that launched the app.
+  const router = useRouter();
+  useEffect(() => {
+    syncRecapNotifications();
+    const open = (response: Notifications.NotificationResponse | null) => {
+      const tab = response?.notification.request.content.data?.recap;
+      if (typeof tab !== 'string') return;
+      console.log(`[recap] notification opened the ${tab} recap`);
+      router.push({ pathname: '/recap', params: { period: tab } });
+    };
+    Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
+    const sub = Notifications.addNotificationResponseReceivedListener(open);
+    return () => sub.remove();
+  }, [router]);
 
   // Photos deleted from Photos leave Recall, and any photo not yet checked
   // for privacy is checked — on open, and whenever the app comes back.

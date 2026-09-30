@@ -1,11 +1,17 @@
 import { useCallback, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FaceIndexCard from '../../src/components/FaceIndexCard';
 import { localFile } from '../../src/memoryLog';
 import { crashReportingOn, sendTestCrashReport } from '../../src/crashReporting';
+import {
+  getRecapPrefs,
+  sendTestRecapNotification,
+  setRecapNotification,
+  type RecapPrefs,
+} from '../../src/recapNotifications';
 import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/photoReading';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
@@ -48,6 +54,7 @@ export default function Profile() {
   const [joined, setJoined] = useState<Date | null>(null);
   const [entries, setEntries] = useState(0);
   const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
+  const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ daily: true, weekly: true, monthly: false });
 
   useFocusEffect(
     useCallback(() => {
@@ -57,6 +64,7 @@ export default function Profile() {
       });
       memoryCount().then(setEntries);
       getPhotoReading().then(setPhotoReadingState);
+      getRecapPrefs().then(setRecapPrefs);
     }, []),
   );
 
@@ -148,6 +156,11 @@ export default function Profile() {
             <Text style={styles.devLinkText}>Send a test crash report (development)</Text>
           </Pressable>
         )}
+        {__DEV__ && (
+          <Pressable onPress={sendTestRecapNotification} style={styles.devLink}>
+            <Text style={styles.devLinkText}>Send a test recap notification in 5 s (development)</Text>
+          </Pressable>
+        )}
 
         {/* Devices */}
         <View style={styles.card}>
@@ -164,18 +177,39 @@ export default function Profile() {
         {/* Notifications */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Notifications</Text>
-          <View style={[styles.toggleRow, styles.rowDivider]}>
-            <Text style={styles.toggleLabel}>Daily</Text>
-            <Toggle value />
-          </View>
-          <View style={[styles.toggleRow, styles.rowDivider]}>
-            <Text style={styles.toggleLabel}>Weekly</Text>
-            <Toggle value />
-          </View>
-          <View style={styles.toggleRow}>
-            <Text style={styles.toggleLabel}>Monthly</Text>
-            <Toggle />
-          </View>
+          {/* "Your recap is ready" — each on its own schedule. */}
+          {(
+            [
+              ['daily', 'Daily recap', 'Every evening at 9 pm'],
+              ['weekly', 'Weekly recap', 'Sundays at 7 pm'],
+              ['monthly', 'Monthly recap', 'On the 1st of each month'],
+            ] as const
+          ).map(([cadence, label, when], i) => (
+            <View key={cadence} style={[styles.toggleRow, i < 2 && styles.rowDivider]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.toggleLabel}>{label}</Text>
+                <Text style={styles.rowHint}>{when}</Text>
+              </View>
+              <Toggle
+                value={recapPrefs[cadence]}
+                onChange={async (on) => {
+                  setRecapPrefs((p) => ({ ...p, [cadence]: on }));
+                  const ok = await setRecapNotification(cadence, on);
+                  if (!ok && on) {
+                    setRecapPrefs((p) => ({ ...p, [cadence]: false }));
+                    Alert.alert(
+                      'Notifications are off',
+                      'Allow notifications for Recall in Settings to get your recaps.',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { text: 'Open Settings', onPress: () => Linking.openSettings() },
+                      ],
+                    );
+                  }
+                }}
+              />
+            </View>
+          ))}
         </View>
       </ScrollView>
     </SafeAreaView>

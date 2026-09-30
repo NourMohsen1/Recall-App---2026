@@ -1,10 +1,12 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../src/components/AnalyzingBanner';
+import RecapView from '../src/components/RecapView';
 import ScreenHeader from '../src/components/ScreenHeader';
+import type { RecapKind, RecapUnit } from '../src/recap';
 import { MONTHS_SHORT } from '../src/data';
 import PhotoImage from '../src/components/PhotoImage';
 import { useMemoryPolish } from '../src/memoryIntake';
@@ -98,111 +100,45 @@ function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
   );
 }
 
-function WeeklyRecap({ memories }: { memories: LoggedMemory[] }) {
-  const sections: { title: string; offset: number }[] = [
-    { title: 'This\nWeek', offset: 0 },
-    { title: 'Last\nWeek', offset: -1 },
-    { title: 'Earlier', offset: -2 },
-  ];
-  const today = new Date();
-
-  return (
-    <>
-      {sections.map((section) => {
-        const start = new Date(today);
-        start.setDate(today.getDate() - today.getDay() + section.offset * 7);
-        return (
-          <View key={section.title} style={styles.weekCard}>
-            <View style={styles.weekHeader}>
-              <Text style={styles.weekTitle}>{section.title}</Text>
-              <Text style={styles.weekRange}>{weekLabel(section.offset)}</Text>
-            </View>
-            <View style={styles.weekDays}>
-              {Array.from({ length: 7 }, (_, i) => {
-                const d = new Date(start);
-                d.setDate(start.getDate() + i);
-                const key = dateKey(d);
-                const uri = firstPhotoUri(memories.filter((m) => dateKey(new Date(m.takenAt)) === key));
-                return (
-                  <View key={i} style={styles.dayPill}>
-                    <Text style={styles.dayPillNum}>{String(d.getDate()).padStart(2, '0')}</Text>
-                    {uri ? (
-                      <PhotoImage uri={uri} style={styles.dayPillPhoto} />
-                    ) : (
-                      <EmptyTile style={styles.dayPillPhoto} />
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        );
-      })}
-    </>
-  );
-}
-
-function MonthlyRecap({ memories }: { memories: LoggedMemory[] }) {
-  const now = new Date();
-  const months = Array.from({ length: 4 }, (_, i) => {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    return { name: MONTH_NAMES[d.getMonth()], year: d.getFullYear(), month: d.getMonth() };
-  });
-  return (
-    <>
-      {months.map((m) => {
-        const uri = firstPhotoUri(
-          memories.filter((mem) => {
-            const t = new Date(mem.takenAt);
-            return t.getFullYear() === m.year && t.getMonth() === m.month;
-          }),
-        );
-        return (
-          <View key={m.name + m.year} style={styles.monthCard}>
-            <View style={styles.weekHeader}>
-              <Text style={styles.monthTitle}>{m.name}</Text>
-              <Text style={styles.monthTitle}>{m.year}</Text>
-            </View>
-            {uri ? (
-              <PhotoImage uri={uri} style={styles.monthPhoto} />
-            ) : (
-              <EmptyTile style={styles.monthPhoto} />
-            )}
-          </View>
-        );
-      })}
-    </>
-  );
-}
-
-function YearlyRecap({ memories }: { memories: LoggedMemory[] }) {
-  const thisYear = new Date().getFullYear();
-  return (
-    <>
-      {[0, 1, 2].map((i) => {
-        const year = thisYear - i;
-        const uri = firstPhotoUri(memories.filter((m) => new Date(m.takenAt).getFullYear() === year));
-        return (
-          <View key={i} style={styles.monthCard}>
-            <View>
-              {uri ? (
-                <PhotoImage uri={uri} style={styles.yearPhoto} />
-              ) : (
-                <EmptyTile style={styles.yearPhoto} />
-              )}
-              <View style={styles.yearOverlay}>
-                <Text style={styles.yearText}>{year}</Text>
-              </View>
-            </View>
-          </View>
-        );
-      })}
-    </>
-  );
-}
+const KIND: Record<Exclude<Period, 'Today'>, RecapKind> = { Weekly: 'week', Monthly: 'month', Yearly: 'year' };
 
 export default function Recap() {
-  const [period, setPeriod] = useState<Period>('Today');
+  const router = useRouter();
+  // A recap notification opens straight onto its own tab.
+  const params = useLocalSearchParams<{ period?: string }>();
+  const [period, setPeriod] = useState<Period>(
+    PERIODS.includes(params.period as Period) ? (params.period as Period) : 'Today',
+  );
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    if (PERIODS.includes(params.period as Period)) {
+      setPeriod(params.period as Period);
+      setOffset(0);
+    }
+  }, [params.period]);
+
+  // Tapping a row goes one level in: a day opens that day, a week its
+  // weekly recap, a month its monthly recap.
+  const openUnit = (unit: RecapUnit) => {
+    const [y, m, d] = unit.from.split('-').map(Number);
+    const start = new Date(y, m - 1, d);
+    const today = new Date();
+    if (period === 'Weekly') {
+      const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      router.push(`/day/${Math.round((start.getTime() - t.getTime()) / 86400000)}` as Parameters<typeof router.push>[0]);
+    } else if (period === 'Monthly') {
+      const monday = (x: Date) => {
+        const c = new Date(x.getFullYear(), x.getMonth(), x.getDate());
+        c.setDate(c.getDate() - ((c.getDay() + 6) % 7));
+        return c;
+      };
+      setPeriod('Weekly');
+      setOffset(Math.round((monday(start).getTime() - monday(today).getTime()) / (7 * 86400000)));
+    } else if (period === 'Yearly') {
+      setPeriod('Monthly');
+      setOffset((y - today.getFullYear()) * 12 + (m - 1 - today.getMonth()));
+    }
+  };
   const [memories, setMemories] = useState<LoggedMemory[]>([]);
 
   useFocusEffect(
@@ -225,7 +161,10 @@ export default function Recap() {
             {PERIODS.map((p) => (
               <Pressable
                 key={p}
-                onPress={() => setPeriod(p)}
+                onPress={() => {
+                  setPeriod(p);
+                  setOffset(0);
+                }}
                 style={[styles.switchBtn, period === p && styles.switchBtnActive]}
               >
                 <Text style={[styles.switchText, period === p && styles.switchTextActive]}>
@@ -236,9 +175,9 @@ export default function Recap() {
           </View>
 
           {period === 'Today' && <TodayRecap memories={memories} />}
-          {period === 'Weekly' && <WeeklyRecap memories={memories} />}
-          {period === 'Monthly' && <MonthlyRecap memories={memories} />}
-          {period === 'Yearly' && <YearlyRecap memories={memories} />}
+          {period !== 'Today' && (
+            <RecapView kind={KIND[period]} offset={offset} onOffset={setOffset} onOpenUnit={openUnit} />
+          )}
         </ScrollView>
       </View>
     </SafeAreaView>
