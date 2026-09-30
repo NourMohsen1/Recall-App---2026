@@ -39,6 +39,9 @@ export type PhotoMeta = {
   cloudId?: string;
   // Checked on the phone for nudity (src/photoGuard.ts) and found fine.
   privacyChecked?: boolean;
+  // Borderline on that check: kept in Recall, shown as normal, but never
+  // sent to an AI service. See src/photoGuard.ts.
+  sensitive?: boolean;
   // The place the user NAMED in the log these photos came with ("coffee at
   // Dunkin" + a photo). The strongest evidence there is of what a spot is
   // called, because the user said it about these exact pictures.

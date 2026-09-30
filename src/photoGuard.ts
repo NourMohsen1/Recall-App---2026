@@ -35,46 +35,73 @@ import { forgetPlaceCovers } from './places';
 // guess made from them, a place cover, and the day's story (rewritten
 // without it when the user's choice allows).
 
-/** How sure the model must be that a photo is private. Strict on purpose:
- *  at 0.35 the model's own tests catch ~98.5% of private photos, at the
- *  cost of skipping ~2.5% of ordinary ones. A beach photo left out is a
- *  small loss; a private photo let in is not acceptable. */
-export const PRIVATE_THRESHOLD = 0.35;
+/** Two cutoffs, MEASURED on Nour's library — not the model card's.
+ *
+ *  0.35 was the first cutoff and it was wrong for real life: on his phone
+ *  it removed 26 ordinary photos, scoring 0.35–0.84, that then vanished from
+ *  the app. Clearly explicit photos score near 1. So:
+ *
+ *   · ≥ 0.9  PRIVATE — never enters Recall.
+ *   · ≥ 0.6  SENSITIVE — kept and shown like any photo, but never sent to
+ *            an AI service. A borderline photo stays on the phone either
+ *            way, and nothing is lost to a wrong guess.
+ */
+export const PRIVATE_THRESHOLD = 0.9;
+export const SENSITIVE_THRESHOLD = 0.6;
+
+export type PhotoClass = 'private' | 'sensitive' | 'ok';
+
+function classify(score: number, apple: boolean): PhotoClass {
+  if (apple || score >= PRIVATE_THRESHOLD) return 'private';
+  if (score >= SENSITIVE_THRESHOLD) return 'sensitive';
+  return 'ok';
+}
 
 export { photoGuardAvailable };
 
 const isLibraryPhoto = (uri: string) => uri.startsWith('ph://') || isLibraryPath(uri);
 
-/** Of these library photos (by Photos id), the ones that are private. */
-export async function privateAssetIds(ids: string[]): Promise<Set<string>> {
-  const flagged = new Set<string>();
-  if (!photoGuardAvailable || ids.length === 0) return flagged;
+/** Each library photo (by Photos id) that is not plainly fine, with its
+ *  class. Photos not in the map are 'ok'. */
+export async function classifyAssets(ids: string[]): Promise<Map<string, Exclude<PhotoClass, 'ok'>>> {
+  const out = new Map<string, Exclude<PhotoClass, 'ok'>>();
+  if (!photoGuardAvailable || ids.length === 0) return out;
   for (let i = 0; i < ids.length; i += 20) {
     for (const r of await checkAssets(ids.slice(i, i + 20))) {
-      if (r.apple || (r.score ?? 0) >= PRIVATE_THRESHOLD) {
-        flagged.add(r.id);
-        // Scores only, never the photo — so the cutoff can be tuned.
-        console.log(`[privacy] flagged ${r.id.slice(0, 8)}… score ${(r.score ?? 0).toFixed(3)}${r.apple ? ' (Apple)' : ''}`);
-      }
+      const c = classify(r.score ?? 0, !!r.apple);
+      if (c === 'ok') continue;
+      out.set(r.id, c);
+      // Scores only, never the photo — so the cutoffs can be tuned.
+      console.log(`[privacy] ${c} ${r.id.slice(0, 8)}… score ${(r.score ?? 0).toFixed(3)}${r.apple ? ' (Apple)' : ''}`);
     }
   }
-  return flagged;
+  return out;
 }
 
-/** Is a file the user picked by hand private? False when it can't be
- *  checked on this build (logged) — see the note on photoGuardAvailable. */
-export async function isPrivateFile(uri: string): Promise<boolean> {
+/** Of these library photos, the ones that must never enter Recall. */
+export async function privateAssetIds(ids: string[]): Promise<Set<string>> {
+  const classes = await classifyAssets(ids);
+  return new Set([...classes].filter(([, c]) => c === 'private').map(([id]) => id));
+}
+
+/** A file the user picked by hand. 'ok' when it can't be checked on this
+ *  build (logged). */
+export async function classifyFile(uri: string): Promise<PhotoClass> {
   if (!photoGuardAvailable) {
     console.warn('[privacy] this build cannot check photos yet');
-    return false;
+    return 'ok';
   }
   try {
     const r = await checkFile(localFile(uri));
-    return r.apple || r.score >= PRIVATE_THRESHOLD;
+    return classify(r.score, r.apple);
   } catch (e) {
     console.warn('[privacy] could not check a picked photo:', e);
-    return false;
+    return 'ok';
   }
+}
+
+export async function isPrivateFile(uri: string): Promise<boolean> {
+  return (await classifyFile(uri)) === 'private';
 }
 
 /** Takes photos out of Recall with everything that came from them. */
@@ -185,16 +212,21 @@ export async function syncPhotosWithLibrary(): Promise<void> {
 
     const started = Date.now();
     const privateUris: string[] = [];
-    const safe: string[] = [];
     for (let i = 0; i < unchecked.length; i += 40) {
       const page = unchecked.slice(i, i + 40);
-      const flagged = await privateAssetIds(page.map(([, m]) => m.assetId!));
-      for (const [uri, m] of page) (flagged.has(m.assetId!) ? privateUris : safe).push(uri);
-      await setPhotoMetaBatch(safe.splice(0).map((u) => [u, { privacyChecked: true }]));
+      const classes = await classifyAssets(page.map(([, m]) => m.assetId!));
+      const done: [string, { privacyChecked: true; sensitive?: boolean }][] = [];
+      for (const [uri, m] of page) {
+        const c = classes.get(m.assetId!);
+        if (c === 'private') privateUris.push(uri);
+        else done.push([uri, c === 'sensitive' ? { privacyChecked: true, sensitive: true } : { privacyChecked: true }]);
+      }
+      await setPhotoMetaBatch(done);
     }
     for (const uri of ownFiles) {
-      if (await isPrivateFile(uri)) privateUris.push(uri);
-      else await setPhotoMetaBatch([[uri, { privacyChecked: true }]]);
+      const c = await classifyFile(uri);
+      if (c === 'private') privateUris.push(uri);
+      else await setPhotoMetaBatch([[uri, c === 'sensitive' ? { privacyChecked: true, sensitive: true } : { privacyChecked: true }]]);
     }
     console.log(
       `[privacy] checked ${unchecked.length + ownFiles.length} photos in ${Math.round((Date.now() - started) / 1000)}s,` +
@@ -208,20 +240,34 @@ export async function syncPhotosWithLibrary(): Promise<void> {
   }
 }
 
-/** The day-story path's last check: only photos known to be fine go out. */
+/** The day-story path's last check: only photos known to be fine go out —
+ *  never a private one, never a borderline one. */
 export async function onlyCheckedPhotos<T extends { uri: string }>(photos: T[]): Promise<T[]> {
   if (!photoGuardAvailable) return photos;
   const meta = await getAllPhotoMeta();
+  photos = photos.filter((p) => !meta[p.uri]?.sensitive);
   const unchecked = photos.filter((p) => !meta[p.uri]?.privacyChecked);
   if (unchecked.length === 0) return photos;
   const flagged = new Set<string>();
+  const sensitive = new Set<string>();
   const byAsset = unchecked.filter((p) => meta[p.uri]?.assetId);
-  const privateIds = await privateAssetIds(byAsset.map((p) => meta[p.uri]!.assetId!));
-  for (const p of byAsset) if (privateIds.has(meta[p.uri]!.assetId!)) flagged.add(p.uri);
-  for (const p of unchecked) if (!meta[p.uri]?.assetId && (await isPrivateFile(p.uri))) flagged.add(p.uri);
+  const classes = await classifyAssets(byAsset.map((p) => meta[p.uri]!.assetId!));
+  for (const p of byAsset) {
+    const c = classes.get(meta[p.uri]!.assetId!);
+    if (c === 'private') flagged.add(p.uri);
+    if (c === 'sensitive') sensitive.add(p.uri);
+  }
+  for (const p of unchecked) {
+    if (meta[p.uri]?.assetId) continue;
+    const c = await classifyFile(p.uri);
+    if (c === 'private') flagged.add(p.uri);
+    if (c === 'sensitive') sensitive.add(p.uri);
+  }
   await setPhotoMetaBatch(
-    unchecked.filter((p) => !flagged.has(p.uri)).map((p) => [p.uri, { privacyChecked: true }]),
+    unchecked
+      .filter((p) => !flagged.has(p.uri))
+      .map((p) => [p.uri, sensitive.has(p.uri) ? { privacyChecked: true, sensitive: true } : { privacyChecked: true }]),
   );
   if (flagged.size > 0) await removePhotos([...flagged], 'private');
-  return photos.filter((p) => !flagged.has(p.uri));
+  return photos.filter((p) => !flagged.has(p.uri) && !sensitive.has(p.uri));
 }

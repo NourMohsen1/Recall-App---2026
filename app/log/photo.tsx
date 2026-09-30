@@ -19,7 +19,7 @@ import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, persistFile, saveMemory } from '../../src/memoryLog';
 import { setPhotoMetaBatch, PhotoMeta } from '../../src/photoMeta';
 import { detectPhotoSource } from '../../src/photoSource';
-import { isPrivateFile, photoGuardAvailable } from '../../src/photoGuard';
+import { classifyFile, photoGuardAvailable } from '../../src/photoGuard';
 import { notePhotoLocations, recordCurrentLocationForDay, whereAmI } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
 import { useReturnTo } from '../../src/useReturnTo';
@@ -153,7 +153,8 @@ export default function LogPhoto() {
     for (const p of picked) {
       // Private photos never enter Recall — checked on the phone, before the
       // photo is copied anywhere (src/photoGuard.ts).
-      if (await isPrivateFile(p.uri)) {
+      const privacy = await classifyFile(p.uri);
+      if (privacy === 'private') {
         skipped += 1;
         continue;
       }
@@ -162,7 +163,11 @@ export default function LogPhoto() {
       const bucket = groups.get(key);
       if (bucket) bucket.push(permanent);
       else groups.set(key, [permanent]);
-      const meta: PhotoMeta = { takenAt: permanent.takenAt.getTime(), privacyChecked: photoGuardAvailable };
+      const meta: PhotoMeta = {
+        takenAt: permanent.takenAt.getTime(),
+        privacyChecked: photoGuardAvailable,
+        ...(privacy === 'sensitive' ? { sensitive: true } : {}),
+      };
       if (permanent.source) meta.source = permanent.source;
       if (permanent.assetId) meta.assetId = permanent.assetId;
       photoMetaEntries.push([permanent.uri, meta]);

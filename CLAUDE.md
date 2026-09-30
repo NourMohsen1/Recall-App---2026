@@ -127,7 +127,8 @@ needs a native rebuild.
 
 **Private photos and deleted photos** (`src/photoGuard.ts`, `modules/photo-guard`):
 every photo is checked for nudity on the phone before it enters Recall
-(Marqo nsfw-image-detection-384, Apache-2.0, 11 MB, cutoff 0.35; plus
+(Marqo nsfw-image-detection-384, Apache-2.0, 11 MB; ≥ 0.9 never enters,
+0.6–0.9 kept but never sent — 0.35 removed 26 ordinary photos on Nour's phone; plus
 Apple's detector when the user has Sensitive Content Warning on). A flagged
 photo is never stored, shown, read or sent; the day-story path checks again
 before sending. On open and on return, library photos deleted from Photos

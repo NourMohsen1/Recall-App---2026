@@ -84,7 +84,11 @@ public class PhotoGuardModule: Module {
       var i = 0
       while i < ids.count {
         let slice = Array(ids[i..<min(i + batch, ids.count)])
-        PHAsset.fetchAssets(withLocalIdentifiers: slice, options: nil).enumerateObjects { asset, _, _ in
+        // Hidden photos are left out of a fetch unless asked for — and a
+        // hidden photo is not a deleted one.
+        let options = PHFetchOptions()
+        options.includeHiddenAssets = true
+        PHAsset.fetchAssets(withLocalIdentifiers: slice, options: options).enumerateObjects { asset, _, _ in
           found.insert(asset.localIdentifier)
         }
         i += batch

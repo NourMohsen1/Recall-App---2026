@@ -9,7 +9,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
-import { photoGuardAvailable, privateAssetIds } from './photoGuard';
+import { classifyAssets, photoGuardAvailable } from './photoGuard';
 import { indexNewPhotos } from './faceIndexing';
 import { startPlaceIndexing, toLocation } from './places';
 
@@ -115,6 +115,33 @@ export function syncNewPhotosIfOn(): Promise<ImportResult | null> {
       quietSync = null;
     });
   return quietSync;
+}
+
+// Brings back photos removed by mistake. The first private-photo cutoff
+// (0.35) removed ordinary photos, and hidden photos looked deleted; both
+// were then remembered as "imported", so they could never come back.
+// Forgetting which photos were imported — only for those no longer in
+// Recall — lets the next import look at them again, under the fixed rules.
+// Photos genuinely deleted from Photos are simply not found. Once only.
+const RECOVERY_KEY = 'photoRecovery_v1';
+
+export async function recoverWronglyRemovedPhotos(): Promise<void> {
+  if (await AsyncStorage.getItem(RECOVERY_KEY)) return;
+  try {
+    const perm = await MediaLibrary.getPermissionsAsync();
+    if (!perm.granted) return;
+    const [ids, meta] = await Promise.all([getImportedIds(), getAllPhotoMeta()]);
+    const present = new Set(Object.values(meta).map((m) => m.assetId).filter(Boolean) as string[]);
+    const missing = [...ids].filter((id) => !present.has(id));
+    for (const id of missing) ids.delete(id);
+    await saveImportedIds(ids);
+    console.log(`[photos] recovery: looking again at ${missing.length} photos no longer in Recall`);
+    const res = await importRecentPhotos(SYNC_DAYS);
+    console.log(`[photos] recovery: brought back ${res.imported} photos (${res.privateSkipped} still private)`);
+    await AsyncStorage.setItem(RECOVERY_KEY, '1');
+  } catch (e) {
+    console.warn('[photos] recovery failed — tried again next launch:', e);
+  }
 }
 
 export async function requestLibraryPermission(): Promise<boolean> {
@@ -267,15 +294,18 @@ export async function importRecentPhotos(
     // Private photos are checked for on the phone before anything is kept
     // (src/photoGuard.ts). A flagged photo is still marked as seen below, so
     // it is never looked at again, but nothing about it is stored.
-    const privateIds = await privateAssetIds(resolved.map((r) => r.id)).catch((e) => {
+    const classes = await classifyAssets(resolved.map((r) => r.id)).catch((e) => {
       console.warn('[privacy] could not check new photos — they are not imported this time:', e);
       return null;
     });
-    if (privateIds === null) break;
-    privateSkipped += privateIds.size;
+    if (classes === null) break;
 
     for (const item of resolved) {
-      if (privateIds.has(item.id)) continue;
+      const privacy = classes.get(item.id);
+      if (privacy === 'private') {
+        privateSkipped += 1;
+        continue;
+      }
       const key = dateKey(new Date(item.creationTime));
       const bucket = pageByDay.get(key);
       if (bucket) bucket.push(item);
@@ -289,6 +319,7 @@ export async function importRecentPhotos(
         takenAt: item.creationTime,
         assetId: item.id,
         privacyChecked: photoGuardAvailable,
+        ...(privacy === 'sensitive' ? { sensitive: true } : {}),
       };
       if (item.source) meta.source = item.source;
       // Where it was taken, per photo. This used to keep ONE location per
