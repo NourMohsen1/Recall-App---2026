@@ -56,6 +56,9 @@ import { ensureDayScanned, faceMatchingAvailable } from '../../../src/faceMatchi
 import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
 import { AttachmentThumb } from '../../../src/components/AttachmentViewer';
 import PlaceTile from '../../../src/components/PlaceTile';
+import ReadDayCard from '../../../src/components/ReadDayCard';
+import { mayReadDay, onPhotoReadingChanged } from '../../../src/photoReading';
+import { askToReadDay, offerAllIfTime } from '../../../src/readDayPrompt';
 import { DayPlace, getPlacesForDay } from '../../../src/places';
 import { rtlIfArabic } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
@@ -206,7 +209,11 @@ export default function DayDetailScreen() {
   // See the same state on Timeline for what each value means — 'failed'
   // specifically is what lets this screen offer a manual retry instead of
   // just showing nothing when a real attempt came back empty.
-  const [assumedStatus, setAssumedStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const [assumedStatus, setAssumedStatus] = useState<'idle' | 'loading' | 'ready' | 'failed' | 'ask'>('idle');
+  // 'ask': this day has photos, no story, and the user hasn't chosen to have
+  // it read — the card becomes the invitation. See src/readDayPrompt.ts.
+  const [askPhotoCount, setAskPhotoCount] = useState(0);
+  const [readingDay, setReadingDay] = useState(false);
   const [assumedLang, setAssumedLang] = useState<'en' | 'ar'>('en');
   const [translating, setTranslating] = useState(false);
   const photoUrisKey = realPhotoUris.join('|');
@@ -225,6 +232,21 @@ export default function DayDetailScreen() {
         .map((uri) => ({ uri, takenAt: timestamps[uri], source: sources[uri] }));
       if (photos.length === 0) {
         setAssumedStatus('idle');
+        return;
+      }
+      // Not the user's choice to send this day's photos: show a story that
+      // was already written, or the invitation to read the day.
+      if (!(await mayReadDay(targetDay))) {
+        const cached = await getCachedAssumedMemory(targetDay);
+        if (targetDay !== dayKeyRef.current) return;
+        setAskPhotoCount(photos.length);
+        if (!cached) {
+          setAssumedStatus('ask');
+          return;
+        }
+        setAssumedMemory(cached);
+        setAssumedDismissed(await isAssumedMemoryDismissed(targetDay, cached.signature));
+        setAssumedStatus('ready');
         return;
       }
       const record = await getAssumedMemory(targetDay, photos, loggedText || undefined);
@@ -255,6 +277,23 @@ export default function DayDetailScreen() {
   }, [dayKey, photoUrisKey, loggedTextForAssumed]);
 
   const retryAssumed = () => fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+
+  // "Tell me about this day": the user's yes, for this day, then the story.
+  const readThisDay = async () => {
+    const chosen = await askToReadDay(dayKey, askPhotoCount);
+    if (chosen === 0) return;
+    setReadingDay(true);
+    await fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+    setReadingDay(false);
+    offerAllIfTime(chosen);
+  };
+
+  // A change in Profile ("Bring back my past") shows here straight away.
+  useEffect(
+    () => onPhotoReadingChanged(() => fetchAssumed(dayKeyRef.current, realPhotoUris, loggedTextForAssumed)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [photoUrisKey, loggedTextForAssumed],
+  );
 
   // Who was here? Asked of the day rather than of a person: this day's photos
   // go in against every face the app knows, and whoever it recognises turns up
@@ -547,6 +586,13 @@ export default function DayDetailScreen() {
                 </Text>
               </Pressable>
             </View>
+          </>
+        )}
+
+        {(assumedStatus === 'ask' || readingDay) && !assumedMemory && (
+          <>
+            <View style={styles.divider} />
+            <ReadDayCard photoCount={askPhotoCount} reading={readingDay} onRead={readThisDay} />
           </>
         )}
 

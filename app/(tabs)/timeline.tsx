@@ -20,6 +20,9 @@ import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
 import PlaceTile from '../../src/components/PlaceTile';
+import ReadDayCard from '../../src/components/ReadDayCard';
+import { mayReadDay, onPhotoReadingChanged } from '../../src/photoReading';
+import { askToReadDay, offerAllIfTime } from '../../src/readDayPrompt';
 import SirCluster, { SirPicker } from '../../src/components/SirCluster';
 import {
   getMarkersForDay,
@@ -516,7 +519,11 @@ export default function Timeline() {
   // 'failed' — a real attempt was made and came back with nothing (rate
   // limited, offline, etc.) — distinct from "hasn't been tried yet" so the
   // card can offer a retry instead of just silently showing nothing.
-  const [assumedStatus, setAssumedStatus] = useState<'idle' | 'loading' | 'ready' | 'failed'>('idle');
+  const [assumedStatus, setAssumedStatus] = useState<'idle' | 'loading' | 'ready' | 'failed' | 'ask'>('idle');
+  // 'ask': this day has photos, no story, and the user hasn't chosen to have
+  // it read — the card becomes the invitation. See src/readDayPrompt.ts.
+  const [askPhotoCount, setAskPhotoCount] = useState(0);
+  const [readingDay, setReadingDay] = useState(false);
   // 'en' shows the original; any other code shows that cached translation
   // once fetched. Arabic only for now — see ASSUMED_MEMORY_LANGUAGES.
   const [assumedLang, setAssumedLang] = useState<'en' | 'ar'>('en');
@@ -540,6 +547,21 @@ export default function Timeline() {
         .map((uri) => ({ uri, takenAt: timestamps[uri], source: sources[uri] }));
       if (photos.length === 0) {
         setAssumedStatus('idle');
+        return;
+      }
+      // Not the user's choice to send this day's photos: show a story that
+      // was already written, or the invitation to read the day.
+      if (!(await mayReadDay(targetDay))) {
+        const cached = await getCachedAssumedMemory(targetDay);
+        if (targetDay !== dayKeyRef.current) return;
+        setAskPhotoCount(photos.length);
+        if (!cached) {
+          setAssumedStatus('ask');
+          return;
+        }
+        setAssumedMemory(cached);
+        setAssumedDismissed(await isAssumedMemoryDismissed(targetDay, cached.signature));
+        setAssumedStatus('ready');
         return;
       }
       const record = await getAssumedMemory(targetDay, photos, loggedText || undefined);
@@ -572,6 +594,23 @@ export default function Timeline() {
   }, [dayKey, photoUrisKey, loggedTextForAssumed]);
 
   const retryAssumed = () => fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+
+  // "Tell me about this day": the user's yes, for this day, then the story.
+  const readThisDay = async () => {
+    const chosen = await askToReadDay(dayKey, askPhotoCount);
+    if (chosen === 0) return;
+    setReadingDay(true);
+    await fetchAssumed(dayKey, realPhotoUris, loggedTextForAssumed);
+    setReadingDay(false);
+    offerAllIfTime(chosen);
+  };
+
+  // A change in Profile ("Bring back my past") shows here straight away.
+  useEffect(
+    () => onPhotoReadingChanged(() => fetchAssumed(dayKeyRef.current, realPhotoUris, loggedTextForAssumed)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [photoUrisKey, loggedTextForAssumed],
+  );
 
 
   // A day analyzed by the background pass appears here on its own — no
@@ -1054,6 +1093,15 @@ export default function Timeline() {
                       been tried yet" (which shows no card at all): this one
                       offers a manual retry instead of leaving the day
                       looking like analysis will never arrive. */}
+                  {(assumedStatus === 'ask' || readingDay) && !assumedMemory && (
+                    <ReadDayCard
+                      photoCount={askPhotoCount}
+                      reading={readingDay}
+                      onRead={readThisDay}
+                      style={{ position: 'absolute', left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w }}
+                    />
+                  )}
+
                   {assumedStatus === 'failed' && (
                     <Pressable
                       style={[

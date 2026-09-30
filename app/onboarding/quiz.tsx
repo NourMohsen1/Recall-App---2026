@@ -73,7 +73,8 @@ export default function Quiz() {
       ['onboardingComplete', 'true'],
       ['quizAnswers', JSON.stringify(answers)],
     ]);
-    router.replace('/home');
+    // The last question of setup: whether Recall may read past photos.
+    router.replace('/photo-reading');
   };
 
   return (

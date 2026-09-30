@@ -5,6 +5,7 @@ import { LoggedMemory, dateKey, getLoggedMemories } from './memoryLog';
 import { getAllPhotoSources, getAllPhotoTimestamps } from './photoMeta';
 import { chatCompletion, textProviders, visionAvailable, visionProviders } from './aiProviders';
 import { resolvePhotoUri } from './photoUri';
+import { getPhotoReading, mayReadDay } from './photoReading';
 
 // "Assumed Memory" — when a day has photos but the app can only guess what
 // actually happened, this reconstructs a plausible, clearly-speculative
@@ -328,6 +329,11 @@ export async function getAssumedMemory(
   const cached = await readCache(dayKey);
   if (isFresh(cached, signature)) return cached;
 
+  // The user decides whether photos are sent to be read (src/photoReading.ts).
+  // This is the only place photos leave the phone, so the check lives here,
+  // where nothing can go around it. A story already written stays readable.
+  if (!(await mayReadDay(dayKey))) return cached;
+
   const summary = await generate(photos, loggedText);
   if (!summary) return null;
 
@@ -453,6 +459,9 @@ export async function backfillAssumedMemories(onProgress?: (done: number, total:
   analyzed: number;
 }> {
   if (!assumedMemoryAvailable() || backfillInFlight) return { analyzed: 0 };
+  // Reading every past day in the background is "Bring back my past" only.
+  // A day chosen by hand is read on the spot by the screen that chose it.
+  if ((await getPhotoReading()) !== 'all') return { analyzed: 0 };
 
   backfillInFlight = true;
   try {

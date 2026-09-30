@@ -48,6 +48,8 @@ import { getPeopleForDay } from './peopleTags';
 // The code stays because the plumbing around it is sound and reused: the
 // suggestion store, the confirm/reject flow, the day screen's questions, the
 // scan state. Only the thing doing the comparing is being replaced.
+// If this is ever turned back on it must also respect the user's choice in
+// src/photoReading.ts — it sends photos to the vision model too.
 const FACE_MATCHING_ENABLED = false;
 
 export function faceMatchingAvailable(): boolean {

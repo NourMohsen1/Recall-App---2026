@@ -4,6 +4,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FaceIndexCard from '../../src/components/FaceIndexCard';
+import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/photoReading';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
@@ -44,6 +45,7 @@ export default function Profile() {
   const [profile, setProfile] = useState<UserProfile>({});
   const [joined, setJoined] = useState<Date | null>(null);
   const [entries, setEntries] = useState(0);
+  const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -52,6 +54,7 @@ export default function Profile() {
         setJoined(await joinedDate(p));
       });
       memoryCount().then(setEntries);
+      getPhotoReading().then(setPhotoReadingState);
     }, []),
   );
 
@@ -102,10 +105,30 @@ export default function Profile() {
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Memories</Text>
           <Pressable
-            style={styles.toggleRow}
+            style={[styles.toggleRow, styles.rowDivider]}
             onPress={() => router.push('/import-photos' as Parameters<typeof router.push>[0])}
           >
             <Text style={styles.toggleLabel}>Import from Photos</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
+          </Pressable>
+          {/* Whether photos may be read to write each day's story — the
+              user's choice, changeable any time. See src/photoReading.ts. */}
+          <Pressable
+            style={styles.toggleRow}
+            onPress={() => router.push({ pathname: '/photo-reading', params: { from: 'profile' } })}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>Reading your photos</Text>
+              <Text style={styles.rowHint}>
+                {photoReading === 'all'
+                  ? `All past days · read by ${PHOTO_READER.name}`
+                  : photoReading === 'chosen'
+                    ? `Only days you choose · read by ${PHOTO_READER.name}`
+                    : photoReading === 'off'
+                      ? 'Off — no photos are sent'
+                      : 'Not chosen yet'}
+              </Text>
+            </View>
             <Ionicons name="chevron-forward" size={20} color="#8B9394" />
           </Pressable>
         </View>
@@ -149,6 +172,7 @@ export default function Profile() {
 }
 
 const styles = StyleSheet.create({
+  rowHint: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
   safe: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingBottom: 130 },
   back: { marginTop: 12 },

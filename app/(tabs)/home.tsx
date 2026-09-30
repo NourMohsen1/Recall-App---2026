@@ -1,12 +1,13 @@
 import { useCallback, useState } from 'react';
 import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import { BRAND, MISC, placePhoto } from '../../src/images';
 import { PlaceThumb } from '../../src/components/PlaceTile';
 import { useMemoryPolish } from '../../src/memoryIntake';
+import { getPhotoReading } from '../../src/photoReading';
 import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../../src/memoryLog';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
@@ -40,11 +41,17 @@ function PlayButton() {
 
 export default function Home() {
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
+  const router = useRouter();
 
   useFocusEffect(
     useCallback(() => {
       getMemoriesByDay().then(setByDay);
-    }, []),
+      // Someone who had Recall before this question existed is asked once,
+      // here. Until they answer, no photos are sent.
+      getPhotoReading().then((mode) => {
+        if (mode === null) router.push('/photo-reading');
+      });
+    }, [router]),
   );
 
   // Sweep up anything the AI hasn't polished yet, then refresh what's shown.
