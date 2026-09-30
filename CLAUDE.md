@@ -125,6 +125,17 @@ tasks with `notes` details, the attachment, early reminders (evening before,
 photo analysis and face indexing never see them. Changing the Swift module
 needs a native rebuild.
 
+**Private photos and deleted photos** (`src/photoGuard.ts`, `modules/photo-guard`):
+every photo is checked for nudity on the phone before it enters Recall
+(Marqo nsfw-image-detection-384, Apache-2.0, 11 MB, cutoff 0.35; plus
+Apple's detector when the user has Sensitive Content Warning on). A flagged
+photo is never stored, shown, read or sent; the day-story path checks again
+before sending. On open and on return, library photos deleted from Photos
+(incl. Recently Deleted) are removed with everything derived from them.
+**What the user added by hand is an app-owned copy and is never removed**
+— Add Photos, attached screenshots, and place covers chosen by hand
+(copied with persistFile, even when picked from their own photos).
+
 **Photo analysis** (`src/assumedMemory.ts`) sends a day's photos to DeepSeek to
 describe them. That is deliberate and Nour's call — don't change it quietly,
 and it must be declared on Apple's privacy questionnaire.

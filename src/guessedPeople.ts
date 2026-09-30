@@ -97,6 +97,20 @@ export async function addGuess(
   return true;
 }
 
+/** Guesses that came from these photos go with them. Returns how many. */
+export async function dropGuessesFromPhotos(uris: Set<string>): Promise<number> {
+  const all = await readJSON<GuessesByDay>(GUESS_KEY, {});
+  let dropped = 0;
+  for (const [day, list] of Object.entries(all)) {
+    const left = list.filter((g) => !(g.photoUri && uris.has(g.photoUri)));
+    dropped += list.length - left.length;
+    if (left.length === 0) delete all[day];
+    else all[day] = left;
+  }
+  if (dropped > 0) await AsyncStorage.setItem(GUESS_KEY, JSON.stringify(all));
+  return dropped;
+}
+
 async function dropGuess(day: string, name: string): Promise<void> {
   const all = await readJSON<GuessesByDay>(GUESS_KEY, {});
   const forDay = all[day] ?? [];

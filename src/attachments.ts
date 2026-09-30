@@ -1,6 +1,7 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import { readImageText, readPdfText, textReaderAvailable } from '../modules/text-reader';
 import { processMemoryIntake } from './memoryIntake';
+import { isPrivateFile } from './photoGuard';
 import { dateKey, localFile, persistFile, saveMemory, type Attachment } from './memoryLog';
 
 // A screenshot or file saved as a memory — an appointment confirmation, a
@@ -13,6 +14,13 @@ import { dateKey, localFile, persistFile, saveMemory, type Attachment } from './
 // never reads it. Only the words do, the same as if the user had typed them.
 
 export { textReaderAvailable };
+
+/** The screenshot looks private, so it was not saved. */
+export class PrivatePhotoError extends Error {
+  constructor() {
+    super('This image looks private, so Recall left it out.');
+  }
+}
 
 export type PickedFile = { uri: string; name?: string; mimeType?: string };
 
@@ -27,6 +35,7 @@ export async function saveAttachmentMemory(
   note: string,
 ): Promise<{ memoryId: string; words: number }> {
   const pdf = isPdf(file);
+  if (!pdf && (await isPrivateFile(file.uri))) throw new PrivatePhotoError();
   const stored = await persistFile(file.uri, pdf ? 'doc' : 'shot');
   const attachment: Attachment = { uri: stored, kind: pdf ? 'pdf' : 'image', name: file.name };
 

@@ -6,6 +6,7 @@ import { getAllPhotoSources, getAllPhotoTimestamps } from './photoMeta';
 import { chatCompletion, textProviders, visionAvailable, visionProviders } from './aiProviders';
 import { resolvePhotoUri } from './photoUri';
 import { getPhotoReading, mayReadDay } from './photoReading';
+import { onlyCheckedPhotos } from './photoGuard';
 
 // "Assumed Memory" — when a day has photos but the app can only guess what
 // actually happened, this reconstructs a plausible, clearly-speculative
@@ -298,6 +299,14 @@ async function writeCache(dayKey: string, record: AssumedMemory): Promise<void> 
 type AssumedMemoryListener = (dayKey: string) => void;
 const listeners = new Set<AssumedMemoryListener>();
 
+/** Throws away a day's story — its photos changed and it no longer
+ *  describes what is there. Rewritten on its own when the user's choice
+ *  allows it (src/photoReading.ts). */
+export async function forgetAssumedMemory(dayKey: string): Promise<void> {
+  await AsyncStorage.removeItem(`${CACHE_PREFIX}${dayKey}`);
+  for (const listener of listeners) listener(dayKey);
+}
+
 export function onAssumedMemoryUpdated(listener: AssumedMemoryListener): () => void {
   listeners.add(listener);
   return () => {
@@ -334,7 +343,12 @@ export async function getAssumedMemory(
   // where nothing can go around it. A story already written stays readable.
   if (!(await mayReadDay(dayKey))) return cached;
 
-  const summary = await generate(photos, loggedText);
+  // Last check before anything is sent: only photos known not to be
+  // private (src/photoGuard.ts). Removes any private one it finds.
+  const safe = await onlyCheckedPhotos(photos);
+  if (safe.length === 0) return null;
+
+  const summary = await generate(safe, loggedText);
   if (!summary) return null;
 
   // Deliberately does NOT carry over the old record's translations — the

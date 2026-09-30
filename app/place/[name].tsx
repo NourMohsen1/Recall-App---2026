@@ -21,6 +21,8 @@ import PhotoImage from '../../src/components/PhotoImage';
 import { PlaceCover } from '../../src/components/PlaceTile';
 import { getAllDayMarkers } from '../../src/dayMarkers';
 import { getMemoriesByDay, memoryDisplayText, persistFile } from '../../src/memoryLog';
+import { isPrivateFile } from '../../src/photoGuard';
+import { resolvePhotoUri } from '../../src/photoUri';
 import { getAllPersonMeta, getPeopleSummaries } from '../../src/peopleTags';
 import {
   PLACE_KINDS,
@@ -154,6 +156,10 @@ export default function PlaceProfile() {
         ? await ImagePicker.launchCameraAsync({ quality: 0.8 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.8 });
     if (result.canceled || !result.assets[0]) return;
+    if (await isPrivateFile(result.assets[0].uri)) {
+      Alert.alert('Not added', 'This photo looks private, so Recall left it out.');
+      return;
+    }
     await setPlaceCover(place.id, await persistFile(result.assets[0].uri, 'place'));
   };
 
@@ -442,7 +448,11 @@ export default function PlaceProfile() {
                 key={uri}
                 onPress={async () => {
                   setPicking(false);
-                  await setPlaceCover(place.id, uri);
+                  // A cover chosen by hand is the user's decision, so the app
+                  // keeps its own copy: deleting the photo from Photos later
+                  // must not take the place's picture with it.
+                  const readable = await resolvePhotoUri(uri);
+                  await setPlaceCover(place.id, readable ? await persistFile(readable, 'place') : uri);
                 }}
               >
                 <PhotoImage uri={uri} style={[styles.pickTile, { width: tile, height: tile }]} />

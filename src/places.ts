@@ -1061,6 +1061,23 @@ export async function nameSpotAs(spotId: string, namedPlaceId: string): Promise<
   return renamePlace(spotId, named.name);
 }
 
+/** A cover that was one of these photos is cleared; the place picks its
+ *  next best photo on its own. Covers the user chose by hand are copies
+ *  the app owns (see setPlaceCover callers), so they are never among these. */
+export function forgetPlaceCovers(uris: Set<string>): Promise<void> {
+  return locked(async () => {
+    const places = await readPlaces();
+    let touched = false;
+    for (const p of Object.values(places)) {
+      if (p.coverUri && uris.has(p.coverUri)) {
+        delete p.coverUri;
+        touched = true;
+      }
+    }
+    if (touched) await writePlaces(places);
+  }).then(() => changed());
+}
+
 export function setPlaceCover(id: string, uri: string | null): Promise<void> {
   return locked(async () => {
     const places = await readPlaces();

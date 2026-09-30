@@ -33,6 +33,8 @@ export type PhotoMeta = {
   locationRead?: boolean;
   // The place this photo was taken at, once places.ts has filed it.
   placeId?: string;
+  // Checked on the phone for nudity (src/photoGuard.ts) and found fine.
+  privacyChecked?: boolean;
   // The place the user NAMED in the log these photos came with ("coffee at
   // Dunkin" + a photo). The strongest evidence there is of what a spot is
   // called, because the user said it about these exact pictures.
@@ -102,6 +104,21 @@ export async function clearPhotoMeta(uri: string): Promise<void> {
   if (!(uri in all)) return;
   delete all[uri];
   await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+}
+
+/** Forgets these photos entirely. */
+export async function removePhotoMeta(uris: Set<string>): Promise<void> {
+  const all = await readAll();
+  let changed = false;
+  for (const uri of uris) {
+    if (uri in all) {
+      delete all[uri];
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  await AsyncStorage.setItem(PHOTO_META_KEY, JSON.stringify(all));
+  assetIndex = null;
 }
 
 // Records meta for a batch of photos at once — used right after import/log

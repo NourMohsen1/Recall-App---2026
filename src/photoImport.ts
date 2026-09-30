@@ -9,6 +9,7 @@ import * as MediaLibrary from 'expo-media-library/legacy';
 import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
+import { photoGuardAvailable, privateAssetIds } from './photoGuard';
 import { startPlaceIndexing, toLocation } from './places';
 
 // Bulk-imports photos from the device's library into the Timeline, grouped
@@ -64,7 +65,7 @@ type PhotoEntry = {
 };
 
 export type ImportProgress = { scanned: number; imported: number };
-export type ImportResult = { imported: number; days: number };
+export type ImportResult = { imported: number; days: number; privateSkipped: number };
 
 async function getImportedIds(): Promise<Set<string>> {
   const raw = await AsyncStorage.getItem(IMPORTED_IDS_KEY);
@@ -170,6 +171,7 @@ export async function importRecentPhotos(
   // on a big sync, and means a sync that's interrupted keeps everything it
   // already committed and resumes from there rather than starting over.
   let importedCount = 0;
+  let privateSkipped = 0;
   const allDays = new Set<string>();
   let scanned = 0;
   let after: string | undefined;
@@ -221,7 +223,18 @@ export async function importRecentPhotos(
     const pageByDay = new Map<string, PhotoEntry[]>();
     const pageMeta: [string, PhotoMeta][] = [];
 
+    // Private photos are checked for on the phone before anything is kept
+    // (src/photoGuard.ts). A flagged photo is still marked as seen below, so
+    // it is never looked at again, but nothing about it is stored.
+    const privateIds = await privateAssetIds(resolved.map((r) => r.id)).catch((e) => {
+      console.warn('[privacy] could not check new photos — they are not imported this time:', e);
+      return null;
+    });
+    if (privateIds === null) break;
+    privateSkipped += privateIds.size;
+
     for (const item of resolved) {
+      if (privateIds.has(item.id)) continue;
       const key = dateKey(new Date(item.creationTime));
       const bucket = pageByDay.get(key);
       if (bucket) bucket.push(item);
@@ -231,7 +244,11 @@ export async function importRecentPhotos(
       // day sequencing) and the asset id (lets src/photoUri.ts fetch a real
       // file path later for photos whose original is still in iCloud); the
       // source label only when one was detected.
-      const meta: PhotoMeta = { takenAt: item.creationTime, assetId: item.id };
+      const meta: PhotoMeta = {
+        takenAt: item.creationTime,
+        assetId: item.id,
+        privacyChecked: photoGuardAvailable,
+      };
       if (item.source) meta.source = item.source;
       // Where it was taken, per photo. This used to keep ONE location per
       // day — the first photo with GPS — so a day at college, then a café,
@@ -268,7 +285,8 @@ export async function importRecentPhotos(
 
   // File the new photos under their places, in the background.
   if (importedCount > 0) startPlaceIndexing();
-  return { imported: importedCount, days: allDays.size };
+  if (privateSkipped > 0) console.log(`[privacy] ${privateSkipped} private photos skipped during import`);
+  return { imported: importedCount, days: allDays.size, privateSkipped };
 }
 
 // Files one page's worth of photos onto their days — merging into that

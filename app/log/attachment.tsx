@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PillButton from '../../src/components/PillButton';
 import {
+  PrivatePhotoError,
   isPdf,
   saveAttachmentMemory,
   textReaderAvailable,
@@ -80,6 +81,11 @@ export default function LogAttachment() {
       }
       returnTo();
     } catch (e) {
+      if (e instanceof PrivatePhotoError) {
+        Alert.alert('Not added', 'This image looks private, so Recall left it out. Nothing was saved or sent.');
+        setSaving(false);
+        return;
+      }
       console.warn('[attach] save failed:', e);
       Alert.alert('Could not save', 'Something went wrong saving this file. Try again.');
       setSaving(false);

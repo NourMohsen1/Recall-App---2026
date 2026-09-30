@@ -19,6 +19,7 @@ import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, persistFile, saveMemory } from '../../src/memoryLog';
 import { setPhotoMetaBatch, PhotoMeta } from '../../src/photoMeta';
 import { detectPhotoSource } from '../../src/photoSource';
+import { isPrivateFile, photoGuardAvailable } from '../../src/photoGuard';
 import { notePhotoLocations, recordCurrentLocationForDay, whereAmI } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
 import { useReturnTo } from '../../src/useReturnTo';
@@ -148,13 +149,20 @@ export default function LogPhoto() {
     // A photo just taken with the camera was taken where the phone is now —
     // the camera itself rarely writes GPS into what it hands back.
     const here = picked.some((p) => p.fromCamera && !p.location) ? await whereAmI() : null;
+    let skipped = 0;
     for (const p of picked) {
+      // Private photos never enter Recall — checked on the phone, before the
+      // photo is copied anywhere (src/photoGuard.ts).
+      if (await isPrivateFile(p.uri)) {
+        skipped += 1;
+        continue;
+      }
       const permanent = { ...p, uri: await persistFile(p.uri, 'photo') };
       const key = dateKey(p.takenAt);
       const bucket = groups.get(key);
       if (bucket) bucket.push(permanent);
       else groups.set(key, [permanent]);
-      const meta: PhotoMeta = { takenAt: permanent.takenAt.getTime() };
+      const meta: PhotoMeta = { takenAt: permanent.takenAt.getTime(), privacyChecked: photoGuardAvailable };
       if (permanent.source) meta.source = permanent.source;
       if (permanent.assetId) meta.assetId = permanent.assetId;
       photoMetaEntries.push([permanent.uri, meta]);
@@ -162,6 +170,16 @@ export default function LogPhoto() {
       // Known now, or none to find: file it. Otherwise leave it for the
       // places sweep, which can ask the library about the asset.
       if (location || !permanent.assetId) locations.push([permanent.uri, location]);
+    }
+    if (skipped > 0) {
+      Alert.alert(
+        skipped === 1 ? '1 photo wasn’t added' : `${skipped} photos weren’t added`,
+        'They look private, so Recall left them out. Nothing about them was saved or sent anywhere.',
+      );
+    }
+    if (groups.size === 0) {
+      setSaving(false);
+      return;
     }
     await setPhotoMetaBatch(photoMetaEntries);
     await notePhotoLocations(locations);

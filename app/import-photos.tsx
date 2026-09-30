@@ -25,7 +25,7 @@ export default function ImportPhotos() {
   const [syncOn, setSyncOn] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
   const [progress, setProgress] = useState<ImportProgress>({ scanned: 0, imported: 0 });
-  const [result, setResult] = useState<{ imported: number; days: number } | null>(null);
+  const [result, setResult] = useState<{ imported: number; days: number; privateSkipped?: number } | null>(null);
 
   const runImport = async () => {
     const granted = await requestLibraryPermission();
@@ -147,6 +147,14 @@ export default function ImportPhotos() {
                 ? 'Check your Timeline to see them on their original days.'
                 : 'No new photos found in the last 12 months.'}
             </Text>
+            {!!result.privateSkipped && (
+              <View style={styles.privateRow}>
+                <Ionicons name="lock-closed-outline" size={14} color="#8B9394" />
+                <Text style={styles.privateText}>
+                  {result.privateSkipped} private {result.privateSkipped === 1 ? 'photo' : 'photos'} skipped
+                </Text>
+              </View>
+            )}
             <View style={styles.doneRow}>
               <PillButton label="Sync again" variant="ghost" onPress={runImport} style={styles.doneBtn} />
               <PillButton
@@ -171,6 +179,8 @@ export default function ImportPhotos() {
 }
 
 const styles = StyleSheet.create({
+  privateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
+  privateText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
   safe: { flex: 1, backgroundColor: colors.white },
   header: {
     paddingTop: 12,

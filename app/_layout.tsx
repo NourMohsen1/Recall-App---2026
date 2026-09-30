@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -12,6 +13,7 @@ import { startPhotoAnalysis } from '../src/photoAnalysisQueue';
 import { installFaceEmbedder } from '../src/faceEmbedderTflite';
 import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
+import { syncPhotosWithLibrary } from '../src/photoGuard';
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -42,6 +44,16 @@ export default function RootLayout() {
   // places, quietly. Needs no model, so it does not wait for the faces.
   useEffect(() => {
     startPlaceIndexing();
+  }, []);
+
+  // Photos deleted from Photos leave Recall, and any photo not yet checked
+  // for privacy is checked — on open, and whenever the app comes back.
+  useEffect(() => {
+    syncPhotosWithLibrary();
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') syncPhotosWithLibrary();
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {

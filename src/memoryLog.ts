@@ -99,6 +99,27 @@ export async function saveMemory(
   return entry;
 }
 
+/** Takes these photos off every memory they are on. A photo memory left
+ *  with no photos and no words of its own goes too. Returns the days that
+ *  changed. See src/photoGuard.ts. */
+export async function removePhotosFromMemories(uris: Set<string>): Promise<string[]> {
+  const existing = await getLoggedMemories();
+  const days = new Set<string>();
+  const next: LoggedMemory[] = [];
+  for (const m of existing) {
+    if (!m.photoUris?.some((u) => uris.has(u))) {
+      next.push(m);
+      continue;
+    }
+    days.add(dateKey(new Date(m.takenAt)));
+    const left = m.photoUris.filter((u) => !uris.has(u));
+    if (left.length === 0 && m.kind === 'photo' && !m.text?.trim()) continue;
+    next.push({ ...m, photoUris: left });
+  }
+  if (days.size > 0) await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  return [...days];
+}
+
 export async function updateMemory(id: string, patch: Partial<LoggedMemory>): Promise<void> {
   const existing = await getLoggedMemories();
   const next = existing.map((m) => (m.id === id ? { ...m, ...patch } : m));

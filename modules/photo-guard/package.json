@@ -1,0 +1,8 @@
+{
+  "name": "photo-guard",
+  "version": "1.0.0",
+  "description": "On-device private-photo check and Photos library existence check for Recall.",
+  "main": "index.ts",
+  "license": "UNLICENSED",
+  "private": true
+}

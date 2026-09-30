@@ -195,6 +195,19 @@ export async function readPhotoUris(): Promise<Set<string>> {
   return new Set(rows.map((r) => r.photo_uri));
 }
 
+/** Forgets everything read from these photos — faces and the fact that
+ *  they were read. */
+export async function forgetPhotos(uris: string[]): Promise<void> {
+  if (uris.length === 0) return;
+  const handle = await db();
+  await handle.withTransactionAsync(async () => {
+    for (const uri of uris) {
+      await handle.runAsync('DELETE FROM faces WHERE photo_uri = ?', uri);
+      await handle.runAsync('DELETE FROM read_photos WHERE photo_uri = ?', uri);
+    }
+  });
+}
+
 /** How many faces each read photo has. A photo not read yet is absent.
  *  Places use this to pick a cover: the building, not the selfie. */
 export async function getPhotoFaceCounts(): Promise<Map<string, number>> {
