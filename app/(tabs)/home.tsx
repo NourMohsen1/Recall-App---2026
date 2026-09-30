@@ -1,12 +1,14 @@
 import { useCallback, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import { BRAND, MISC, placePhoto } from '../../src/images';
 import { PlaceThumb } from '../../src/components/PlaceTile';
-import { useMemoryPolish } from '../../src/memoryIntake';
+import { polishPendingMemories, useMemoryPolish } from '../../src/memoryIntake';
+import { syncPhotosWithLibrary } from '../../src/photoGuard';
+import { syncNewPhotosIfOn } from '../../src/photoImport';
 import { getPhotoReading } from '../../src/photoReading';
 import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../../src/memoryLog';
 import { rtlIfArabic } from '../../src/transcription';
@@ -57,6 +59,24 @@ export default function Home() {
   // Sweep up anything the AI hasn't polished yet, then refresh what's shown.
   const analyzing = useMemoryPolish(useCallback(() => getMemoriesByDay().then(setByDay), []));
 
+  // Pull down to refresh: everything the app otherwise does on its own when
+  // it opens — deleted and private photos checked, new photos brought in
+  // (when Sync photos is on), unfinished logs written up — then the screen.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await syncPhotosWithLibrary();
+      await syncNewPhotosIfOn();
+      await polishPendingMemories();
+    } catch (e) {
+      console.warn('[home] refresh failed:', e);
+    } finally {
+      setByDay(await getMemoriesByDay());
+      setRefreshing(false);
+    }
+  }, []);
+
   const week = getWeek(new Set(byDay.keys()));
 
   // Yesterday's Summary prefers what the user actually logged yesterday.
@@ -73,7 +93,13 @@ export default function Home() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />
+        }
+      >
         {/* Header */}
         <View style={styles.header}>
           <Image
