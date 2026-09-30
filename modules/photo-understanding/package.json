@@ -1,8 +1,0 @@
-{
-  "name": "photo-understanding",
-  "version": "1.0.0",
-  "description": "Understands photos on the device: Apple Vision labels and a SigLIP 2 image embedding on the Neural Engine.",
-  "main": "index.ts",
-  "license": "UNLICENSED",
-  "private": true
-}

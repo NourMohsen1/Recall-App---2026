@@ -41,5 +41,3 @@ yarn-error.*
 /ios
 /android
 
-# The on-device photo model is 88 MB — rebuilt from tools/photo-model, not stored in git.
-modules/photo-understanding/ios/models/
