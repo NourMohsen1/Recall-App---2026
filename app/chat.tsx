@@ -40,6 +40,7 @@ import { avatarTint } from '../src/peopleTags';
 import { speakText, stopSpeaking } from '../src/speech';
 import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
+import { useLightStatusBar } from '../src/statusBar';
 
 type Message = {
   role: 'user' | 'ai';
@@ -383,6 +384,8 @@ function SourceList({ sources }: { sources: Source[] }) {
 type VoiceState = 'idle' | 'recording' | 'transcribing';
 
 export default function Chat() {
+  // Dark teal screen: white top bar while it shows (src/statusBar.ts).
+  useLightStatusBar();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);

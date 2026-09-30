@@ -9,6 +9,7 @@ import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession, type ChatMessage } from '../src/chatSessions';
 import { liveVoiceAvailable, startLiveVoice, type LiveSession } from '../src/realtimeVoice';
 import { colors, fonts } from '../src/theme';
+import { useLightStatusBar } from '../src/statusBar';
 
 // Talking to Recall, live.
 //
@@ -40,6 +41,8 @@ const PHASE_LABEL: Record<Phase, string> = {
 };
 
 export default function LiveConversation() {
+  // Dark teal screen: white top bar while it shows (src/statusBar.ts).
+  useLightStatusBar();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const session = useRef<LiveSession | null>(null);

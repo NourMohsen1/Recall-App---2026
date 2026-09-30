@@ -36,6 +36,7 @@ import {
 } from '../../src/transcription';
 import { useReturnTo } from '../../src/useReturnTo';
 import { colors, fonts } from '../../src/theme';
+import { useLightStatusBar } from '../../src/statusBar';
 
 function formatTime(ms: number) {
   const totalSec = Math.floor(ms / 1000);
@@ -99,6 +100,8 @@ function LiveWaveform({ active }: { active: boolean }) {
 }
 
 export default function LogVoice() {
+  // Dark teal screen: white top bar while it shows (src/statusBar.ts).
+  useLightStatusBar();
   const returnTo = useReturnTo();
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
   const recorderState = useAudioRecorderState(recorder, 200);

@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { colors } from '../theme';
+import { useLightStatusBar } from '../statusBar';
 
 // Dark teal backdrop with a soft glow in the middle, matching the
 // radial-gradient look of the onboarding frames.
@@ -12,6 +13,7 @@ export default function OnboardingBackground({
   children: ReactNode;
   light?: boolean;
 }) {
+  useLightStatusBar();
   if (light) {
     return (
       <LinearGradient

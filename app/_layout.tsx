@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { DEFAULT_STATUS_BAR } from '../src/statusBar';
 import {
   useFonts,
   Poppins_400Regular,
@@ -71,7 +72,7 @@ export default function RootLayout() {
 
   return (
     <>
-      <StatusBar style="light" />
+      <StatusBar style={DEFAULT_STATUS_BAR} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         {/* Presented as an ordinary pushed screen, like Ask and Day.
