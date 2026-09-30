@@ -160,6 +160,9 @@ type DayFacts = {
   places: string[];
   moments: string[];
   photos: string[];
+  /** When a day has no camera photo: its screenshots and attached images,
+   *  so its tile still shows that day. */
+  otherImages: string[];
 };
 
 type World = Map<string, DayFacts>;
@@ -199,6 +202,17 @@ async function buildWorld(): Promise<World> {
         .filter((m) => m.kind === 'photo')
         .flatMap((m) => m.photoUris ?? [])
         .filter((u) => sources[u] !== 'screenshot'),
+      otherImages: [
+        ...memories
+          .filter((m) => m.kind === 'photo')
+          .flatMap((m) => m.photoUris ?? [])
+          .filter((u) => sources[u] === 'screenshot'),
+        ...memories
+          .filter((m) => m.kind === 'document')
+          .flatMap((m) => m.attachments ?? [])
+          .map((a) => (a.kind === 'image' ? a.uri : a.previewUri))
+          .filter((u): u is string => !!u),
+      ],
     });
   }
   return world;
@@ -237,7 +251,12 @@ export async function unitsWithContent(period: RecapPeriod): Promise<{ unit: Rec
   return period.units.map((unit) => {
     const facts = daysIn(unit).map((d) => w.get(d)).filter((f): f is DayFacts => !!f);
     return {
-      unit: { ...unit, photo: facts.find((f) => f.photos.length > 0)?.photos[0] },
+      unit: {
+        ...unit,
+        photo:
+          facts.find((f) => f.photos.length > 0)?.photos[0] ??
+          facts.find((f) => f.otherImages.length > 0)?.otherImages[0],
+      },
       hasContent: facts.some(hasAnything),
     };
   });
