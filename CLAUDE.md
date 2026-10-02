@@ -125,6 +125,16 @@ tasks with `notes` details, the attachment, early reminders (evening before,
 photo analysis and face indexing never see them. Changing the Swift module
 needs a native rebuild.
 
+**Onboarding** (`app/onboarding/quiz.tsx`) asks only what changes the app:
+name → profile, interests → On This Day (`quizAnswers[0]`), recap
+frequency → recap notifications, Positive Focus. No accounts: memories live
+on the phone and return with its iCloud backup.
+
+**Positive Focus** (`src/positiveFocus.ts`, Profile switch) makes the AI
+recaps leave out painful moments (death, breakup, illness…). Recaps only —
+Timeline and Ask keep everything. With it on, a recap never falls back to
+the user's raw words, which could be the painful part.
+
 **Private photos and deleted photos** (`src/photoGuard.ts`, `modules/photo-guard`):
 every photo is checked for nudity on the phone before it enters Recall
 (Marqo nsfw-image-detection-384, Apache-2.0, 11 MB; ≥ 0.9 never enters,

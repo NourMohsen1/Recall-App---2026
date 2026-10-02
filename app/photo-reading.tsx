@@ -120,7 +120,7 @@ export default function PhotoReadingScreen() {
             </View>
             <View style={styles.fact}>
               <MaterialCommunityIcons name="lock-outline" size={16} color={t.factIcon} />
-              <Text style={[styles.factText, { color: t.fact }]}>Your notes, contacts and location never leave the phone</Text>
+              <Text style={[styles.factText, { color: t.fact }]}>Your contacts and location never leave the phone</Text>
             </View>
           </View>
 

@@ -16,13 +16,12 @@ export default function KnowYou() {
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Text style={styles.title}>Let’s get to know you better!</Text>
           <Text style={styles.body}>
-            Your answers will help personalize your memory experience, so every reminder, playlist,
-            and recap feels truly you.
+            A few quick questions, so your recaps and reminders feel like you.
           </Text>
           <PillButton
             label="Let’s Go"
             style={{ alignSelf: 'flex-start', marginTop: 40 }}
-            onPress={() => router.push('/onboarding/quiz-intro')}
+            onPress={() => router.push('/onboarding/quiz')}
           />
         </View>
       </SafeAreaView>

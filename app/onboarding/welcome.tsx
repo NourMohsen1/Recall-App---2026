@@ -20,15 +20,11 @@ export default function Welcome() {
             Reconnect with your memories. Explore your world, one moment at a time.
           </Text>
         </View>
+        {/* No "Already have an account?": Recall has no accounts — the
+            memories live on the phone and come back with its iCloud backup. */}
         <PillButton
           label="Next"
-          style={{ alignSelf: 'center', minWidth: 240 }}
-          onPress={() => router.push('/onboarding/know-you')}
-        />
-        <PillButton
-          label="Already Have an Account?"
-          variant="ghost"
-          style={{ marginTop: 20, marginBottom: 44 }}
+          style={{ alignSelf: 'center', minWidth: 240, marginBottom: 44 }}
           onPress={() => router.push('/onboarding/know-you')}
         />
       </SafeAreaView>

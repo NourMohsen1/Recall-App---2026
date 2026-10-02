@@ -13,6 +13,7 @@ import {
   type RecapPrefs,
 } from '../../src/recapNotifications';
 import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/photoReading';
+import { getPositiveFocus, setPositiveFocus } from '../../src/positiveFocus';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
@@ -55,6 +56,7 @@ export default function Profile() {
   const [entries, setEntries] = useState(0);
   const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
   const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ daily: true, weekly: true, monthly: false });
+  const [positiveFocus, setPositiveFocusState] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -65,6 +67,7 @@ export default function Profile() {
       memoryCount().then(setEntries);
       getPhotoReading().then(setPhotoReadingState);
       getRecapPrefs().then(setRecapPrefs);
+      getPositiveFocus().then(setPositiveFocusState);
     }, []),
   );
 
@@ -126,7 +129,7 @@ export default function Profile() {
           {/* Whether photos may be read to write each day's story — the
               user's choice, changeable any time. See src/photoReading.ts. */}
           <Pressable
-            style={styles.toggleRow}
+            style={[styles.toggleRow, styles.rowDivider]}
             onPress={() => router.push({ pathname: '/photo-reading', params: { from: 'profile' } })}
           >
             <View style={{ flex: 1 }}>
@@ -143,6 +146,21 @@ export default function Profile() {
             </View>
             <Ionicons name="chevron-forward" size={20} color="#8B9394" />
           </Pressable>
+          {/* Recaps leave painful moments out; Timeline and Ask keep them.
+              See src/positiveFocus.ts. */}
+          <View style={styles.toggleRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>Positive Focus</Text>
+              <Text style={styles.rowHint}>Recaps leave out painful moments</Text>
+            </View>
+            <Toggle
+              value={positiveFocus}
+              onChange={(on) => {
+                setPositiveFocusState(on);
+                setPositiveFocus(on);
+              }}
+            />
+          </View>
         </View>
 
         {/* Reading photos for faces: once, in the background. Placed under

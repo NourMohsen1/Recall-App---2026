@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,72 +7,128 @@ import { MISC } from '../../src/images';
 import BackArrow from '../../src/components/BackArrow';
 import OnboardingBackground from '../../src/components/OnboardingBackground';
 import PillButton from '../../src/components/PillButton';
+import { setPositiveFocus } from '../../src/positiveFocus';
+import { setRecapNotification, type RecapCadence } from '../../src/recapNotifications';
+import { getUserProfile, setUserProfile } from '../../src/userProfile';
 import { colors, fonts } from '../../src/theme';
 
-type Step = {
-  question: string;
-  options: string[];
-  multi: boolean;
-};
+// The setup questions. Each one changes something real in the app — no
+// question is asked for its own sake:
+//
+//   name       → the user's profile; the AI knows whose life it is
+//   interests  → On This Day's topics (src/onThisDay.ts reads quizAnswers[0])
+//   recaps     → which recap notifications are scheduled
+//   focus      → Positive Focus for the recaps (src/positiveFocus.ts)
+
+type ChoiceId = 'interests' | 'recaps' | 'focus';
+type Option = { label: string; value: string };
+type Step =
+  | { kind: 'name'; question: string; hint: string }
+  | { kind: 'choice'; id: ChoiceId; question: string; hint: string; options: Option[]; multi: boolean };
 
 const STEPS: Step[] = [
+  { kind: 'name', question: 'What should I call you?', hint: 'So Recall knows whose memories these are.' },
   {
-    question: 'What kind of content inspires you most?',
-    options: ['Music', 'News', 'World Events', 'Sports', 'Design', 'Movies', 'Travel', 'Books'],
+    kind: 'choice',
+    id: 'interests',
+    question: 'What are you into?',
+    hint: 'On This Day shows what was happening in these on your past days.',
+    // Labels match the topics in src/onThisDay.ts.
+    options: ['Music', 'News', 'Sports', 'Design', 'Movies', 'Travel', 'Books'].map((l) => ({ label: l, value: l })),
     multi: true,
   },
   {
-    question: 'What motivates you to record memories?',
+    kind: 'choice',
+    id: 'recaps',
+    question: 'When should Recall recap your memories?',
+    hint: 'A short summary, sent as a notification.',
     options: [
-      'Tracking progress',
-      'Staying organized',
-      'Improving my focus',
-      'Boost Confidence',
-      'Sharing with loved ones',
-      'Reflecting on good moments',
+      { label: 'Every evening', value: 'daily' },
+      { label: 'Every Sunday', value: 'weekly' },
+      { label: 'Every month', value: 'monthly' },
     ],
     multi: true,
   },
   {
-    question: 'How often would you like to be reminded of your memories?',
-    options: ['Daily', 'Weekly', 'Monthly'],
-    multi: false,
-  },
-  {
-    question: 'Would you like to activate “Positive Focus” mode?',
-    options: ['Yes, keep things positive', 'Show everything, I want balance'],
+    kind: 'choice',
+    id: 'focus',
+    question: 'Turn on Positive Focus?',
+    hint: 'Recaps leave out painful moments, like a loss or a breakup. Your Timeline keeps everything.',
+    options: [
+      { label: 'Yes, keep recaps positive', value: 'on' },
+      { label: 'No, show everything', value: 'off' },
+    ],
     multi: false,
   },
 ];
 
-const TOTAL_BARS = 5; // 4 questions + final loading step
+const TOTAL_BARS = STEPS.length + 1; // the questions + the closing screen
 
 export default function Quiz() {
   const router = useRouter();
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<string[][]>(STEPS.map(() => []));
+  const [name, setName] = useState('');
+  const [picks, setPicks] = useState<Record<ChoiceId, string[]>>({
+    interests: [],
+    // The same defaults as Profile's switches.
+    recaps: ['daily', 'weekly'],
+    focus: [],
+  });
+  const [busy, setBusy] = useState(false);
 
-  const isLoadingStep = step === STEPS.length;
+  // Someone going through setup again keeps the name they gave.
+  useEffect(() => {
+    getUserProfile().then((p) => p.name && setName(p.name));
+  }, []);
 
-  const toggle = (option: string) => {
-    const current = STEPS[step];
-    setAnswers((prev) => {
-      const next = prev.map((a) => [...a]);
-      const selected = next[step];
-      if (selected.includes(option)) {
-        next[step] = selected.filter((o) => o !== option);
-      } else {
-        next[step] = current.multi ? [...selected, option] : [option];
-      }
-      return next;
+  const current = STEPS[step] as Step | undefined;
+  const isClosing = step === STEPS.length;
+
+  const toggle = (id: ChoiceId, value: string, multi: boolean) =>
+    setPicks((prev) => {
+      const sel = prev[id];
+      const next = sel.includes(value) ? sel.filter((v) => v !== value) : multi ? [...sel, value] : [value];
+      return { ...prev, [id]: next };
     });
+
+  // A yes-or-no has to be answered; everything else can be left empty.
+  const canGoOn = !current || current.kind === 'name' || current.multi || picks[current.id].length > 0;
+
+  // Each answer takes effect as it is given, so the notification permission
+  // is asked right after the user chose to get recaps — when it makes sense.
+  const next = async () => {
+    if (!current || busy) return;
+    setBusy(true);
+    try {
+      if (current.kind === 'name' && name.trim()) {
+        await setUserProfile({ name: name.trim() });
+      } else if (current.kind === 'choice' && current.id === 'recaps') {
+        const chosen = picks.recaps;
+        // The ones turned on first: the first of those asks for permission.
+        const order: RecapCadence[] = ['daily', 'weekly', 'monthly'];
+        for (const c of [...order.filter((c) => chosen.includes(c)), ...order.filter((c) => !chosen.includes(c))]) {
+          await setRecapNotification(c, chosen.includes(c));
+        }
+      } else if (current.kind === 'choice' && current.id === 'focus') {
+        await setPositiveFocus(picks.focus[0] === 'on');
+      }
+    } catch (e) {
+      console.warn('[onboarding] could not save an answer:', e);
+    } finally {
+      setBusy(false);
+    }
+    setStep((s) => s + 1);
   };
 
   const finish = async () => {
     await AsyncStorage.multiSet([
       ['onboardingComplete', 'true'],
-      ['quizAnswers', JSON.stringify(answers)],
+      // Interests stay first: On This Day reads them as quizAnswers[0].
+      ['quizAnswers', JSON.stringify([picks.interests, picks.recaps, picks.focus])],
     ]);
+    console.log(
+      `[onboarding] done — ${picks.interests.length} interests, recaps: ${picks.recaps.join(', ') || 'none'}, positive focus: ${picks.focus[0] ?? 'off'}`,
+    );
     // The last question of setup: whether Recall may read past photos.
     router.replace({ pathname: '/photo-reading', params: { from: 'onboarding' } });
   };
@@ -80,58 +136,65 @@ export default function Quiz() {
   return (
     <OnboardingBackground>
       <SafeAreaView style={styles.safe}>
-        <BackArrow />
+        <BackArrow onPress={step > 0 ? () => setStep((s) => s - 1) : undefined} />
         <View style={styles.progressRow}>
           {Array.from({ length: TOTAL_BARS }).map((_, i) => (
             <View key={i} style={[styles.bar, i === step && styles.barActive]} />
           ))}
         </View>
 
-        {isLoadingStep ? (
+        {isClosing ? (
           <View style={{ flex: 1, justifyContent: 'center' }}>
             <Text style={styles.question}>Your Memory Experience Is Loading...</Text>
             <View style={{ alignItems: 'center', marginVertical: 30 }}>
-              <Image
-                source={MISC.network}
-                style={{ width: 300, height: 190 }}
-                resizeMode="contain"
-              />
+              <Image source={MISC.network} style={{ width: 300, height: 190 }} resizeMode="contain" />
             </View>
             <Text style={styles.body}>
-              Thanks, that’s all we need!{'\n'}
-              We’re creating your personalized Recall experience — where your memories connect with
-              the moments that matter most.
+              Thanks{name.trim() ? `, ${name.trim().split(/\s+/)[0]}` : ''}, that’s all we need!
             </Text>
-            <PillButton
-              label="Continue"
-              style={{ alignSelf: 'center', minWidth: 280, marginTop: 40 }}
-              onPress={finish}
-            />
+            <PillButton label="Continue" style={{ alignSelf: 'center', minWidth: 280, marginTop: 40 }} onPress={finish} />
           </View>
-        ) : (
+        ) : current ? (
           <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={styles.question}>{STEPS[step].question}</Text>
-            <View style={styles.chips}>
-              {STEPS[step].options.map((option) => {
-                const selected = answers[step].includes(option);
-                return (
-                  <Pressable
-                    key={option}
-                    onPress={() => toggle(option)}
-                    style={[styles.chip, selected && styles.chipSelected]}
-                  >
-                    <Text style={styles.chipText}>{option}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+            <Text style={styles.question}>{current.question}</Text>
+            <Text style={styles.hint}>{current.hint}</Text>
+
+            {current.kind === 'name' ? (
+              <TextInput
+                value={name}
+                onChangeText={setName}
+                placeholder="Your name"
+                placeholderTextColor="rgba(255,255,255,0.45)"
+                style={styles.input}
+                autoCapitalize="words"
+                autoCorrect={false}
+                returnKeyType="next"
+                onSubmitEditing={next}
+              />
+            ) : (
+              <View style={styles.chips}>
+                {current.options.map((o) => {
+                  const selected = picks[current.id].includes(o.value);
+                  return (
+                    <Pressable
+                      key={o.value}
+                      onPress={() => toggle(current.id, o.value, current.multi)}
+                      style={[styles.chip, selected && styles.chipSelected]}
+                    >
+                      <Text style={styles.chipText}>{o.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
             <PillButton
-              label="Next"
-              style={{ alignSelf: 'flex-start', minWidth: 240, marginTop: 48 }}
-              onPress={() => setStep((s) => s + 1)}
+              label={current.kind === 'name' && !name.trim() ? 'Skip' : 'Next'}
+              style={[{ alignSelf: 'flex-start', minWidth: 240, marginTop: 48 }, !canGoOn && { opacity: 0.4 }]}
+              onPress={canGoOn ? next : undefined}
             />
           </View>
-        )}
+        ) : null}
       </SafeAreaView>
     </OnboardingBackground>
   );
@@ -159,11 +222,27 @@ const styles = StyleSheet.create({
     fontSize: 26,
     lineHeight: 36,
   },
+  hint: {
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 10,
+  },
   body: {
     color: colors.white,
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 23,
+  },
+  input: {
+    marginTop: 40,
+    color: colors.white,
+    fontFamily: fonts.semiBold,
+    fontSize: 22,
+    paddingVertical: 10,
+    borderBottomWidth: 1.5,
+    borderBottomColor: 'rgba(255,255,255,0.6)',
   },
   chips: {
     flexDirection: 'row',

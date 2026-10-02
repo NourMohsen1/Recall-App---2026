@@ -7,6 +7,7 @@ import { dateKey, getMemoriesByDay, memoryDisplayText, type LoggedMemory } from 
 import { getAllPhotoSources } from './photoMeta';
 import { getAllDayPlaces, type DayPlace, type PlaceKind } from './places';
 import { getAllDayPeople } from './peopleTags';
+import { getPositiveFocus } from './positiveFocus';
 
 // Recap: the key events of a week, a month or a year, a few lines each —
 // not every detail. Weekly shows each day; monthly shows each week; yearly
@@ -362,6 +363,12 @@ Write in the language the user logged in; if they mix Arabic and English, you ma
 
 Respond with ONLY JSON: {"summary": "...", "guessed": true|false}`;
 
+// Positive Focus (Profile): the recap leaves painful moments out entirely.
+// They stay in the Timeline and in Ask — only the recap looks away.
+const POSITIVE_FOCUS = `
+
+POSITIVE FOCUS IS ON. Leave out anything painful or heavy: a death or funeral, serious illness or a hospital stay, a breakup or divorce, losing a job, an accident, a serious fight, grief. Do not mention it, hint at it, or soften it ("a hard day", "a difficult time") — write only from the rest. If nothing else is left, respond with {"summary": "", "guessed": false}.`;
+
 function hash(s: string): string {
   let h = 5381;
   for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
@@ -381,21 +388,25 @@ export async function recapLine(kind: RecapKind, unit: RecapUnit): Promise<Recap
   const blocks = facts.map((f) => ({ day: f.day, ...factsText(f, perDay) }));
   const input = blocks.map((b) => `${b.day}:\n${b.text}`).join('\n\n').slice(0, 12000);
   const anyGuess = blocks.some((b) => b.guessed);
-  const signature = hash(`${PROMPT_VERSION}|${kind}|${input}`);
+  const positive = await getPositiveFocus();
+  const signature = hash(`${PROMPT_VERSION}|${kind}|${positive ? 'pf|' : ''}${input}`);
 
   const key = `${CACHE_PREFIX}${kind}:${unit.key}`;
   const raw = await AsyncStorage.getItem(key);
   if (raw) {
     const cached = JSON.parse(raw) as Cached;
-    if (cached.signature === signature && cached.v === PROMPT_VERSION) return cached;
+    // An empty summary is a stretch Positive Focus left nothing of.
+    if (cached.signature === signature && cached.v === PROMPT_VERSION) return cached.summary ? cached : null;
   }
 
-  if (!textAvailable()) return fallbackLine(blocks, anyGuess);
+  // The fallback is the user's own first line, unfiltered — which under
+  // Positive Focus could be exactly the painful thing. Better no line.
+  if (!textAvailable()) return positive ? null : fallbackLine(blocks, anyGuess);
   const stretch = kind === 'week' ? 'one day' : kind === 'month' ? 'one week' : 'one month';
   const result = await chatCompletion(textProviders(), (model) => ({
     model,
     messages: [
-      { role: 'system', content: PROMPT },
+      { role: 'system', content: positive ? PROMPT + POSITIVE_FOCUS : PROMPT },
       { role: 'user', content: `This entry covers ${stretch}: ${unit.title} (${unit.from} to ${unit.to}).\n\n${input}` },
     ],
     response_format: { type: 'json_object' },
@@ -403,11 +414,19 @@ export async function recapLine(kind: RecapKind, unit: RecapUnit): Promise<Recap
   }));
   if (!result.ok) {
     console.warn(`[recap] could not write ${kind} ${unit.key}: HTTP ${result.status}`);
-    return fallbackLine(blocks, anyGuess);
+    return positive ? null : fallbackLine(blocks, anyGuess);
   }
   try {
     const parsed = JSON.parse(result.content) as { summary?: string; guessed?: boolean };
     const summary = parsed.summary?.trim();
+    if (!summary && positive) {
+      console.log(`[recap] positive focus left nothing of ${kind} ${unit.key}`);
+      await AsyncStorage.setItem(
+        key,
+        JSON.stringify({ summary: '', guessed: false, signature, v: PROMPT_VERSION } satisfies Cached),
+      );
+      return null;
+    }
     if (!summary) return fallbackLine(blocks, anyGuess);
     // Trust the model saying it used a guess; never trust it saying it did
     // not when there was one and it wrote from little else.
@@ -416,7 +435,7 @@ export async function recapLine(kind: RecapKind, unit: RecapUnit): Promise<Recap
     await AsyncStorage.setItem(key, JSON.stringify({ ...line, signature, v: PROMPT_VERSION } satisfies Cached));
     return line;
   } catch {
-    return fallbackLine(blocks, anyGuess);
+    return positive ? null : fallbackLine(blocks, anyGuess);
   }
 }
 
