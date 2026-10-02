@@ -50,9 +50,10 @@ export default function Welcome() {
       <Image source={MISC.brain3d} style={styles.brainBg} blurRadius={12} resizeMode="contain" />
       <SafeAreaView style={styles.safe}>
         <View style={{ flex: 1, justifyContent: 'center' }}>
-          <Text style={styles.title}>Welcome!</Text>
+          <Text style={styles.title}>Your life,{'\n'}remembered.</Text>
           <Text style={styles.body}>
-            Reconnect with your memories. Explore your world, one moment at a time.
+            Speak, type or snap your day. Recall keeps the people, places and moments, and brings
+            them back whenever you ask.
           </Text>
         </View>
 
@@ -71,7 +72,7 @@ export default function Welcome() {
                 onPress={continueWithApple}
               />
             )}
-            <Text style={styles.why}>Keeps your memories safe when you change phones.</Text>
+            <Text style={styles.why}>One tap. No passwords. Your memories stay yours.</Text>
             {problem && <Text style={styles.problem}>{problem}</Text>}
             <PillButton label="Not now" variant="ghost" style={{ marginTop: 6 }} onPress={next} />
           </View>
@@ -100,7 +101,8 @@ const styles = StyleSheet.create({
   title: {
     color: colors.white,
     fontFamily: fonts.bold,
-    fontSize: 32,
+    fontSize: 34,
+    lineHeight: 42,
     marginBottom: 18,
   },
   body: {
