@@ -1,9 +1,10 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import FaceIndexCard from '../../src/components/FaceIndexCard';
+import { deleteAccount, getAccount, onAccountChanged, signInWithApple, signOut } from '../../src/account';
 import { localFile } from '../../src/memoryLog';
 import { crashReportingOn, sendTestCrashReport } from '../../src/crashReporting';
 import {
@@ -57,6 +58,37 @@ export default function Profile() {
   const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
   const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ daily: true, weekly: true, monthly: false });
   const [positiveFocus, setPositiveFocusState] = useState(false);
+  const [signedIn, setSignedIn] = useState(!!getAccount());
+  useEffect(() => onAccountChanged(() => setSignedIn(!!getAccount())), []);
+
+  // Signed in: sign out, or delete the account (Apple requires the option).
+  // Signed out: one tap and Face ID.
+  const accountPressed = async () => {
+    if (!signedIn) {
+      const result = await signInWithApple();
+      if (!result.ok && !result.canceled) {
+        Alert.alert('Couldn’t sign in', result.message ?? 'Try again in a moment.');
+      }
+      return;
+    }
+    Alert.alert('Your account', 'Signed in with Apple.', [
+      { text: 'Sign out', onPress: () => signOut() },
+      {
+        text: 'Delete account',
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert(
+            'Delete your account?',
+            'Your account is removed. The memories on this phone stay — they are yours.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: () => deleteAccount() },
+            ],
+          ),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -106,6 +138,12 @@ export default function Profile() {
             label={profile.name ?? 'Tell Recall who you are'}
             muted={!profile.name}
             onPress={openMe}
+          />
+          <InfoRow
+            icon="logo-apple"
+            label={signedIn ? 'Signed in with Apple' : 'Sign in with Apple'}
+            muted={!signedIn}
+            onPress={accountPressed}
           />
           {profile.email && <InfoRow icon="mail" label={profile.email} />}
           {profile.phone && <InfoRow icon="phone-portrait" label={profile.phone} />}

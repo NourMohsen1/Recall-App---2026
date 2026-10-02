@@ -28,9 +28,24 @@ export function backendUrl(path: string): string | undefined {
   return base ? `${base.replace(/\/+$/, '')}${path}` : undefined;
 }
 
+/** The shared token alone — what every copy of the app carries. */
+export function appToken(): string | undefined {
+  return trimmed(process.env.EXPO_PUBLIC_RECALL_APP_TOKEN);
+}
+
+// Signed in with Apple (src/account.ts), the account's session rides along
+// in the same credential: "<token>~<session>". Every call site already sends
+// backendToken(), so none of them had to change.
+let session: string | undefined;
+
+export function setSession(next: string | undefined): void {
+  session = next;
+}
+
 /** What the app presents to that server. Not a provider key. */
 export function backendToken(): string | undefined {
-  return trimmed(process.env.EXPO_PUBLIC_RECALL_APP_TOKEN);
+  const token = appToken();
+  return token && session ? `${token}~${session}` : token;
 }
 
 /** Both halves have to be present; one without the other reaches nothing. */

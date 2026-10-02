@@ -18,6 +18,7 @@ import { startPlaceIndexing } from '../src/places';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImport';
 import { syncRecapNotifications } from '../src/recapNotifications';
+import { loadAccount } from '../src/account';
 import { startCrashReporting, wrapWithCrashReporting } from '../src/crashReporting';
 
 // Before anything else, so a crash during startup is reported too.
@@ -59,6 +60,7 @@ function RootLayout() {
   // tap that launched the app.
   const router = useRouter();
   useEffect(() => {
+    loadAccount();
     syncRecapNotifications();
     const open = (response: Notifications.NotificationResponse | null) => {
       const tab = response?.notification.request.content.data?.recap;

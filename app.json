@@ -13,6 +13,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.nourwalid.recall",
+      "usesAppleSignIn": true,
       "config": {
         "usesNonExemptEncryption": false
       },
@@ -56,6 +57,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       "expo-font",
       [
         "expo-audio",
@@ -116,7 +118,8 @@
           }
         }
       ],
-      "@sentry/react-native"
+      "@sentry/react-native",
+      "expo-secure-store"
     ],
     "extra": {
       "router": {},

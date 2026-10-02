@@ -38,7 +38,12 @@ npx wrangler deploy         # prints the URL
 npx wrangler secret put OPENAI_API_KEY
 npx wrangler secret put DEEPSEEK_API_KEY
 npx wrangler secret put RECALL_APP_TOKEN
+openssl rand -hex 32 | npx wrangler secret put SESSION_SECRET   # signs Apple sign-in sessions
 ```
+
+Changing `SESSION_SECRET` signs everyone out; they sign in again with one tap.
+To pause one account, set the `BLOCKED_ACCOUNTS` variable (comma-separated
+account ids, as they appear in the logs) in the Cloudflare dashboard.
 
 Then put the printed URL and the same app token into the app's `.env` as
 `EXPO_PUBLIC_RECALL_API_URL` and `EXPO_PUBLIC_RECALL_APP_TOKEN`, and restart
