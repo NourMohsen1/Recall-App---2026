@@ -10,13 +10,16 @@ import { polishPendingMemories, useMemoryPolish } from '../../src/memoryIntake';
 import { syncPhotosWithLibrary } from '../../src/photoGuard';
 import { syncNewPhotosIfOn } from '../../src/photoImport';
 import { getPhotoReading } from '../../src/photoReading';
-import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../../src/memoryLog';
+import { LoggedMemory, dateKey, getMemoriesByDay, isManualLog, memoryDisplayText } from '../../src/memoryLog';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-// A day gets a log dot only when the user actually logged something that day.
+// A day gets its green dot only when the user logged something themselves
+// that day — typed, spoken, attached, or photos they picked. Photos Recall
+// imported on its own don't count, so the dots show whether the user kept
+// up, day by day. Counted by when they logged, not by the day it's about.
 function getWeek(loggedKeys: Set<string>) {
   const today = new Date();
   const start = new Date(today);
@@ -24,9 +27,12 @@ function getWeek(loggedKeys: Set<string>) {
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
+    const t = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     return {
       letter: DAY_LETTERS[i],
       date: d.getDate(),
+      /** Days from today, as the Timeline counts them. */
+      offset: Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - t.getTime()) / 86400000),
       isToday: d.toDateString() === today.toDateString(),
       hasLog: loggedKeys.has(dateKey(d)),
     };
@@ -77,7 +83,11 @@ export default function Home() {
     }
   }, []);
 
-  const week = getWeek(new Set(byDay.keys()));
+  const manualDays = new Set<string>();
+  for (const list of byDay.values()) {
+    for (const m of list) if (isManualLog(m)) manualDays.add(dateKey(new Date(m.createdAt)));
+  }
+  const week = getWeek(manualDays);
 
   // Yesterday's Summary prefers what the user actually logged yesterday.
   const yesterday = new Date();
@@ -86,10 +96,6 @@ export default function Home() {
   const yLines = yReal.map(memoryDisplayText).filter(Boolean) as string[];
   const usingRealSummary = yLines.length > 0;
 
-  // The Timeline widget always reflects yesterday, from the user's own logs.
-  const timelinePreview = usingRealSummary
-    ? `Yesterday: ${yLines[0]}${yLines.length > 1 ? ` (+${yLines.length - 1} more)` : ''}`
-    : 'Nothing logged yesterday — tap + to remember something.';
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -114,22 +120,20 @@ export default function Home() {
         {/* Week strip */}
         <View style={styles.weekRow}>
           {week.map((day, i) => (
-            <Link key={i} href="/on-this-day" asChild>
-              <Pressable style={styles.dayCol}>
+            // Opens the Timeline on that day.
+            <Pressable
+              key={i}
+              style={styles.dayCol}
+              onPress={() =>
+                router.navigate({ pathname: '/timeline', params: { offset: String(day.offset), at: String(Date.now()) } })
+              }
+            >
                 <Text style={styles.dayLetter}>{day.letter}</Text>
                 <View style={[styles.dayCircle, day.isToday && styles.dayCircleToday]}>
                   <Text style={[styles.dayNum, day.isToday && styles.dayNumToday]}>{day.date}</Text>
                 </View>
-                {day.hasLog && (
-                  <View
-                    style={[
-                      styles.logDot,
-                      { backgroundColor: day.isToday ? colors.accent : '#A9D3B6' },
-                    ]}
-                  />
-                )}
-              </Pressable>
-            </Link>
+                {day.hasLog && <View style={styles.logDot} />}
+            </Pressable>
           ))}
         </View>
 
@@ -167,14 +171,15 @@ export default function Home() {
           </View>
         </View>
 
-        {/* Timeline */}
-        <Link href="/timeline" asChild>
+        {/* On This Day */}
+        <Link href="/on-this-day" asChild>
           <Pressable style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Timeline</Text>
+              <Text style={styles.cardTitle}>On This Day</Text>
               <PlayButton />
             </View>
-            <Text style={styles.cardSubtitle}>{timelinePreview}</Text>
+            {/* What the feature is, not a headline from inside it. */}
+            <Text style={styles.cardSubtitle}>See what was happening in the world on any day of your life.</Text>
           </Pressable>
         </Link>
 
@@ -242,7 +247,8 @@ const styles = StyleSheet.create({
   dayCircleToday: { backgroundColor: colors.primary },
   dayNum: { fontFamily: fonts.medium, fontSize: 15, color: colors.white },
   dayNumToday: { color: colors.white },
-  logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8 },
+  // Green: logged that day. The same green for today as any other day.
+  logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: '#A9D3B6' },
 
   chatRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   chatAvatar: {

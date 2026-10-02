@@ -194,6 +194,7 @@ export default function LogPhoto() {
       const saved = await saveMemory({
         kind: 'photo',
         photoUris: group.map((g) => g.uri),
+        manual: true,
         text: caption.trim() || undefined,
         takenAt: earliest.takenAt,
       });

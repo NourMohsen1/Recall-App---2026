@@ -11,7 +11,7 @@ import {
   UIManager,
   View,
 } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
@@ -73,16 +73,6 @@ import { DayPlace, getPlacesForDay, onPlacesChanged } from '../../src/places';
 import { rtlIfArabic } from '../../src/transcription';
 import TopicSwapSheet from '../../src/components/TopicSwapSheet';
 import { colors, fonts } from '../../src/theme';
-
-const TOPIC_ICONS: Record<string, string> = {
-  sports: 'soccer',
-  music: 'music-note',
-  news: 'newspaper-variant-outline',
-  movies: 'movie-open-outline',
-  design: 'palette-outline',
-  travel: 'airplane',
-  books: 'book-open-variant',
-};
 
 // Compact version of the On This Day topic card, sized to fit the canvas.
 function MiniTopicCard({
@@ -256,6 +246,9 @@ const MIN_SCALE = 0.2;
 export default function Timeline() {
   const router = useRouter();
   const [selected, setSelected] = useState(0);
+  // Home's week opens the Timeline on the day tapped. `at` changes on every
+  // tap, so tapping the same day again still lands there.
+  const params = useLocalSearchParams<{ offset?: string; at?: string }>();
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
 
   // The current calendar year's months, current month expanded by default,
@@ -267,6 +260,15 @@ export default function Timeline() {
     () => new Set(monthBuckets[0] ? [monthBuckets[0].key] : []),
   );
   const [expandedYears, setExpandedYears] = useState<Set<number>>(() => new Set());
+  useEffect(() => {
+    const o = Number(params.offset);
+    if (params.offset == null || !Number.isFinite(o)) return;
+    setSelected(o);
+    // Its month unfolded too, so the day is there in the column — the week
+    // on Home can reach back into last month.
+    const bucket = monthBuckets.find((m) => m.offsets.includes(o));
+    if (bucket) setExpandedMonths((prev) => (prev.has(bucket.key) ? prev : new Set(prev).add(bucket.key)));
+  }, [params.offset, params.at, monthBuckets]);
   const toggleMonth = (key: string) => {
     animateRail();
     setExpandedMonths((prev) => {

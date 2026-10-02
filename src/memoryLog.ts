@@ -35,6 +35,9 @@ export type LoggedMemory = {
   // Unrefined memories get swept up retroactively when the app opens.
   refined?: boolean;
   photoUris?: string[];
+  /** Photo memories only: the user added these photos by hand (Add Photos),
+   *  as opposed to Recall importing them from the library. */
+  manual?: boolean;
   // Document memories only: what was attached, and what was read from it.
   attachments?: Attachment[];
   audioUri?: string;
@@ -53,6 +56,14 @@ export type LoggedMemory = {
 };
 
 const STORAGE_KEY = 'loggedMemories';
+
+/** Something the user logged themselves — typed, spoken, attached, or
+ *  photos they picked — rather than photos Recall brought in on its own.
+ *  Older hand-picked photo logs predate `manual`; their caption gives
+ *  them away. This is what the Home week's green dots count. */
+export function isManualLog(m: LoggedMemory): boolean {
+  return m.kind !== 'photo' || m.manual === true || !!m.text?.trim();
+}
 
 // Local-timezone day key, e.g. "2026-07-02". All grouping uses this.
 export function dateKey(d: Date): string {
