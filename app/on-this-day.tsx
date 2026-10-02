@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Image,
   LayoutAnimation,
   Platform,
@@ -40,6 +41,7 @@ import {
   getDayFeed,
   getInterestTopics,
   getTopicEvents,
+  topicIcon,
   getTopicInterests,
   setTopicInterest,
   swapTopic,
@@ -57,16 +59,6 @@ const FUTURE_OFFSETS = [4, 3, 2, 1];
 
 const CARD_W = 250;
 const CARD_GAP = 12;
-
-const TOPIC_ICONS: Record<string, string> = {
-  sports: 'soccer',
-  music: 'music-note',
-  news: 'newspaper-variant-outline',
-  movies: 'movie-open-outline',
-  design: 'palette-outline',
-  travel: 'airplane',
-  books: 'book-open-variant',
-};
 
 function dateFor(offset: number) {
   const d = new Date();
@@ -174,7 +166,7 @@ function EventImage({
   return (
     <View style={[style as any, styles.topicIconBlock]}>
       <MaterialCommunityIcons
-        name={(TOPIC_ICONS[topicKey] ?? 'earth') as any}
+        name={topicIcon(topicKey) as any}
         size={32}
         color={colors.teal}
       />
@@ -400,7 +392,16 @@ function OnThisDay() {
 
   const handleTuneSave = async (text: string) => {
     if (!tuneTarget) return;
-    await setTopicInterest(tuneTarget.key, text);
+    const check = await setTopicInterest(tuneTarget.key, text);
+    if (!check.ok) {
+      Alert.alert(
+        check.reason === 'blocked' ? 'That can’t be used here' : 'Couldn’t check that just now',
+        check.reason === 'blocked'
+          ? 'Recall doesn’t show sexual or explicit content. Try something else.'
+          : 'Recall checks what it searches for first. Try again when you’re online.',
+      );
+      return;
+    }
     setTuneTarget(null);
     setInterests(await getTopicInterests());
     // Taste changed → both the day feeds and any expanded events are stale.

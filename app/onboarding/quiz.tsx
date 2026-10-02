@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,6 +17,8 @@ import { MISC } from '../../src/images';
 import BackArrow from '../../src/components/BackArrow';
 import OnboardingBackground from '../../src/components/OnboardingBackground';
 import PillButton from '../../src/components/PillButton';
+import { checkTopic } from '../../src/contentSafety';
+import { TOPIC_LABELS, saveCustomTopics } from '../../src/onThisDay';
 import { setPositiveFocus } from '../../src/positiveFocus';
 import { setRecapNotification, type RecapCadence } from '../../src/recapNotifications';
 import { getUserProfile, setUserProfile } from '../../src/userProfile';
@@ -16,7 +28,9 @@ import { colors, fonts } from '../../src/theme';
 // question is asked for its own sake:
 //
 //   name       → the user's profile; the AI knows whose life it is
-//   interests  → On This Day's topics (src/onThisDay.ts reads quizAnswers[0])
+//   interests  → On This Day's topics (src/onThisDay.ts reads quizAnswers[0]);
+//                "Other" lets the user type one, checked for sexual content
+//                first (src/contentSafety.ts)
 //   recaps     → which recap notifications are scheduled
 //   focus      → Positive Focus for the recaps (src/positiveFocus.ts)
 
@@ -24,7 +38,16 @@ type ChoiceId = 'interests' | 'recaps' | 'focus';
 type Option = { label: string; value: string };
 type Step =
   | { kind: 'name'; question: string; hint: string }
-  | { kind: 'choice'; id: ChoiceId; question: string; hint: string; options: Option[]; multi: boolean };
+  | {
+      kind: 'choice';
+      id: ChoiceId;
+      question: string;
+      hint: string;
+      options: Option[];
+      multi: boolean;
+      /** Offers "Other" with a field to type one. */
+      other?: boolean;
+    };
 
 const STEPS: Step[] = [
   { kind: 'name', question: 'What should I call you?', hint: 'So Recall knows whose memories these are.' },
@@ -33,9 +56,10 @@ const STEPS: Step[] = [
     id: 'interests',
     question: 'What are you into?',
     hint: 'On This Day shows what was happening in these on your past days.',
-    // Labels match the topics in src/onThisDay.ts.
-    options: ['Music', 'News', 'Sports', 'Design', 'Movies', 'Travel', 'Books'].map((l) => ({ label: l, value: l })),
+    // Labels are the topics in src/onThisDay.ts.
+    options: TOPIC_LABELS.map((l) => ({ label: l, value: l })),
     multi: true,
+    other: true,
   },
   {
     kind: 'choice',
@@ -75,6 +99,12 @@ export default function Quiz() {
     focus: [],
   });
   const [busy, setBusy] = useState(false);
+  // Topics typed under "Other" — only ever added after the safety check.
+  const [custom, setCustom] = useState<string[]>([]);
+  const [otherOpen, setOtherOpen] = useState(false);
+  const [otherText, setOtherText] = useState('');
+  const [checking, setChecking] = useState(false);
+  const [otherProblem, setOtherProblem] = useState<string | null>(null);
 
   // Someone going through setup again keeps the name they gave.
   useEffect(() => {
@@ -91,6 +121,35 @@ export default function Quiz() {
       return { ...prev, [id]: next };
     });
 
+  const addOther = async () => {
+    const label = otherText.trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!label || checking) return;
+    const known = [...TOPIC_LABELS, ...custom].find((l) => l.toLowerCase() === label.toLowerCase());
+    if (known) {
+      // Already a chip: just select it.
+      setPicks((prev) => (prev.interests.includes(known) ? prev : { ...prev, interests: [...prev.interests, known] }));
+      setOtherText('');
+      setOtherOpen(false);
+      return;
+    }
+    setChecking(true);
+    setOtherProblem(null);
+    const check = await checkTopic(label);
+    setChecking(false);
+    if (!check.ok) {
+      setOtherProblem(
+        check.reason === 'blocked'
+          ? 'Recall doesn’t show sexual or explicit content. Try something else.'
+          : 'Couldn’t check that just now. Try again in a moment.',
+      );
+      return;
+    }
+    setCustom((c) => [...c, label]);
+    setPicks((prev) => ({ ...prev, interests: [...prev.interests, label] }));
+    setOtherText('');
+    setOtherOpen(false);
+  };
+
   // A yes-or-no has to be answered; everything else can be left empty.
   const canGoOn = !current || current.kind === 'name' || current.multi || picks[current.id].length > 0;
 
@@ -102,6 +161,8 @@ export default function Quiz() {
     try {
       if (current.kind === 'name' && name.trim()) {
         await setUserProfile({ name: name.trim() });
+      } else if (current.kind === 'choice' && current.id === 'interests') {
+        await saveCustomTopics(custom.filter((c) => picks.interests.includes(c)));
       } else if (current.kind === 'choice' && current.id === 'recaps') {
         const chosen = picks.recaps;
         // The ones turned on first: the first of those asks for permission.
@@ -152,48 +213,97 @@ export default function Quiz() {
             <Text style={styles.body}>
               Thanks{name.trim() ? `, ${name.trim().split(/\s+/)[0]}` : ''}, that’s all we need!
             </Text>
-            <PillButton label="Continue" style={{ alignSelf: 'center', minWidth: 280, marginTop: 40 }} onPress={finish} />
-          </View>
-        ) : current ? (
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={styles.question}>{current.question}</Text>
-            <Text style={styles.hint}>{current.hint}</Text>
-
-            {current.kind === 'name' ? (
-              <TextInput
-                value={name}
-                onChangeText={setName}
-                placeholder="Your name"
-                placeholderTextColor="rgba(255,255,255,0.45)"
-                style={styles.input}
-                autoCapitalize="words"
-                autoCorrect={false}
-                returnKeyType="next"
-                onSubmitEditing={next}
-              />
-            ) : (
-              <View style={styles.chips}>
-                {current.options.map((o) => {
-                  const selected = picks[current.id].includes(o.value);
-                  return (
-                    <Pressable
-                      key={o.value}
-                      onPress={() => toggle(current.id, o.value, current.multi)}
-                      style={[styles.chip, selected && styles.chipSelected]}
-                    >
-                      <Text style={styles.chipText}>{o.label}</Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            )}
-
             <PillButton
-              label={current.kind === 'name' && !name.trim() ? 'Skip' : 'Next'}
-              style={[{ alignSelf: 'flex-start', minWidth: 240, marginTop: 48 }, !canGoOn && { opacity: 0.4 }]}
-              onPress={canGoOn ? next : undefined}
+              label="Continue"
+              style={{ alignSelf: 'center', minWidth: 280, marginTop: 40 }}
+              onPress={finish}
             />
           </View>
+        ) : current ? (
+          <KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
+            <ScrollView
+              contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingVertical: 24 }}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.question}>{current.question}</Text>
+              <Text style={styles.hint}>{current.hint}</Text>
+
+              {current.kind === 'name' ? (
+                <TextInput
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your name"
+                  placeholderTextColor="rgba(255,255,255,0.45)"
+                  style={styles.input}
+                  autoCapitalize="words"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={next}
+                />
+              ) : (
+                <View style={[styles.chips, current.other && styles.chipsDense]}>
+                  {[...current.options, ...(current.other ? custom.map((c) => ({ label: c, value: c })) : [])].map(
+                    (o) => {
+                      const selected = picks[current.id].includes(o.value);
+                      return (
+                        <Pressable
+                          key={o.value}
+                          onPress={() => toggle(current.id, o.value, current.multi)}
+                          style={[styles.chip, current.other && styles.chipDense, selected && styles.chipSelected]}
+                        >
+                          <Text style={styles.chipText}>{o.label}</Text>
+                        </Pressable>
+                      );
+                    },
+                  )}
+                  {current.other && !otherOpen && (
+                    <Pressable
+                      onPress={() => setOtherOpen(true)}
+                      style={[styles.chip, styles.chipDense, styles.chipOther]}
+                    >
+                      <Text style={styles.chipText}>+ Other</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+
+              {current.kind === 'choice' && current.other && otherOpen && (
+                <View>
+                  <View style={styles.otherRow}>
+                    <TextInput
+                      value={otherText}
+                      onChangeText={(t) => {
+                        setOtherText(t);
+                        setOtherProblem(null);
+                      }}
+                      placeholder="Type a topic"
+                      placeholderTextColor="rgba(255,255,255,0.45)"
+                      style={styles.otherInput}
+                      autoFocus
+                      maxLength={40}
+                      returnKeyType="done"
+                      onSubmitEditing={addOther}
+                    />
+                    <Pressable onPress={addOther} style={styles.otherAdd} hitSlop={8}>
+                      {checking ? (
+                        <ActivityIndicator color={colors.ink} />
+                      ) : (
+                        <Text style={styles.otherAddText}>Add</Text>
+                      )}
+                    </Pressable>
+                  </View>
+                  {otherProblem && <Text style={styles.otherProblem}>{otherProblem}</Text>}
+                </View>
+              )}
+
+              <PillButton
+                label={current.kind === 'name' && !name.trim() ? 'Skip' : 'Next'}
+                style={[{ alignSelf: 'flex-start', minWidth: 240, marginTop: 48 }, !canGoOn && { opacity: 0.4 }]}
+                onPress={canGoOn ? next : undefined}
+              />
+            </ScrollView>
+          </KeyboardAvoidingView>
         ) : null}
       </SafeAreaView>
     </OnboardingBackground>
@@ -258,6 +368,30 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
   },
+  // The interests step has many chips; a little tighter so they fit.
+  chipsDense: { gap: 10, marginTop: 28 },
+  chipDense: { paddingVertical: 8, paddingHorizontal: 15 },
+  chipOther: { borderStyle: 'dashed' },
+  otherRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18 },
+  otherInput: {
+    flex: 1,
+    color: colors.white,
+    fontFamily: fonts.medium,
+    fontSize: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1.5,
+    borderBottomColor: 'rgba(255,255,255,0.6)',
+  },
+  otherAdd: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingVertical: 9,
+    paddingHorizontal: 20,
+    minWidth: 72,
+    alignItems: 'center',
+  },
+  otherAddText: { fontFamily: fonts.medium, fontSize: 14, color: colors.ink },
+  otherProblem: { color: colors.accent, fontFamily: fonts.medium, fontSize: 13, marginTop: 10 },
   chipSelected: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { checkTopic, isSafeWebImage, SAFE_SEARCH_RULE, type TopicCheck } from './contentSafety';
 import { dateKey } from './memoryLog';
 
 // "On This Day" feed: for each past day, pull what happened in the world in
@@ -7,16 +8,11 @@ import { dateKey } from './memoryLog';
 // web-search model, cached per day, and falls back to seeded demo items when
 // no API key/credits are available.
 
-export type TopicKey =
-  | 'sports'
-  | 'music'
-  | 'news'
-  | 'movies'
-  | 'design'
-  | 'travel'
-  | 'books';
+/** A built-in topic ('sports') or one the user typed ('custom-…'). */
+export type TopicKey = string;
 
-export type Topic = { key: TopicKey; label: string; query: string };
+/** `icon` is a MaterialCommunityIcons name. */
+export type Topic = { key: TopicKey; label: string; query: string; icon: string };
 
 export type TopicItem = {
   topic: TopicKey;
@@ -25,50 +21,71 @@ export type TopicItem = {
   summary: string;
   live: boolean; // true when fetched from the internet, false for seeded demo
   image?: string; // direct URL to a related news photo, when the search found one
+  /** The photo passed the on-device nudity check (contentSafety.ts). */
+  imageChecked?: boolean;
 };
 
+// Keyed by the label the setup question shows (quizAnswers[0] holds labels).
 const ALL_TOPICS: Record<string, Topic> = {
-  Sports: {
-    key: 'sports',
-    label: 'Sports',
-    query: 'a major sports result (like a football/soccer match score or big game)',
-  },
-  Music: {
-    key: 'music',
-    label: 'Music',
-    query: 'a notable music release, chart record, or trending song/album',
-  },
-  News: {
-    key: 'news',
-    label: 'News',
-    query: 'a major general news story or trending world event',
-  },
-  'World Events': {
-    key: 'news',
-    label: 'News',
-    query: 'a major world news story or trending event',
-  },
-  Movies: {
-    key: 'movies',
-    label: 'Movies',
-    query: 'a notable movie release, box office story, or entertainment event',
-  },
-  Design: {
-    key: 'design',
-    label: 'Design',
-    query: 'a notable design, art, or architecture story',
-  },
-  Travel: {
-    key: 'travel',
-    label: 'Travel',
-    query: 'a notable travel or destination story',
-  },
-  Books: {
-    key: 'books',
-    label: 'Books',
-    query: 'a notable book release or literary story',
-  },
+  News: { key: 'news', label: 'News', icon: 'newspaper-variant-outline', query: 'a major general news story or trending world event' },
+  'World Events': { key: 'news', label: 'News', icon: 'newspaper-variant-outline', query: 'a major world news story or trending event' },
+  Sports: { key: 'sports', label: 'Sports', icon: 'soccer', query: 'a major sports result (like a football/soccer match score or big game)' },
+  Music: { key: 'music', label: 'Music', icon: 'music-note', query: 'a notable music release, chart record, or trending song/album' },
+  Movies: { key: 'movies', label: 'Movies', icon: 'movie-open-outline', query: 'a notable movie release, box office story, or entertainment event' },
+  'TV Shows': { key: 'tv', label: 'TV Shows', icon: 'television-classic', query: 'a notable TV series premiere, finale, or streaming hit' },
+  Books: { key: 'books', label: 'Books', icon: 'book-open-variant', query: 'a notable book release or literary story' },
+  Design: { key: 'design', label: 'Design', icon: 'palette-outline', query: 'a notable design or architecture story' },
+  Art: { key: 'art', label: 'Art', icon: 'brush-variant', query: 'a notable art exhibition, auction, or artist story' },
+  Technology: { key: 'tech', label: 'Technology', icon: 'cellphone', query: 'a notable technology launch, product announcement, or tech industry story' },
+  Science: { key: 'science', label: 'Science', icon: 'atom', query: 'a notable science discovery, space mission, or research breakthrough' },
+  Food: { key: 'food', label: 'Food', icon: 'silverware-fork-knife', query: 'a notable food, restaurant, or cooking story' },
+  Travel: { key: 'travel', label: 'Travel', icon: 'airplane', query: 'a notable travel or destination story' },
+  Fashion: { key: 'fashion', label: 'Fashion', icon: 'tshirt-crew-outline', query: 'a notable fashion show, collection launch, or fashion industry story' },
+  Gaming: { key: 'gaming', label: 'Gaming', icon: 'gamepad-variant-outline', query: 'a notable video game release, esports result, or gaming story' },
+  Business: { key: 'business', label: 'Business', icon: 'chart-line', query: 'a notable business, markets, or company story' },
+  'Health & Fitness': { key: 'health', label: 'Health & Fitness', icon: 'heart-pulse', query: 'a notable health, wellness, or fitness story' },
+  Nature: { key: 'nature', label: 'Nature', icon: 'leaf', query: 'a notable nature, wildlife, or climate story' },
+  Cars: { key: 'cars', label: 'Cars', icon: 'car-sports', query: 'a notable car launch, motorsport result, or automotive story' },
 };
+
+/** The chips the setup question offers, in order. */
+export const TOPIC_LABELS = Object.keys(ALL_TOPICS).filter((l) => l !== 'World Events');
+
+/** A topic's icon, for any key — typed topics get a star. */
+export function topicIcon(key: TopicKey): string {
+  if (key.startsWith('custom-')) return 'star-four-points-outline';
+  return Object.values(ALL_TOPICS).find((t) => t.key === key)?.icon ?? 'earth';
+}
+
+// ---- Topics the user typed ("Other") ----
+// Only ever stored after checkTopic() (contentSafety.ts) said yes.
+
+const CUSTOM_KEY = 'otdCustomTopics';
+
+function customTopic(label: string): Topic {
+  const slug = label.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'topic';
+  return {
+    key: `custom-${slug}`,
+    label,
+    icon: 'star-four-points-outline',
+    query: `a notable news story about "${label}"`,
+  };
+}
+
+export async function getCustomTopics(): Promise<Topic[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CUSTOM_KEY);
+    return raw ? (JSON.parse(raw) as string[]).map(customTopic) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Saves typed topics the safety check has already accepted. */
+export async function saveCustomTopics(labels: string[]): Promise<void> {
+  const clean = [...new Set(labels.map((l) => l.trim()).filter(Boolean))];
+  await AsyncStorage.setItem(CUSTOM_KEY, JSON.stringify(clean));
+}
 
 const DEFAULT_TOPICS = [ALL_TOPICS.Sports, ALL_TOPICS.Music, ALL_TOPICS.News];
 
@@ -85,8 +102,9 @@ async function quizTopics(): Promise<Topic[]> {
     const raw = await AsyncStorage.getItem('quizAnswers');
     if (!raw) return DEFAULT_TOPICS;
     const answers: string[][] = JSON.parse(raw);
+    const custom = await getCustomTopics();
     const picked = (answers[0] ?? [])
-      .map((label) => ALL_TOPICS[label])
+      .map((label) => ALL_TOPICS[label] ?? custom.find((c) => c.label === label))
       .filter(Boolean) as Topic[];
     const unique: Topic[] = [];
     for (const t of picked) {
@@ -111,7 +129,10 @@ export async function getInterestTopics(): Promise<Topic[]> {
     const raw = await AsyncStorage.getItem(OVERRIDE_KEY);
     if (raw) {
       const keys: TopicKey[] = JSON.parse(raw);
-      const topics = keys.map((k) => TOPIC_OPTIONS.find((t) => t.key === k)).filter(Boolean) as Topic[];
+      const custom = await getCustomTopics();
+      const topics = keys
+        .map((k) => TOPIC_OPTIONS.find((t) => t.key === k) ?? custom.find((t) => t.key === k))
+        .filter(Boolean) as Topic[];
       if (topics.length > 0) return topics;
     }
   } catch {
@@ -144,12 +165,18 @@ export async function getTopicInterests(): Promise<Partial<Record<TopicKey, stri
   }
 }
 
-export async function setTopicInterest(key: TopicKey, text: string): Promise<void> {
+/** Saves what the user cares about inside a topic — after the same safety
+ *  check as a typed topic, since it steers the same web search. */
+export async function setTopicInterest(key: TopicKey, text: string): Promise<TopicCheck> {
   const all = await getTopicInterests();
   const trimmed = text.trim();
-  if (trimmed) all[key] = trimmed;
-  else delete all[key];
+  if (trimmed) {
+    const check = await checkTopic(trimmed);
+    if (!check.ok) return check;
+    all[key] = trimmed;
+  } else delete all[key];
   await AsyncStorage.setItem(INTERESTS_KEY, JSON.stringify(all));
+  return { ok: true };
 }
 
 // Tiny stable hash so caches invalidate when the user's taste text changes.
@@ -161,7 +188,7 @@ function tinyHash(s: string): string {
 
 // ---- Seeded fallback content (used when the internet fetch is unavailable) ----
 
-const FALLBACKS: Record<TopicKey, { headline: string; summary: string }[]> = {
+const FALLBACKS: Record<string, { headline: string; summary: string }[]> = {
   sports: [
     {
       headline: 'Arsenal vs Newcastle United 2 - 1 For Arsenal',
@@ -220,10 +247,18 @@ const FALLBACKS: Record<TopicKey, { headline: string; summary: string }[]> = {
   ],
 };
 
+// Topics without seeded items say what they are waiting for, rather than
+// borrowing another topic's demo headline.
+function fallbackFor(t: Topic): { headline: string; summary: string }[] {
+  return (
+    FALLBACKS[t.key] ?? [{ headline: `${t.label} news is on its way`, summary: 'It appears when Recall is back online.' }]
+  );
+}
+
 function fallbackFeed(date: Date, topics: Topic[]): TopicItem[] {
   const variant = date.getDate() % 2;
   return topics.map((t) => {
-    const options = FALLBACKS[t.key];
+    const options = fallbackFor(t);
     const pick = options[variant % options.length];
     return { topic: t.key, label: t.label, ...pick, live: false };
   });
@@ -292,13 +327,19 @@ async function ogImage(articleUrl: unknown): Promise<string | undefined> {
 async function withImages<T extends { source?: unknown }>(
   items: (T & TopicItem)[],
 ): Promise<TopicItem[]> {
-  return Promise.all(
+  let found = 0;
+  const out = await Promise.all(
     items.map(async (i) => {
-      const image = await ogImage(i.source);
+      const url = await ogImage(i.source);
+      if (url) found++;
+      // Shown only once the phone has read it and found nothing explicit.
+      const image = url && (await isSafeWebImage(url)) ? url : undefined;
       const { source: _source, ...item } = i;
-      return { ...item, image };
+      return { ...item, image, imageChecked: true };
     }),
   );
+  console.log(`[safety] news photos: ${out.filter((i) => i.image).length} of ${found} kept`);
+  return out;
 }
 
 async function fetchFromInternet(
@@ -316,7 +357,7 @@ async function fetchFromInternet(
       return `- "${t.key}": ${t.query}${taste ? ` — the user especially cares about: ${taste}; prefer events about those, but if that date has none, give the most notable general event for the topic instead (never report "no events")` : ''}`;
     })
     .join('\n');
-  const prompt = `Search the web for what happened on ${dateLabel} (or the closest coverage of that date) for each topic below. For each topic give one real event from that date.\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<topic key>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
+  const prompt = `Search the web for what happened on ${dateLabel} (or the closest coverage of that date) for each topic below. For each topic give one real event from that date. ${SAFE_SEARCH_RULE}\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<topic key>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
 
   try {
     const res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
@@ -362,6 +403,24 @@ async function fetchFromInternet(
 
 // ---- Cache-first day feed ----
 
+// Items cached before news photos were checked get checked now, once, and
+// the cache is rewritten so it never has to happen again.
+async function checkCachedImages(items: TopicItem[], save: (items: TopicItem[]) => void): Promise<TopicItem[]> {
+  if (items.every((i) => !i.image || i.imageChecked)) return items;
+  const out = await Promise.all(
+    items.map(async (i) =>
+      !i.image || i.imageChecked
+        ? i
+        : { ...i, image: (await isSafeWebImage(i.image)) ? i.image : undefined, imageChecked: true },
+    ),
+  );
+  console.log(
+    `[safety] cached news photos checked: ${out.filter((i) => i.image).length} of ${items.filter((i) => i.image).length} kept`,
+  );
+  save(out);
+  return out;
+}
+
 const CACHE_PREFIX = 'otdFeed-';
 
 // Signature of "what would change the results" — topic mix plus the user's
@@ -378,6 +437,9 @@ export async function getDayFeed(date: Date, topics: Topic[]): Promise<TopicItem
     const cached = await AsyncStorage.getItem(cacheId);
     if (cached) {
       const parsed = JSON.parse(cached) as { items: TopicItem[]; sig?: string };
+      parsed.items = await checkCachedImages(parsed.items, (items) =>
+        AsyncStorage.setItem(cacheId, JSON.stringify({ ...parsed, items })).catch(() => {}),
+      );
       // Only reuse the cache when it matches the user's current topics AND
       // taste (fallback content is cheap to regenerate).
       if (
@@ -419,7 +481,12 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
     const cached = await AsyncStorage.getItem(cacheId);
     if (cached) {
       const parsed = JSON.parse(cached) as { items: TopicItem[] };
-      if (parsed.items.length > 0) return parsed.items.map(cleanItem);
+      if (parsed.items.length > 0) {
+        const items = await checkCachedImages(parsed.items, (checked) =>
+          AsyncStorage.setItem(cacheId, JSON.stringify({ items: checked })).catch(() => {}),
+        );
+        return items.map(cleanItem);
+      }
     }
   } catch {
     // fall through to fetch
@@ -430,7 +497,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
     const dateLabel = `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
     const prompt = `Search the web for ${EVENTS_COUNT} DISTINCT real events that happened on ${dateLabel} (or the closest coverage of that date) in this topic: ${topic.query}.${
       taste ? ` The user especially cares about: ${taste} — lead with events about those, then fill the rest with other notable ones from the same topic (never report "no events").` : ''
-    } Aim for exactly ${EVENTS_COUNT} items covering different competitions, artists, or angles — return fewer only if that date genuinely had fewer. No URLs or citations in the headline/summary text.\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
+    } Aim for exactly ${EVENTS_COUNT} items covering different competitions, artists, or angles — return fewer only if that date genuinely had fewer. No URLs or citations in the headline/summary text. ${SAFE_SEARCH_RULE}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","source":"<the real URL of the news article this came from>"}]}`;
 
     try {
       const res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
@@ -479,7 +546,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
   }
 
   // Offline/no-credits fallback: the topic's seeded items.
-  return FALLBACKS[topic.key].map((f) => ({
+  return fallbackFor(topic).map((f) => ({
     topic: topic.key,
     label: topic.label,
     ...f,

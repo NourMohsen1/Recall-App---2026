@@ -143,6 +143,16 @@ name → profile, interests → On This Day (`quizAnswers[0]`), recap
 frequency → recap notifications, Positive Focus. No accounts: memories live
 on the phone and return with its iCloud backup.
 
+**Nothing sexual comes in from the web** (`src/contentSafety.ts`). Users can
+type their own On This Day topics ("Other") and "what I care about" text,
+which steer a web search, so: a typed topic is checked (short word list,
+then the AI) before it is accepted — and refused if the check can't run;
+every search carries `SAFE_SEARCH_RULE`; every news photo is downloaded and
+read by the on-device nudity model, kept only below 0.6. Each layer fails
+closed. Measured on 24 typed topics in English, Arabic and Franco: 0 wrong
+(Moby Dick, Ford Escort, sexual health and الجنسية all pass). Keep the word
+list to words with no innocent meaning — "جنس" sits inside جنسية.
+
 **Positive Focus** (`src/positiveFocus.ts`, Profile switch) makes the AI
 recaps leave out painful moments (death, breakup, illness…). Recaps only —
 Timeline and Ask keep everything. With it on, a recap never falls back to

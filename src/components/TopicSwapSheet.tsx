@@ -1,17 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { Topic, TopicKey, TOPIC_OPTIONS } from '../onThisDay';
+import { Topic, TopicKey, TOPIC_OPTIONS, topicIcon } from '../onThisDay';
 import { colors, fonts } from '../theme';
-
-const TOPIC_ICONS: Record<string, string> = {
-  sports: 'soccer',
-  music: 'music-note',
-  news: 'newspaper-variant-outline',
-  movies: 'movie-open-outline',
-  design: 'palette-outline',
-  travel: 'airplane',
-  books: 'book-open-variant',
-};
 
 type Props = {
   visible: boolean;
@@ -37,7 +27,7 @@ export default function TopicSwapSheet({ visible, topic, selectedKeys, onSelect,
             <Pressable key={t.key} style={styles.row} onPress={() => onSelect(t.key)}>
               <View style={styles.rowIcon}>
                 <MaterialCommunityIcons
-                  name={(TOPIC_ICONS[t.key] ?? 'earth') as any}
+                  name={topicIcon(t.key) as any}
                   size={20}
                   color={colors.teal}
                 />
