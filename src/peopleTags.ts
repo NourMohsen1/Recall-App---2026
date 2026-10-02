@@ -19,6 +19,11 @@ export async function getPeopleForDay(dayKey: string): Promise<string[]> {
   return byDay[dayKey] ?? [];
 }
 
+/** Every day's tagged people at once, by day. */
+export async function getAllDayPeople(): Promise<Record<string, string[]>> {
+  return readJSON<Record<string, string[]>>(DAY_PEOPLE_KEY, {});
+}
+
 export async function getAllTaggedPeople(): Promise<string[]> {
   const byDay = await readJSON<Record<string, string[]>>(DAY_PEOPLE_KEY, {});
   const names = new Set<string>();

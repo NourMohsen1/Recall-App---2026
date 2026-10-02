@@ -3,6 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
 import PhotoSlideshow from './PhotoSlideshow';
+import RecapCompany from './RecapCompany';
 import {
   periodPhotos,
   recapLine,
@@ -152,6 +153,15 @@ export default function RecapView({
           </>
         )}
 
+        {/* Who and where, for a week only for now. */}
+        {kind === 'week' && rows !== null && (
+          <RecapCompany
+            from={period.units[0].from}
+            to={period.units[period.units.length - 1].to}
+            style={{ marginLeft: DOT_LEFT }}
+          />
+        )}
+
         {/* One line at the end whenever any of this leaned on a guess: what
             the photos seemed to show, or faces not confirmed. */}
         {anyGuess && (
@@ -168,6 +178,8 @@ export default function RecapView({
 }
 
 const SPINE_X = 22;
+/** Where the timeline's dots start; what follows them lines up here. */
+const DOT_LEFT = SPINE_X - 14;
 
 const styles = StyleSheet.create({
   card: {
@@ -204,7 +216,7 @@ const styles = StyleSheet.create({
 
   list: { paddingHorizontal: 16, paddingTop: 22, paddingBottom: 18 },
   row: { flexDirection: 'row', gap: 14 },
-  rail: { width: 28, alignItems: 'center', marginLeft: SPINE_X - 14 },
+  rail: { width: 28, alignItems: 'center', marginLeft: DOT_LEFT },
   dot: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.primary },
   railLine: { flex: 1, width: 8, backgroundColor: '#8FA6A9', marginTop: -2, marginBottom: -2 },
   rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
@@ -215,6 +227,6 @@ const styles = StyleSheet.create({
   rowLoading: { fontStyle: 'italic', color: '#A3ABAC' },
   separator: { height: 1, backgroundColor: '#A9C0C3', marginTop: 16, marginBottom: 16 },
   empty: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394', textAlign: 'center', marginVertical: 26 },
-  disclaimer: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 22, paddingHorizontal: 4 },
+  disclaimer: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 22, paddingLeft: DOT_LEFT, paddingRight: 4 },
   disclaimerText: { flex: 1, fontFamily: fonts.regular, fontSize: 12, lineHeight: 17, color: '#8B9394' },
 });

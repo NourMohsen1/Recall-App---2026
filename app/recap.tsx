@@ -4,6 +4,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../src/components/AnalyzingBanner';
+import RecapCompany from '../src/components/RecapCompany';
 import RecapOverview from '../src/components/RecapOverview';
 import RecapView from '../src/components/RecapView';
 import ScreenHeader from '../src/components/ScreenHeader';
@@ -67,37 +68,43 @@ function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
     return (
       <View style={styles.todayCard}>
         <Text style={styles.emptyText}>Nothing logged today yet.</Text>
+        <RecapCompany from={today} to={today} />
       </View>
     );
   }
 
   return (
     <View style={styles.todayCard}>
-      <View style={styles.spine} />
-      {entries.map((m) => (
-        <View key={m.id} style={styles.segment}>
-          <View style={styles.spineDot} />
-          <View style={{ flex: 1 }}>
-            <View style={styles.segmentHeader}>
-              <Text style={styles.segmentTitle}>{m.kind === 'photo' ? 'Photos' : 'Note'}</Text>
-              <View style={styles.timePill}>
-                <Text style={styles.timePillText}>≈ {formatClockTime(new Date(m.takenAt))}</Text>
+      {/* The spine sits with the entries, so it stops above the people
+          and places at the end. */}
+      <View>
+        <View style={styles.spine} />
+        {entries.map((m) => (
+          <View key={m.id} style={styles.segment}>
+            <View style={styles.spineDot} />
+            <View style={{ flex: 1 }}>
+              <View style={styles.segmentHeader}>
+                <Text style={styles.segmentTitle}>{m.kind === 'photo' ? 'Photos' : 'Note'}</Text>
+                <View style={styles.timePill}>
+                  <Text style={styles.timePillText}>≈ {formatClockTime(new Date(m.takenAt))}</Text>
+                </View>
               </View>
+              {memoryDisplayText(m) && (
+                <Text style={styles.segmentText}>{memoryDisplayText(m)}</Text>
+              )}
             </View>
-            {memoryDisplayText(m) && (
-              <Text style={styles.segmentText}>{memoryDisplayText(m)}</Text>
-            )}
           </View>
-        </View>
-      ))}
-      {hasVoice && (
-        <Pressable
-          style={styles.sourceBtn}
-          onPress={() => router.push({ pathname: '/day/[offset]/source', params: { offset: 0 } })}
-        >
-          <Text style={styles.sourceBtnText}>Source</Text>
-        </Pressable>
-      )}
+        ))}
+        {hasVoice && (
+          <Pressable
+            style={styles.sourceBtn}
+            onPress={() => router.push({ pathname: '/day/[offset]/source', params: { offset: 0 } })}
+          >
+            <Text style={styles.sourceBtnText}>Source</Text>
+          </Pressable>
+        )}
+      </View>
+      <RecapCompany from={today} to={today} />
     </View>
   );
 }
@@ -233,9 +240,9 @@ const styles = StyleSheet.create({
   emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
   spine: {
     position: 'absolute',
-    left: 30,
-    top: 34,
-    bottom: 110,
+    left: 8,
+    top: 12,
+    bottom: 88,
     width: 10,
     borderRadius: 5,
     backgroundColor: '#8FA6A9',

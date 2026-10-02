@@ -5,8 +5,8 @@ import { getAllDayMarkers } from './dayMarkers';
 import { getAllGuesses } from './guessedPeople';
 import { dateKey, getMemoriesByDay, memoryDisplayText, type LoggedMemory } from './memoryLog';
 import { getAllPhotoSources } from './photoMeta';
-import { getAllDayPlaces } from './places';
-import { getPeopleForDay } from './peopleTags';
+import { getAllDayPlaces, type DayPlace, type PlaceKind } from './places';
+import { getAllDayPeople } from './peopleTags';
 
 // Recap: the key events of a week, a month or a year, a few lines each —
 // not every detail. Weekly shows each day; monthly shows each week; yearly
@@ -158,6 +158,8 @@ type DayFacts = {
   people: string[];
   guessedPeople: string[];
   places: string[];
+  /** Every spot that day, named or not — for the recap's places row. */
+  spots: DayPlace[];
   moments: string[];
   photos: string[];
   /** When a day has no camera photo: its screenshots and attached images,
@@ -170,24 +172,27 @@ type World = Map<string, DayFacts>;
 let worldCache: { at: number; world: Promise<World> } | null = null;
 
 async function buildWorld(): Promise<World> {
-  const [byDay, stories, guesses, places, markers, sources] = await Promise.all([
+  const [byDay, stories, guesses, places, markers, sources, dayPeople] = await Promise.all([
     getMemoriesByDay(),
     getAllAssumedMemories(),
     getAllGuesses(),
     getAllDayPlaces(),
     getAllDayMarkers(),
     getAllPhotoSources(),
+    getAllDayPeople(),
   ]);
   const days = new Set<string>([
     ...byDay.keys(),
     ...Object.keys(stories),
     ...Object.keys(places),
     ...Object.keys(markers),
+    // A day the user only tagged someone on still happened.
+    ...Object.keys(dayPeople),
   ]);
   const world: World = new Map();
   for (const day of days) {
     const memories: LoggedMemory[] = byDay.get(day) ?? [];
-    const people = await getPeopleForDay(day);
+    const people = dayPeople[day] ?? [];
     world.set(day, {
       day,
       logged: memories.map(memoryDisplayText).filter((t): t is string => !!t),
@@ -197,6 +202,7 @@ async function buildWorld(): Promise<World> {
         .map((g) => g.name)
         .filter((n) => !people.some((p) => p.toLowerCase() === n.toLowerCase())),
       places: (places[day] ?? []).filter((p) => p.named).map((p) => p.label),
+      spots: places[day] ?? [],
       moments: (markers[day] ?? []).map((m) => m.label),
       photos: memories
         .filter((m) => m.kind === 'photo')
@@ -232,7 +238,7 @@ async function world(): Promise<World> {
 // icon on the 8th, a flight on the 23rd — is not something that happened,
 // and a recap that says it did is inventing the user's past. (It did, in
 // the first test: "had a dentist appointment on the 8th" before the 8th.)
-function daysIn(unit: RecapUnit, today = dateKey(new Date())): string[] {
+function daysIn(unit: { from: string; to: string }, today = dateKey(new Date())): string[] {
   const out: string[] = [];
   const [y, m, d] = unit.from.split('-').map(Number);
   for (let x = new Date(y, m - 1, d); dateKey(x) <= unit.to && dateKey(x) <= today; x = addDays(x, 1)) {
@@ -273,6 +279,49 @@ export async function periodPhotos(period: RecapPeriod, limit = 40): Promise<str
     [unique[i], unique[j]] = [unique[j], unique[i]];
   }
   return unique.slice(0, limit);
+}
+
+/** Someone in the recap's people row. `guessed`: only recognised by face,
+ *  never confirmed on any of these days — drawn as a guess. */
+export type RecapPerson = { name: string; guessed: boolean; days: number };
+export type RecapPlace = { id: string; label: string; cover?: string; kind?: PlaceKind; days: number };
+
+/** Who the user was with and where they went between two days — each once,
+ *  most days first. Confirmed people come before guessed ones. */
+export async function recapCompany(
+  from: string,
+  to: string,
+): Promise<{ people: RecapPerson[]; places: RecapPlace[] }> {
+  const w = await world();
+  const people = new Map<string, RecapPerson>();
+  const places = new Map<string, RecapPlace>();
+  for (const day of daysIn({ from, to })) {
+    const f = w.get(day);
+    if (!f) continue;
+    const seen = new Set<string>();
+    for (const [name, guessed] of [
+      ...f.people.map((n) => [n, false] as const),
+      ...f.guessedPeople.map((n) => [n, true] as const),
+    ]) {
+      const k = name.trim().toLowerCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const had = people.get(k);
+      if (had) {
+        had.days += 1;
+        had.guessed = had.guessed && guessed;
+      } else people.set(k, { name, guessed, days: 1 });
+    }
+    for (const s of new Map(f.spots.map((x) => [x.placeId, x])).values()) {
+      const had = places.get(s.placeId);
+      if (had) had.days += 1;
+      else places.set(s.placeId, { id: s.placeId, label: s.label, cover: s.cover, kind: s.kind, days: 1 });
+    }
+  }
+  return {
+    people: [...people.values()].sort((a, b) => Number(a.guessed) - Number(b.guessed) || b.days - a.days),
+    places: [...places.values()].sort((a, b) => b.days - a.days),
+  };
 }
 
 // ── Writing the lines ─────────────────────────────────────────────────────
