@@ -32,7 +32,7 @@ import {
   type SirKind,
 } from '../../src/dayMarkers';
 import { approveGuess, getGuessesForDay, rejectGuess } from '../../src/guessedPeople';
-import PhotoTile from '../../src/components/PhotoTile';
+import PhotoTile, { TILE_SIZE } from '../../src/components/PhotoTile';
 import {
   AssumedMemory,
   assumedMemoryAvailable,
@@ -151,13 +151,22 @@ function DayCell({
   );
 }
 
-// Fixed-size 2D canvas the user can pan around, like a map.
+// Fixed-size 2D canvas the user can pan around, like a map. The cards sit
+// in a CANVAS_W × CANVAS_H area; MARGIN of open, dotted space surrounds it
+// on every side, so there is room to drag past the cards in any direction.
 const CANVAS_W = 920;
 const CANVAS_H = 1240;
+const MARGIN = 1000;
+const FULL_W = CANVAS_W + MARGIN * 2;
+const FULL_H = CANVAS_H + MARGIN * 2;
 
-function DottedBackground() {
+// Drawn as tiles: one dotted image the size of the whole canvas is larger
+// than iOS will draw, and it silently came out blank.
+const DOT_TILE = 560; // a multiple of the 14-pt dot spacing, so tiles meet seamlessly
+
+function DotTile() {
   return (
-    <Svg style={StyleSheet.absoluteFill} width={CANVAS_W} height={CANVAS_H}>
+    <Svg width={DOT_TILE} height={DOT_TILE}>
       <Defs>
         <Pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
           <Circle cx="2" cy="2" r="1.2" fill="#C9CDCE" />
@@ -165,6 +174,23 @@ function DottedBackground() {
       </Defs>
       <Rect width="100%" height="100%" fill="url(#dots)" />
     </Svg>
+  );
+}
+
+function DottedBackground() {
+  const cols = Math.ceil(FULL_W / DOT_TILE);
+  const rows = Math.ceil(FULL_H / DOT_TILE);
+  return (
+    <View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }]} pointerEvents="none">
+      {Array.from({ length: rows * cols }).map((_, i) => (
+        <View
+          key={i}
+          style={{ position: 'absolute', left: (i % cols) * DOT_TILE, top: Math.floor(i / cols) * DOT_TILE }}
+        >
+          <DotTile />
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -176,8 +202,8 @@ const CARD_POS = {
   day: { x: 30, y: 330, w: 340 },
   places: { x: 470, y: 330, w: 410 },
   otd: { x: 180, y: 780, w: 400 },
-  // Deliberately unconnected — this is a floating AI guess, not part of the
-  // people/day/places/otd chain of real logged content.
+  // Joined to the photos it was guessed from; the card itself is dashed and
+  // tinted so a guess never reads as part of what the user logged.
   assumed: { x: 610, y: 780, w: 290 },
 } as const;
 
@@ -190,6 +216,8 @@ const CARD_POS = {
 const PLACE_TILE = 112;
 
 const SIR_X = 24;
+/** Space between cards that sit one above the other. */
+const CARD_GAP = 44;
 const SIR_GAP = 22;
 // On an empty or upcoming day there is only the placeholder card (left 40,
 // top 420), so the icons go just ABOVE it. Both other spots were tried on a
@@ -301,8 +329,10 @@ export default function Timeline() {
   // translate + (1 - scale) * size / 2 — the clamp accounts for that.
   const vw = useSharedValue(0);
   const vh = useSharedValue(0);
-  const tx = useSharedValue(0);
-  const ty = useSharedValue(0);
+  // Opens with the cards where they always were: the margin starts just
+  // off-screen, above and to the left.
+  const tx = useSharedValue(-MARGIN);
+  const ty = useSharedValue(-MARGIN);
   const sc = useSharedValue(1);
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
@@ -310,15 +340,18 @@ export default function Timeline() {
 
   const clampAll = () => {
     'worklet';
-    if (sc.value < MIN_SCALE) sc.value = MIN_SCALE;
+    // Never zoomed out past the point where the canvas stops filling the
+    // screen — the dots always reach every edge.
+    const fill = Math.max(MIN_SCALE, vw.value / FULL_W, vh.value / FULL_H);
+    if (sc.value < fill) sc.value = fill;
     if (sc.value > MAX_SCALE) sc.value = MAX_SCALE;
     const s = sc.value;
 
     // When zoomed out far enough that the canvas is smaller than the
     // viewport on an axis, center it on that axis instead of letting it
     // slide around inside empty space.
-    const offX = ((1 - s) * CANVAS_W) / 2;
-    const scaledW = CANVAS_W * s;
+    const offX = ((1 - s) * FULL_W) / 2;
+    const scaledW = FULL_W * s;
     if (scaledW <= vw.value) {
       tx.value = (vw.value - scaledW) / 2 - offX;
     } else {
@@ -327,8 +360,8 @@ export default function Timeline() {
       tx.value = Math.min(maxTx, Math.max(minTx, tx.value));
     }
 
-    const offY = ((1 - s) * CANVAS_H) / 2;
-    const scaledH = CANVAS_H * s;
+    const offY = ((1 - s) * FULL_H) / 2;
+    const scaledH = FULL_H * s;
     if (scaledH <= vh.value) {
       ty.value = (vh.value - scaledH) / 2 - offY;
     } else {
@@ -654,17 +687,16 @@ export default function Timeline() {
     );
     setAssumedLang('ar');
   };
-  const photoCaptions = photoMemories.map((m) => m.text).filter(Boolean) as string[];
 
   // Voice transcripts read like any other note on the day card — a
   // recording still being written up contributes its own pending line
   // rather than blanking the whole card.
-  const bullets = [
-    ...texts.map((t) => memoryDisplayText(t)),
-    ...voices.map((v) => memoryDisplayText(v)),
-    ...documents.map((d) => memoryDisplayText(d)),
-    ...photoCaptions,
-  ].filter(Boolean) as string[];
+  // In the order they happened — the same order as the day's own page
+  // (byDay is sorted by time), never grouped by how they were logged.
+  const bullets = real
+    .filter((m) => m.kind !== 'photo' || !!m.text)
+    .map((m) => (m.kind === 'photo' ? m.text : memoryDisplayText(m)))
+    .filter(Boolean) as string[];
 
   const latestVoice = voices[voices.length - 1];
   // How this day was logged, as icons only. It used to be a sentence
@@ -692,6 +724,68 @@ export default function Timeline() {
   const showPeople = people.length > 0 || guessed.length > 0;
   const hasContent =
     showDayCard || showPhotoLib || showPlaces || showPeople || (!otdFuture && otdTopics.length > 0);
+  const showAssumedSlot =
+    (!!assumedMemory && !assumedDismissed) || ((assumedStatus === 'ask' || readingDay) && !assumedMemory) || assumedStatus === 'failed';
+
+  // Where each card goes, from the real heights of the cards above it: a
+  // card never starts until the one above (in its column, or reaching
+  // across it) has ended plus a gap — so a long list of people or a long
+  // day pushes what's below down instead of running into it. Each card
+  // keeps its usual place when there is room.
+  const pos = (() => {
+    // A card's height once it has been measured — a fair guess before.
+    const h = (key: string, guess: number) => cardH[key] ?? guess;
+
+    // Widths follow the content: room for exactly the people, photos and
+    // places there are (up to three across), never wider.
+    const across = (n: number) => Math.min(3, Math.max(1, n));
+    const peopleCols = across(people.length + guessed.length + 1); // + the Add button
+    const peopleW = Math.max(200, 32 + peopleCols * 72 + (peopleCols - 1) * 12);
+    const photoCols = across(realPhotoUris.length);
+    const photoW = Math.max(250, 32 + photoCols * TILE_SIZE + (photoCols - 1) * 8);
+    const placeCols = across(places.length);
+    const placesW = Math.max(200, 32 + placeCols * PLACE_TILE + (placeCols - 1) * 14);
+
+    // Two columns that flow from the top: what the user lived on the left
+    // (who, then the day itself), what the phone saw on the right (photos,
+    // then places). A card only exists when it has something in it, and
+    // the next one starts right after the one above — no reserved slots,
+    // no holes, no overlaps.
+    const TOP = 44;
+    const LEFT = 30;
+    let y = TOP;
+    const peopleCard = { x: LEFT + 10, y, w: peopleW };
+    if (showPeople) y += h('people', 160) + CARD_GAP;
+    const day = { x: LEFT, y, w: CARD_POS.day.w };
+    if (showDayCard) y += h('day', 220);
+    // The day's moment icons hang under the day card (3 across).
+    const sirRows = Math.ceil((markers.length + 1) / 3);
+    const leftBottom = (showDayCard ? y + SIR_GAP : y) + sirRows * 54 - 10;
+    const leftW = Math.max(showPeople ? peopleW + 10 : 0, showDayCard ? day.w : 0);
+
+    const rightX = showPeople || showDayCard ? LEFT + leftW + 70 : LEFT;
+    let ry = TOP;
+    const photo = { x: rightX, y: ry, w: photoW };
+    if (showPhotoLib) ry += h('photo', 190) + CARD_GAP;
+    // Places lines up with the day card when there's room, so the
+    // connector between them runs straight across.
+    if (showDayCard && showPlaces) ry = Math.max(ry, day.y);
+    const placesCard = { x: rightX + (showPhotoLib ? 30 : 0), y: ry, w: placesW };
+    if (showPlaces) ry += h('places', 190);
+    const rightBottom = ry;
+
+    // On This Day and what the photos seemed to show close the day, side by
+    // side, below everything above them.
+    const rowY = Math.max(leftBottom, rightBottom - (showPlaces || showPhotoLib ? 0 : CARD_GAP)) + CARD_GAP;
+    const otd = { x: LEFT + 150, y: rowY, w: CARD_POS.otd.w };
+    const otdShown = !otdFuture && otdTopics.length > 0;
+    const assumed = {
+      x: otdShown ? otd.x + otd.w + 30 : Math.max(placesCard.x, LEFT + 150),
+      y: rowY,
+      w: CARD_POS.assumed.w,
+    };
+    return { people: peopleCard, photo, day, places: placesCard, otd, assumed };
+  })();
 
   // One flat rail tile — a month (or, nested inside an opened year, still a
   // month) collapsed to its label, or expanded into a small header plus its
@@ -803,8 +897,10 @@ export default function Timeline() {
         {/* Free-move day canvas: pan any direction + pinch zoom, like a map */}
         <View style={styles.viewport} onLayout={onViewportLayout}>
           <GestureDetector gesture={canvasGesture}>
-            <Animated.View style={[{ width: CANVAS_W, height: CANVAS_H }, canvasStyle]}>
+            <Animated.View style={[{ width: FULL_W, height: FULL_H }, canvasStyle]}>
               <DottedBackground />
+              {/* The cards' own area, inset by the margin. */}
+              <View style={styles.canvasContent}>
 
               {hasContent ? (
                 <>
@@ -812,29 +908,62 @@ export default function Timeline() {
                   {showPhotoLib && showPlaces && cardH.photo && (
                     <Elbow
                       axis="v"
-                      from={{ x: CARD_POS.photo.x + CARD_POS.photo.w / 2, y: CARD_POS.photo.y + cardH.photo }}
-                      to={{ x: CARD_POS.places.x + CARD_POS.places.w / 2, y: CARD_POS.places.y }}
+                      from={{ x: pos.photo.x + pos.photo.w / 2, y: pos.photo.y + cardH.photo }}
+                      to={{ x: pos.places.x + pos.places.w / 2, y: pos.places.y }}
                     />
                   )}
                   {showDayCard && showPlaces && cardH.day && cardH.places && (
                     <Elbow
                       axis="h"
-                      from={{ x: CARD_POS.day.x + CARD_POS.day.w, y: CARD_POS.day.y + cardH.day / 2 }}
-                      to={{ x: CARD_POS.places.x, y: CARD_POS.places.y + cardH.places / 2 }}
+                      from={{ x: pos.day.x + pos.day.w, y: pos.day.y + cardH.day / 2 }}
+                      to={{ x: pos.places.x, y: pos.places.y + cardH.places / 2 }}
                     />
                   )}
                   {showDayCard && cardH.day && (
                     <Elbow
                       axis="v"
-                      from={{ x: CARD_POS.day.x + CARD_POS.day.w / 2, y: CARD_POS.day.y + cardH.day }}
-                      to={{ x: CARD_POS.otd.x + CARD_POS.otd.w / 2, y: CARD_POS.otd.y }}
+                      from={{ x: pos.day.x + pos.day.w / 2, y: pos.day.y + cardH.day }}
+                      to={{ x: pos.otd.x + pos.otd.w / 2, y: pos.otd.y }}
+                    />
+                  )}
+                  {/* The day's photos lead to what Recall guessed from them —
+                      the guess card itself stays dashed and tinted. */}
+                  {showAssumedSlot && (showPlaces ? !!cardH.places : showPhotoLib && !!cardH.photo) && (
+                    <Elbow
+                      axis="v"
+                      from={
+                        showPlaces
+                          ? { x: pos.places.x + pos.places.w / 2, y: pos.places.y + cardH.places }
+                          : { x: pos.photo.x + pos.photo.w / 2, y: pos.photo.y + cardH.photo }
+                      }
+                      to={{ x: pos.assumed.x + pos.assumed.w / 2, y: pos.assumed.y }}
+                    />
+                  )}
+                  {/* No notes that day: People is the hub instead, so every
+                      card is still joined to the rest. */}
+                  {!showDayCard && showPeople && !otdFuture && otdTopics.length > 0 && cardH.people && (
+                    <Elbow
+                      axis="v"
+                      from={{ x: pos.people.x + pos.people.w / 2, y: pos.people.y + cardH.people }}
+                      to={{ x: pos.otd.x + pos.otd.w / 2, y: pos.otd.y }}
+                    />
+                  )}
+                  {!showDayCard && showPeople && (showPlaces || showPhotoLib) && cardH.people && (
+                    <Elbow
+                      axis="h"
+                      from={{ x: pos.people.x + pos.people.w, y: pos.people.y + cardH.people / 2 }}
+                      to={
+                        showPhotoLib && cardH.photo
+                          ? { x: pos.photo.x, y: pos.photo.y + cardH.photo / 2 }
+                          : { x: pos.places.x, y: pos.places.y + (cardH.places ?? 0) / 2 }
+                      }
                     />
                   )}
                   {showPeople && showDayCard && cardH.people && (
                     <Elbow
                       axis="v"
-                      from={{ x: CARD_POS.people.x + CARD_POS.people.w / 2, y: CARD_POS.people.y + cardH.people }}
-                      to={{ x: CARD_POS.day.x + CARD_POS.day.w / 2, y: CARD_POS.day.y }}
+                      from={{ x: pos.people.x + pos.people.w / 2, y: pos.people.y + cardH.people }}
+                      to={{ x: pos.day.x + pos.day.w / 2, y: pos.day.y }}
                     />
                   )}
 
@@ -846,7 +975,7 @@ export default function Timeline() {
                       onLayout={measure('people')}
                       style={[
                         styles.card,
-                        { left: CARD_POS.people.x, top: CARD_POS.people.y, width: CARD_POS.people.w },
+                        { left: pos.people.x, top: pos.people.y, width: pos.people.w },
                       ]}
                     >
                       <View style={styles.cardHeaderRow}>
@@ -874,7 +1003,7 @@ export default function Timeline() {
                       onLayout={measure('photo')}
                       style={[
                         styles.card,
-                        { left: CARD_POS.photo.x, top: CARD_POS.photo.y, width: CARD_POS.photo.w },
+                        { left: pos.photo.x, top: pos.photo.y, width: pos.photo.w },
                       ]}
                     >
                       <View style={styles.cardHeaderRow}>
@@ -920,7 +1049,7 @@ export default function Timeline() {
                       onLayout={measure('day')}
                       style={[
                         styles.dayCard,
-                        { left: CARD_POS.day.x, top: CARD_POS.day.y, width: CARD_POS.day.w },
+                        { left: pos.day.x, top: pos.day.y, width: pos.day.w },
                       ]}
                       onPress={() =>
                         router.push(`/day/${selected}` as Parameters<typeof router.push>[0])
@@ -977,7 +1106,7 @@ export default function Timeline() {
                       onLayout={measure('places')}
                       style={[
                         styles.card,
-                        { left: CARD_POS.places.x, top: CARD_POS.places.y, width: CARD_POS.places.w },
+                        { left: pos.places.x, top: pos.places.y, width: pos.places.w },
                       ]}
                     >
                       <View style={styles.cardHeaderRow}>
@@ -1013,7 +1142,7 @@ export default function Timeline() {
                       onLayout={measure('otd')}
                       style={[
                         styles.card,
-                        { left: CARD_POS.otd.x, top: CARD_POS.otd.y, width: CARD_POS.otd.w, padding: 0 },
+                        { left: pos.otd.x, top: pos.otd.y, width: pos.otd.w, padding: 0 },
                       ]}
                     >
                       <View style={[styles.cardHeaderRow, styles.otdCardHeader]}>
@@ -1051,7 +1180,7 @@ export default function Timeline() {
                     <Pressable
                       style={[
                         styles.assumedCard,
-                        { left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w },
+                        { left: pos.assumed.x, top: pos.assumed.y, width: pos.assumed.w },
                       ]}
                       onPress={() =>
                         router.push(`/day/${selected}` as Parameters<typeof router.push>[0])
@@ -1100,7 +1229,7 @@ export default function Timeline() {
                       photoUris={realPhotoUris}
                       reading={readingDay}
                       onRead={readThisDay}
-                      style={{ position: 'absolute', left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w }}
+                      style={{ position: 'absolute', left: pos.assumed.x, top: pos.assumed.y, width: pos.assumed.w }}
                     />
                   )}
 
@@ -1109,7 +1238,7 @@ export default function Timeline() {
                       style={[
                         styles.assumedCard,
                         styles.assumedCardFailed,
-                        { left: CARD_POS.assumed.x, top: CARD_POS.assumed.y, width: CARD_POS.assumed.w },
+                        { left: pos.assumed.x, top: pos.assumed.y, width: pos.assumed.w },
                       ]}
                       onPress={retryAssumed}
                     >
@@ -1153,13 +1282,14 @@ export default function Timeline() {
                         x: SIR_X,
                         y:
                           showDayCard && cardH.day
-                            ? CARD_POS.day.y + cardH.day + SIR_GAP
-                            : CARD_POS.day.y,
+                            ? pos.day.y + cardH.day + SIR_GAP
+                            : pos.day.y,
                       }
                 }
                 onAdd={() => setPickerOpen(true)}
                 onRemove={removeSir}
               />
+              </View>
             </Animated.View>
           </GestureDetector>
         </View>
@@ -1180,6 +1310,7 @@ export default function Timeline() {
 }
 
 const styles = StyleSheet.create({
+  canvasContent: { position: 'absolute', left: MARGIN, top: MARGIN, width: CANVAS_W, height: CANVAS_H },
   safe: { flex: 1, backgroundColor: colors.muted },
   header: {
     backgroundColor: colors.muted,
