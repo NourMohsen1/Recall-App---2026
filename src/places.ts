@@ -97,6 +97,9 @@ export type Place = {
   moreSpots?: { latitude: number; longitude: number }[];
   /** A cover the user chose. Otherwise the best photo taken there is used. */
   coverUri?: string;
+  /** Added from the Places page by hand: listed even before any day has
+   *  been spent there. */
+  addedByUser?: boolean;
   createdAt: string;
 };
 
@@ -376,6 +379,38 @@ async function streetLabel(lat: number, lng: number): Promise<string | null> {
 }
 
 // ── Recording ─────────────────────────────────────────────────────────────
+
+/** A place added from the Places page — no day attached. Returns its id;
+ *  one the user already has is returned rather than made twice. */
+export function addPlace(name: string, kind?: PlaceKind): Promise<string | null> {
+  return locked(async () => {
+    const clean = name.trim();
+    if (!clean) return null;
+    const places = await readPlaces();
+    const found = findByName(places, clean);
+    if (found) {
+      if (!found.kind && kind) found.kind = kind;
+      found.addedByUser = true;
+      await writePlaces(places);
+      changed();
+      return found.id;
+    }
+    const place: Place = {
+      id: newId(),
+      name: clean,
+      named: true,
+      aliases: [placeKey(clean)],
+      kind,
+      addedByUser: true,
+      createdAt: new Date().toISOString(),
+    };
+    places[place.id] = place;
+    await writePlaces(places);
+    changed();
+    console.log(`[places] added ${clean} from the Places page`);
+    return place.id;
+  });
+}
 
 /** A place the user said they were at, from a log. Returns its id. */
 export function recordNamedPlaceForDay(
@@ -913,8 +948,8 @@ async function buildWorld(): Promise<World> {
 
   const summaries = new Map<string, PlaceSummary>();
   for (const place of Object.values(places)) {
-    const a = acc.get(place.id);
-    if (!a || a.days.size === 0) continue;
+    const a = acc.get(place.id) ?? (place.addedByUser ? accFor(place.id) : undefined);
+    if (!a || (a.days.size === 0 && !place.addedByUser)) continue;
     const photos = [...a.photos].sort((x, y) => y.t - x.t);
     const sortedDays = [...a.days].sort();
     const dayPhotos =
@@ -1103,6 +1138,27 @@ export function setPlaceKind(id: string, kind: PlaceKind): Promise<void> {
     places[id].kind = kind;
     await writePlaces(places);
     changed();
+  });
+}
+
+/** A place added by mistake. Only one nothing is filed under — no day, no
+ *  photo — can go; anything else is corrected by merging, so a visit is
+ *  never lost. Returns whether it was removed. */
+export function removePlace(id: string): Promise<boolean> {
+  return locked(async () => {
+    const [places, days, meta] = await Promise.all([readPlaces(), readDays(), getAllPhotoMeta()]);
+    if (!places[id]) return false;
+    const onADay = Object.values(days).some((list) => list.some((e) => e.placeId === id));
+    const inAPhoto = Object.values(meta).some((m) => m.placeId === id || m.saidPlaceId === id);
+    if (onADay || inAPhoto) {
+      console.warn(`[places] not removing ${places[id].name}: it has days or photos`);
+      return false;
+    }
+    delete places[id];
+    await writePlaces(places);
+    changed();
+    console.log('[places] removed a place the user added');
+    return true;
   });
 }
 

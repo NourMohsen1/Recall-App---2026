@@ -11,19 +11,21 @@ import {
   View,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { knownPlaceNames, recordNamedPlaceForDay } from '../places';
+import { PLACE_KINDS, addPlace, knownPlaceNames, recordNamedPlaceForDay, type PlaceKind } from '../places';
 import { colors, fonts } from '../theme';
 
-// Adding a place to a day by hand, for when Recall didn't notice it: type
-// a name, or tap one of the places the user already has. Saved like a place
-// named in a log, so it joins that place's history.
+// Adding a place by hand. On a day (dayKey): for when Recall didn't notice
+// it — type a name, or tap one of the user's places — saved like a place
+// named in a log. From the Places page (no dayKey): a new place, with what
+// kind of place it is.
 
 export default function AddPlaceSheet({
   dayKey,
   visible,
   onClose,
 }: {
-  dayKey: string;
+  /** The day it goes on; none when adding from the Places page. */
+  dayKey?: string;
   visible: boolean;
   /** `added`: a place was added — the screen reloads. */
   onClose: (added: boolean) => void;
@@ -31,10 +33,12 @@ export default function AddPlaceSheet({
   const [text, setText] = useState('');
   const [known, setKnown] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState<PlaceKind | undefined>();
 
   useEffect(() => {
     if (!visible) return;
     setText('');
+    setKind(undefined);
     knownPlaceNames().then(setKnown);
   }, [visible]);
 
@@ -42,14 +46,21 @@ export default function AddPlaceSheet({
     const clean = name.trim();
     if (!clean || saving) return;
     setSaving(true);
-    await recordNamedPlaceForDay(dayKey, { name: clean });
-    console.log(`[places] added ${clean} to ${dayKey} by hand`);
+    if (dayKey) {
+      await recordNamedPlaceForDay(dayKey, { name: clean });
+      console.log(`[places] added ${clean} to ${dayKey} by hand`);
+    } else {
+      await addPlace(clean, kind);
+    }
     setSaving(false);
     onClose(true);
   };
 
   const q = text.trim().toLowerCase();
-  const matches = (q ? known.filter((k) => k.toLowerCase().includes(q)) : known).slice(0, 12);
+  // On a day, the user's places help; on the Places page they already
+  // are there, so only ones matching what's typed show (as "already yours").
+  const matches = (q ? known.filter((k) => k.toLowerCase().includes(q)) : dayKey ? known : []).slice(0, 12);
+  const kinds = (Object.keys(PLACE_KINDS) as PlaceKind[]).filter((k) => k !== 'other');
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={() => onClose(false)}>
@@ -69,7 +80,7 @@ export default function AddPlaceSheet({
                 style={styles.input}
                 value={text}
                 onChangeText={setText}
-                placeholder="Where were you?"
+                placeholder={dayKey ? 'Where were you?' : 'Name of the place'}
                 placeholderTextColor="#A9B0B1"
                 autoFocus
                 returnKeyType="done"
@@ -84,9 +95,31 @@ export default function AddPlaceSheet({
               </Pressable>
             </View>
 
+            {!dayKey && (
+              <>
+                <Text style={styles.section}>What kind of place</Text>
+                <View style={styles.chips}>
+                  {kinds.map((k) => (
+                    <Pressable
+                      key={k}
+                      style={[styles.chip, kind === k && styles.chipOn]}
+                      onPress={() => setKind(kind === k ? undefined : k)}
+                    >
+                      <MaterialCommunityIcons
+                        name={PLACE_KINDS[k].icon as any}
+                        size={14}
+                        color={kind === k ? colors.white : colors.teal}
+                      />
+                      <Text style={[styles.chipText, kind === k && { color: colors.white }]}>{PLACE_KINDS[k].label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </>
+            )}
+
             {matches.length > 0 && (
               <>
-                <Text style={styles.section}>Your places</Text>
+                <Text style={styles.section}>{dayKey ? 'Your places' : 'Already yours'}</Text>
                 <ScrollView style={{ maxHeight: 180 }} contentContainerStyle={styles.chips}>
                   {matches.map((k) => (
                     <Pressable key={k} style={styles.chip} onPress={() => add(k)}>
@@ -150,5 +183,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
+  chipOn: { backgroundColor: colors.primary },
   chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
 });

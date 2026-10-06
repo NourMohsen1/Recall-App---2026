@@ -11,8 +11,10 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import ActionMenuSheet from '../src/components/ActionMenuSheet';
 import FilterPill from '../src/components/FilterPill';
+import AddPlaceSheet from '../src/components/AddPlaceSheet';
 import PlaceTile from '../src/components/PlaceTile';
 import ScreenHeader from '../src/components/ScreenHeader';
 import {
@@ -45,9 +47,9 @@ function Places() {
 
   const [places, setPlaces] = useState<PlaceSummary[] | null>(null);
   const [kind, setKind] = useState<PlaceKind | 'all'>('all');
-  const [year, setYear] = useState<string | null>(null);
-  const [menu, setMenu] = useState<'kind' | 'year' | 'merge' | null>(null);
+  const [menu, setMenu] = useState<'kind' | 'merge' | null>(null);
   const [showOnce, setShowOnce] = useState(false);
+  const [adding, setAdding] = useState(false);
   // Choosing places that are really one, to merge them.
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -73,15 +75,9 @@ function Places() {
   useFocusEffect(load);
   useEffect(() => onPlacesChanged(load), [load]);
 
-  const years = useMemo(() => {
-    const set = new Set<string>();
-    for (const p of places ?? []) for (const d of p.days) set.add(d.slice(0, 4));
-    return [...set].sort().reverse();
-  }, [places]);
 
-  // Opens on this year when there is anything this year, like the design.
-  const thisYear = String(new Date().getFullYear());
-  const activeYear = year ?? (years.includes(thisYear) ? thisYear : ALL_YEARS);
+  // Every year at once: the year menu gave way to "Add".
+  const activeYear = ALL_YEARS;
 
   const kinds = useMemo(() => {
     const set = new Set<PlaceKind>();
@@ -96,7 +92,7 @@ function Places() {
         place: p,
         days: activeYear === ALL_YEARS ? p.days : p.days.filter((d) => d.startsWith(activeYear)),
       }))
-      .filter((x) => x.days.length > 0)
+      .filter((x) => x.days.length > 0 || x.place.addedByUser)
       .filter((x) => kind === 'all' || x.place.kind === kind);
     list.sort(
       (a, b) =>
@@ -149,7 +145,7 @@ function Places() {
           size={tile}
           radius={18}
           labelSize={14}
-          caption={cap(relativeDay(days[days.length - 1]).replace(/^on /, ''))}
+          caption={days.length ? cap(relativeDay(days[days.length - 1]).replace(/^on /, '')) : 'Added by you'}
           onPress={() => (selecting ? toggle(place.id) : open(place.id))}
           // Always a long-press handler, even while choosing: swapping it out
           // mid-touch (the press that starts choosing) made the finger's
@@ -170,7 +166,11 @@ function Places() {
             label={kind === 'all' ? 'All' : PLACE_KINDS[kind].label}
             onPress={() => setMenu('kind')}
           />
-          <FilterPill label={activeYear} onPress={() => setMenu('year')} />
+          {/* A place Recall hasn't met yet, added here. */}
+          <Pressable style={styles.addBtn} onPress={() => setAdding(true)}>
+            <Ionicons name="add" size={18} color={colors.white} />
+            <Text style={styles.addText}>Add</Text>
+          </Pressable>
         </View>
 
         {(summary || selecting) && (
@@ -243,19 +243,12 @@ function Places() {
           })),
         ]}
       />
-      <ActionMenuSheet
-        visible={menu === 'year'}
-        title="Year"
-        onClose={() => setMenu(null)}
-        actions={[ALL_YEARS, ...years].map((y) => ({
-          key: y,
-          icon: y === activeYear ? 'check' : 'calendar-blank-outline',
-          label: y,
-          onPress: () => {
-            setYear(y);
-            setMenu(null);
-          },
-        }))}
+      <AddPlaceSheet
+        visible={adding}
+        onClose={(added) => {
+          setAdding(false);
+          if (added) load();
+        }}
       />
       {selecting && (
         <View style={styles.mergeBar}>
@@ -328,6 +321,17 @@ function Places() {
 }
 
 const styles = StyleSheet.create({
+  // Same size and corners as the filter pill beside it.
+  addBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  addText: { color: colors.white, fontFamily: fonts.medium, fontSize: 14 },
   safe: { flex: 1, backgroundColor: colors.white },
   body: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 120 },

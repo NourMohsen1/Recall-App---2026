@@ -33,6 +33,7 @@ import {
   offsetOfDay,
   onPlacesChanged,
   relativeDay,
+  removePlace,
   renamePlace,
   setPlaceCover,
   setPlaceKind,
@@ -179,8 +180,8 @@ function PlaceProfile() {
     );
   }
 
-  const last = place.days[place.days.length - 1];
-  const lastLine = place.moments[last] ?? dayLines[last];
+  const last: string | undefined = place.days[place.days.length - 1];
+  const lastLine = last ? (place.moments[last] ?? dayLines[last]) : undefined;
   const hasLocation = place.latitude != null && place.longitude != null;
   const pickable = place.photos.length > 0 ? place.photos : place.dayPhotos;
   const visits = [...place.days].reverse();
@@ -224,6 +225,20 @@ function PlaceProfile() {
     },
     ...(hasLocation
       ? [{ key: 'maps', icon: 'map-outline' as const, label: 'Open in Maps', onPress: openInMaps }]
+      : []),
+    // Only a place with nothing in it yet — one added by hand, by mistake.
+    ...(place.days.length === 0 && place.photos.length === 0
+      ? [
+          {
+            key: 'remove',
+            icon: 'trash-can-outline' as const,
+            label: 'Remove place',
+            onPress: async () => {
+              setMenu(null);
+              if (await removePlace(place.id)) back();
+            },
+          },
+        ]
       : []),
   ];
 
@@ -282,11 +297,14 @@ function PlaceProfile() {
         <View style={styles.nameRow}>
           <Text style={styles.name}>{place.label}</Text>
         </View>
-        <Text style={styles.subtitle}>{describeFrequency(place.days)}</Text>
-        <Text style={styles.lastVisited}>
-          Last visited {relativeDay(last)}
-          {lastLine ? `: ${lastLine}` : ''}
-        </Text>
+        {/* A place added by hand has no visits until a day names it. */}
+        <Text style={styles.subtitle}>{last ? describeFrequency(place.days) : 'Added by you'}</Text>
+        {last && (
+          <Text style={styles.lastVisited}>
+            Last visited {relativeDay(last)}
+            {lastLine ? `: ${lastLine}` : ''}
+          </Text>
+        )}
 
         {(place.kind || chips.length > 0) && (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 16 }}>
@@ -381,9 +399,11 @@ function PlaceProfile() {
           </>
         )}
 
-        <Text style={styles.sectionTitle}>
-          {place.days.length === 1 ? 'Your visit' : `Your visits · ${place.days.length}`}
-        </Text>
+        {visits.length > 0 && (
+          <Text style={styles.sectionTitle}>
+            {place.days.length === 1 ? 'Your visit' : `Your visits · ${place.days.length}`}
+          </Text>
+        )}
         {shownVisits.map((day) => {
           const line = place.moments[day] ?? dayLines[day];
           return (

@@ -81,6 +81,10 @@ function DayDetailScreen() {
   const [editing, setEditing] = useState(false);
   // A note is being dragged: the page holds still under the finger.
   const [dragging, setDragging] = useState(false);
+  // Where People sits on the page, so its search can be lifted above the
+  // keyboard — its suggestions open below the field.
+  const scrollRef = useRef<any>(null);
+  const peopleY = useRef(0);
   const [addingPlace, setAddingPlace] = useState(false);
   const [editTarget, setEditTarget] = useState<LoggedMemory | null>(null);
   const [adding, setAdding] = useState(false);
@@ -397,9 +401,13 @@ function DayDetailScreen() {
 
       <GestureHandlerRootView style={{ flex: 1 }}>
       <ScrollView
+        ref={scrollRef}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!dragging}
+        // A tap on a suggestion lands while the keyboard is up.
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
       >
         {analyzing && <AnalyzingBanner />}
 
@@ -556,7 +564,7 @@ function DayDetailScreen() {
         )}
 
         <View style={styles.divider} />
-        <View style={styles.peopleHeader}>
+        <View style={styles.peopleHeader} onLayout={(e) => (peopleY.current = e.nativeEvent.layout.y)}>
           <Text style={styles.placesTitle}>People</Text>
           {/* Said out loud rather than left as a silent pause — a row that
               gains a face ten seconds after you opened the day is confusing
@@ -572,6 +580,10 @@ function DayDetailScreen() {
           onDismiss={dismissSuggested}
           onAdd={addPerson}
           onRemove={removePerson}
+          onSearchOpen={() =>
+            // After the keyboard starts rising, so the page has room to scroll.
+            setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, peopleY.current - 16), animated: true }), 250)
+          }
         />
 
         {/* Moments — the Smart Icon Reminders, as a labelled row. Always
