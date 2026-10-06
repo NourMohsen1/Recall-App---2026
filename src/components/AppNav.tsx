@@ -36,12 +36,7 @@ export default function AppNav() {
                 : router.dismissTo(t.href as Parameters<typeof router.dismissTo>[0])
             }
           >
-            <Image
-              source={t.icon}
-              style={[styles.icon, t.href === '/chat' && styles.iconWide]}
-              tintColor={colors.primary}
-              resizeMode="contain"
-            />
+            <Image source={t.icon} style={styles.icon} tintColor={colors.primary} resizeMode="contain" />
             <Text style={styles.label}>{t.label}</Text>
           </Pressable>
         ))}
@@ -81,6 +76,5 @@ const styles = StyleSheet.create({
   },
   tab: { flex: 1, alignItems: 'center' },
   icon: { width: 26, height: 26 },
-  iconWide: { width: 31 },
   label: { fontFamily: fonts.regular, fontSize: 11, color: colors.primary, marginTop: 3 },
 });
