@@ -269,6 +269,7 @@ export default function Profile() {
         </View>
         {/* Licences that ask to be credited. */}
         <Text style={styles.credit}>Brain animation model: “Human Brain” by agher08 (Sketchfab), CC BY 4.0</Text>
+        <Text style={styles.credit}>Ear animation model: “Human Ear Model” by ssavish274 (Sketchfab), CC BY 4.0</Text>
       </ScrollView>
     </SafeAreaView>
   );

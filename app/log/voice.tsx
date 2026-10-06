@@ -2,8 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
-  Easing,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -24,8 +22,8 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
+import EarAnimation, { type EarHandle } from '../../src/components/EarAnimation';
 import VoicePlayer from '../../src/components/VoicePlayer';
-import { MISC } from '../../src/images';
 import { TranscriptWord, dateKey, persistFile, saveMemory } from '../../src/memoryLog';
 import { processMemoryIntake } from '../../src/memoryIntake';
 import { recordCurrentLocationForDay } from '../../src/places';
@@ -51,60 +49,22 @@ const LANGUAGES: { key: SpeechLanguage; label: string }[] = [
   { key: 'en', label: 'English' },
 ];
 
-// Looping bars that fake a live waveform while recording — expo-audio's
-// metering API isn't available cross-platform, so this keeps the screen
-// feeling alive without depending on it.
-function LiveWaveform({ active }: { active: boolean }) {
-  const bars = useRef(Array.from({ length: 22 }, () => new Animated.Value(0.3))).current;
-
-  useEffect(() => {
-    if (!active) return;
-    const loops = bars.map((bar, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(bar, {
-            toValue: 0.4 + Math.random() * 0.6,
-            duration: 260 + (i % 5) * 40,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-          Animated.timing(bar, {
-            toValue: 0.2 + Math.random() * 0.3,
-            duration: 260 + (i % 5) * 40,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-        ]),
-      ),
-    );
-    Animated.stagger(30, loops).start();
-    return () => loops.forEach((l) => l.stop());
-  }, [active]);
-
-  return (
-    <View style={styles.waveRow}>
-      {bars.map((bar, i) => (
-        <Animated.View
-          key={i}
-          style={[
-            styles.waveBar,
-            {
-              height: bar.interpolate({ inputRange: [0, 1], outputRange: [8, 54] }),
-              opacity: active ? 1 : 0.35,
-            },
-          ]}
-        />
-      ))}
-    </View>
-  );
+// The microphone's level in decibels (about -160 silent … 0 loudest) as
+// 0–1 for the ear. Speech sits roughly between -50 dB (quiet, far) and
+// -10 dB (close, loud).
+function levelFromDb(db: number | undefined): number {
+  if (db === undefined || !Number.isFinite(db)) return 0;
+  return Math.min(1, Math.max(0, (db + 50) / 40));
 }
 
 export default function LogVoice() {
   // Dark teal screen: white top bar while it shows (src/statusBar.ts).
   useLightStatusBar();
   const returnTo = useReturnTo();
-  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const recorderState = useAudioRecorderState(recorder, 200);
+  // Metering on: the ear follows how loud the user is speaking.
+  const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
+  const recorderState = useAudioRecorderState(recorder, 100);
+  const ear = useRef<EarHandle>(null);
   const [phase, setPhase] = useState<'idle' | 'recording' | 'review'>('idle');
   const [recordedUri, setRecordedUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -128,31 +88,19 @@ export default function LogVoice() {
   const player = useAudioPlayer(recordedUri ?? undefined);
   const playerStatus = useAudioPlayerStatus(player);
 
-  const pulse = useRef(new Animated.Value(1)).current;
+  // While reviewing, the ear steps back so the player and words read clearly.
+  const earDim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    if (phase !== 'recording') {
-      pulse.setValue(1);
-      return;
-    }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1.12,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [phase]);
+    Animated.timing(earDim, { toValue: phase === 'review' ? 0.3 : 1, duration: 500, useNativeDriver: true }).start();
+  }, [phase, earDim]);
+
+  const micLevel = phase === 'recording' ? levelFromDb(recorderState.metering) : 0;
+  const lastLog = useRef(0);
+  useEffect(() => {
+    if (phase !== 'recording' || Date.now() - lastLog.current < 1000) return;
+    lastLog.current = Date.now();
+    console.log(`[ear] mic ${recorderState.metering?.toFixed(1) ?? 'none'} dB → ${micLevel.toFixed(2)}`);
+  }, [phase, recorderState.metering, micLevel]);
 
   const runTranscription = async (uri: string, lang: SpeechLanguage) => {
     if (!canTranscribe) return;
@@ -185,6 +133,8 @@ export default function LogVoice() {
   };
 
   const stopRecording = async () => {
+    // "Got it": what was said condenses into a bead and slips into the ear.
+    ear.current?.saved();
     await recorder.stop();
     const uri = recorder.uri;
     setRecordedUri(uri);
@@ -271,122 +221,119 @@ export default function LogVoice() {
           ))}
         </View>
 
-        <KeyboardAvoidingView
-          style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
-          <ScrollView
-            contentContainerStyle={styles.center}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
+        {/* The ear listens in the space between the language chips and the
+            words below; the rest of the screen stays clear for the controls. */}
+        <View style={styles.fill}>
+          <Animated.View style={[styles.earLayer, { opacity: earDim }]} pointerEvents="none">
+            <EarAnimation ref={ear} mode="voice" active={phase === 'recording'} level={micLevel} style={styles.fill} />
+          </Animated.View>
+
+          <KeyboardAvoidingView
+            style={styles.fill}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           >
-            {phase !== 'review' && (
-              <Animated.View style={{ transform: [{ scale: pulse }] }}>
-                <View style={[styles.brainRing, phase === 'recording' && styles.brainRingActive]}>
-                  <Image source={MISC.brain3d} style={styles.brainImg} resizeMode="contain" />
-                </View>
-              </Animated.View>
-            )}
+            <ScrollView
+              contentContainerStyle={[styles.center, phase !== 'review' && styles.belowEar]}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              {phase !== 'review' && (
+                <Text style={styles.prompt}>
+                  {phase === 'idle' && 'Tap the mic and tell me what happened.'}
+                  {phase === 'recording' && 'I’m listening…'}
+                </Text>
+              )}
 
-            {phase !== 'review' && (
-              <Text style={styles.prompt}>
-                {phase === 'idle' && 'Tap the mic and tell me what happened.'}
-                {phase === 'recording' && 'I’m listening…'}
-              </Text>
-            )}
-
-            {phase === 'recording' && (
-              <>
+              {phase === 'recording' && (
                 <Text style={styles.timer}>{formatTime(recorderState.durationMillis)}</Text>
-                <LiveWaveform active />
-              </>
-            )}
+              )}
 
-            {/* Review — the real, scrubbable player with live transcript */}
-            {phase === 'review' && (
-              <View style={styles.reviewWrap}>
-                <Text style={styles.reviewPrompt}>Got it. Want to save this memory?</Text>
+              {/* Review — the real, scrubbable player with live transcript */}
+              {phase === 'review' && (
+                <View style={styles.reviewWrap}>
+                  <Text style={styles.reviewPrompt}>Got it. Want to save this memory?</Text>
 
-                {transcribing ? (
-                  <View style={styles.transcribingBox}>
-                    <Text style={styles.transcribingText}>Transcribing…</Text>
-                  </View>
-                ) : transcribeError === 'no-credits' ? (
-                  <Text style={styles.errorHint}>
-                    Your OpenAI account has no credits yet — add a prepaid balance at
-                    platform.openai.com → Billing.
-                  </Text>
-                ) : transcribeError === 'rate-limited' ? (
-                  <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
+                  {transcribing ? (
+                    <View style={styles.transcribingBox}>
+                      <Text style={styles.transcribingText}>Transcribing…</Text>
+                    </View>
+                  ) : transcribeError === 'no-credits' ? (
                     <Text style={styles.errorHint}>
-                      Sending requests a bit too fast — tap to try again in a moment.
+                      Your OpenAI account has no credits yet — add a prepaid balance at
+                      platform.openai.com → Billing.
                     </Text>
-                  </Pressable>
-                ) : transcribeError === 'failed' ? (
-                  <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
-                    <Text style={styles.errorHint}>Couldn’t transcribe — tap to try again.</Text>
-                  </Pressable>
-                ) : (
-                  <VoicePlayer
-                    variant="dark"
-                    playing={!!playerStatus?.playing}
-                    currentTime={playerStatus?.currentTime ?? 0}
-                    duration={playerStatus?.duration ?? 0}
-                    onToggle={togglePlayback}
-                    onSeek={(s) => player.seekTo(s)}
-                    words={words}
-                    text={transcript}
-                    note={note.trim() || undefined}
-                  />
-                )}
+                  ) : transcribeError === 'rate-limited' ? (
+                    <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
+                      <Text style={styles.errorHint}>
+                        Sending requests a bit too fast — tap to try again in a moment.
+                      </Text>
+                    </Pressable>
+                  ) : transcribeError === 'failed' ? (
+                    <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
+                      <Text style={styles.errorHint}>Couldn’t transcribe — tap to try again.</Text>
+                    </Pressable>
+                  ) : (
+                    <VoicePlayer
+                      variant="dark"
+                      playing={!!playerStatus?.playing}
+                      currentTime={playerStatus?.currentTime ?? 0}
+                      duration={playerStatus?.duration ?? 0}
+                      onToggle={togglePlayback}
+                      onSeek={(s) => player.seekTo(s)}
+                      words={words}
+                      text={transcript}
+                      note={note.trim() || undefined}
+                    />
+                  )}
 
-                {/* Add a note — always available, even without transcription */}
-                {noteOpen ? (
-                  <TextInput
-                    style={styles.noteInput}
-                    value={note}
-                    onChangeText={setNote}
-                    placeholder="Add a note — clarify or correct something…"
-                    placeholderTextColor="rgba(255,255,255,0.4)"
-                    multiline
-                    autoFocus
-                  />
-                ) : (
-                  <Pressable style={styles.addNoteBtn} onPress={() => setNoteOpen(true)}>
-                    <Ionicons name="create-outline" size={18} color={colors.accent} />
-                    <Text style={styles.addNoteText}>Add a note</Text>
-                  </Pressable>
-                )}
-              </View>
-            )}
-          </ScrollView>
+                  {/* Add a note — always available, even without transcription */}
+                  {noteOpen ? (
+                    <TextInput
+                      style={styles.noteInput}
+                      value={note}
+                      onChangeText={setNote}
+                      placeholder="Add a note — clarify or correct something…"
+                      placeholderTextColor="rgba(255,255,255,0.4)"
+                      multiline
+                      autoFocus
+                    />
+                  ) : (
+                    <Pressable style={styles.addNoteBtn} onPress={() => setNoteOpen(true)}>
+                      <Ionicons name="create-outline" size={18} color={colors.accent} />
+                      <Text style={styles.addNoteText}>Add a note</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            </ScrollView>
 
-          <View style={styles.controls}>
-            {phase === 'idle' && (
-              <Pressable style={styles.micBtn} onPress={startRecording}>
-                <Ionicons name="mic" size={34} color={colors.white} />
-              </Pressable>
-            )}
-
-            {phase === 'recording' && (
-              <Pressable style={styles.stopBtn} onPress={stopRecording}>
-                <View style={styles.stopSquare} />
-              </Pressable>
-            )}
-
-            {phase === 'review' && (
-              <View style={styles.reviewRow}>
-                <Pressable style={styles.discardBtn} onPress={discard}>
-                  <Ionicons name="trash-outline" size={22} color={colors.white} />
+            <View style={styles.controls}>
+              {phase === 'idle' && (
+                <Pressable style={styles.micBtn} onPress={startRecording}>
+                  <Ionicons name="mic" size={34} color={colors.white} />
                 </Pressable>
-                <Pressable style={styles.saveBtn} onPress={save}>
-                  <Ionicons name={saving ? 'hourglass' : 'checkmark'} size={26} color={colors.ink} />
-                  <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Memory'}</Text>
+              )}
+
+              {phase === 'recording' && (
+                <Pressable style={styles.stopBtn} onPress={stopRecording}>
+                  <View style={styles.stopSquare} />
                 </Pressable>
-              </View>
-            )}
-          </View>
-        </KeyboardAvoidingView>
+              )}
+
+              {phase === 'review' && (
+                <View style={styles.reviewRow}>
+                  <Pressable style={styles.discardBtn} onPress={discard}>
+                    <Ionicons name="trash-outline" size={22} color={colors.white} />
+                  </Pressable>
+                  <Pressable style={styles.saveBtn} onPress={save}>
+                    <Ionicons name={saving ? 'hourglass' : 'checkmark'} size={26} color={colors.ink} />
+                    <Text style={styles.saveBtnText}>{saving ? 'Saving…' : 'Save Memory'}</Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          </KeyboardAvoidingView>
+        </View>
       </SafeAreaView>
     </View>
   );
@@ -404,7 +351,8 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: colors.ink,
+    // The ear page's own background, so the scene and screen are one surface.
+    backgroundColor: '#021416',
   },
   header: { paddingVertical: 16, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 18 },
@@ -429,21 +377,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 20,
   },
-  brainRing: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(99,188,198,0.08)',
-    borderWidth: 2,
-    borderColor: 'rgba(99,188,198,0.25)',
-  },
-  brainRingActive: {
-    borderColor: colors.accent,
-    backgroundColor: 'rgba(99,188,198,0.16)',
-  },
-  brainImg: { width: 130, height: 130 },
+  // The ear fills the screen behind everything; the words sit low, under it.
+  // Leaves the bottom ~240 pt to the prompt, timer and mic.
+  earLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 240 },
+  belowEar: { justifyContent: 'flex-end', paddingBottom: 28 },
 
   prompt: {
     fontFamily: fonts.medium,
@@ -458,14 +395,6 @@ const styles = StyleSheet.create({
     color: colors.accent,
     marginTop: 20,
   },
-  waveRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    height: 60,
-    marginTop: 18,
-  },
-  waveBar: { width: 4, borderRadius: 2, backgroundColor: colors.accent },
 
   reviewWrap: { alignSelf: 'stretch' },
   reviewPrompt: {

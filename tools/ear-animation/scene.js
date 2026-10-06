@@ -6,6 +6,12 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const META = {"nv": 64737, "nf": 129024, "lo": [-0.6729673295271948, -1.0000000000000002, -0.17595693476502294], "hi": [0.6729673295271948, 1.0, 0.17595693476502294], "pad": 0, "canal": [-0.3582, -0.1701, -0.176], "dots": [[-0.4252, 0.589, 0.1568], [-0.3573, 0.6943, 0.1551], [-0.2772, 0.7914, 0.1546], [-0.1927, 0.8673, 0.1609], [-0.0838, 0.9305, 0.1645], [0.025, 0.962, 0.1626], [0.1502, 0.9559, 0.1562], [0.2589, 0.9244, 0.1567], [0.3688, 0.8632, 0.1552], [0.4636, 0.7809, 0.1527], [0.5324, 0.6909, 0.1562], [0.5865, 0.5776, 0.1508], [0.6172, 0.4687, 0.1517], [0.6364, 0.3448, 0.1507], [0.6371, 0.2324, 0.1527], [0.6185, 0.109, 0.1601], [0.5928, 0.0002, 0.1621], [0.5519, -0.1168, 0.1645], [0.4994, -0.2289, 0.1608], [0.4487, -0.3284, 0.1553], [0.3861, -0.4362, 0.1437], [0.3236, -0.5302, 0.136], [0.25, -0.6328, 0.1334], [0.1745, -0.7184, 0.1389], [0.0795, -0.8027, 0.1496], [-0.0246, -0.8762, 0.1707]]};
 const LOOP = 12, PH = 4;                       // three phrases per loop, each ends with a save
+// In the app (#app, or window.RECALL_APP) the page draws only the scene and
+// follows what the app sends — the real voice level, the real keys typed, the
+// moment something is saved — through window.recallEar. Without it (the
+// preview) it plays its demo loop.
+const APP = !!window.RECALL_APP || location.hash.includes('app');
+const live = { active: !APP, activeS: APP ? 0 : 1, hist: [], keys: [], savedAt: null };
 const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const SPEED = reduce ? 0.5 : 1;
 const $ = id => document.getElementById(id);
@@ -27,7 +33,23 @@ vec3 safeN(vec3 n){ float l = length(n); return l > 1e-5 ? n/l : vec3(0.0,0.0,1.
 
 /* ---------- voice + typing rhythm (deterministic, loops seamlessly) ---------- */
 function gate(t){ const p = wrap(t, PH); return smooth(seg(p, 0.3, 0.5))*(1 - smooth(seg(p, 2.65, 2.95))); }
+// The live voice: level samples the app sends (~10 a second), read back at
+// any moment of the last few seconds, with a syllable flicker so a steady
+// level still reads as speech.
+function liveLevel(t){
+  const h = live.hist; if (!h.length || t < h[0].t) return 0;
+  for (let i = h.length - 1; i >= 0; i--){
+    if (h[i].t <= t){
+      const a = h[i], b = h[i+1];
+      if (b) return lerp(a.a, b.a, (t - a.t)/Math.max(b.t - a.t, 1e-3));
+      // no newer sample: the app stopped sending — fall quiet rather than hold
+      const gap = t - a.t; return gap < 0.35 ? a.a : a.a*Math.exp(-(gap - 0.35)/0.15);
+    }
+  }
+  return 0;
+}
 function voiceAmp(t){
+  if (APP) return clamp(liveLevel(t)*(0.72 + 0.28*Math.pow(Math.abs(Math.sin(Math.PI*4.5*t + 0.7*Math.sin(TAU*t*0.5))), 0.7)), 0, 1);
   t = wrap(t, LOOP);
   const syl = Math.pow(Math.abs(Math.sin(Math.PI*4.5*t + 0.7*Math.sin(TAU*t*0.5))), 0.7);
   const word = 0.5 + 0.5*Math.sin(TAU*t*1.25 + 1.3*Math.sin(TAU*t/3));
@@ -45,7 +67,9 @@ for (let k=0; k<LOOP/PH; k++){
   }
 }
 function typeAmp(t){
-  let a = 0; t = wrap(t, LOOP);
+  let a = 0;
+  if (APP){ for (const k of live.keys){ const d = t - k.t; if (d >= 0 && d < 0.5) a += Math.exp(-d/0.07); } return clamp(a*0.75, 0, 1); }
+  t = wrap(t, LOOP);
   for (const k of KEYS){ let d = t - k.t; if (d < 0) d += LOOP; if (d < 0.5) a += Math.exp(-d/0.07); }
   return clamp(a*0.75, 0, 1);
 }
@@ -69,13 +93,15 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 /* ---------- background halo ---------- */
-const bgU = { uAmp:{value:0}, uSave:{value:0}, uC:{value:new THREE.Vector2(0.6,0.5)}, uAsp:{value:1} };
+const bgU = { uAmp:{value:0}, uSave:{value:0}, uC:{value:new THREE.Vector2(0.6,0.5)}, uAsp:{value:1}, uEdge:{value: APP ? 1 : 0} };
 const bg = new THREE.Mesh(new THREE.PlaneGeometry(2,2), new THREE.ShaderMaterial({
   depthTest:false, depthWrite:false, uniforms: bgU,
   vertexShader:`varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.9999, 1.0); }`,
-  fragmentShader: GLSL_COMMON + `uniform float uAmp, uSave, uAsp; uniform vec2 uC; varying vec2 vUv;
+  fragmentShader: GLSL_COMMON + `uniform float uAmp, uSave, uAsp, uEdge; uniform vec2 uC; varying vec2 vUv;
     void main(){ vec2 d = (vUv - uC)*vec2(uAsp, 1.0); float r = length(d);
-      vec3 col = vec3(0.008,0.078,0.086) + CY*(0.10 + 0.05*uAmp + 0.06*uSave)*exp(-r*r*3.2);
+      // in the app the glow fades out at the edges, so the scene has no box edge on the screen
+      float edge = mix(1.0, smoothstep(0.0, 0.18, vUv.y)*smoothstep(1.0, 0.82, vUv.y)*smoothstep(0.0, 0.1, vUv.x)*smoothstep(1.0, 0.9, vUv.x), uEdge);
+      vec3 col = vec3(0.008,0.078,0.086) + CY*(0.10 + 0.05*uAmp + 0.06*uSave)*exp(-r*r*3.2)*edge;
       gl_FragColor = vec4(safe(col), 1.0); }`
 }));
 bg.renderOrder = -10; bg.frustumCulled = false; scene.add(bg);
@@ -212,17 +238,28 @@ const bars = new THREE.Mesh(barGeo, new THREE.ShaderMaterial({
 bars.frustumCulled = false; bars.renderOrder = 2; scene.add(bars);
 
 /* ---------- typed letters streaming into the canal ---------- */
+// 64 cells: a–z for the demo; in the app each new character typed (Arabic
+// included) is drawn into the next free cell, the oldest reused after that.
+const GCELL = 64, atlasCv = document.createElement('canvas'); atlasCv.width = atlasCv.height = GCELL*8;
+const atlasCtx = atlasCv.getContext('2d'), glyphCell = new Map(); let nextCell = 26, atlasTex = null;
+function drawGlyph(ch, i){
+  const c = atlasCtx, x = (i%8)*GCELL, y = Math.floor(i/8)*GCELL;
+  c.clearRect(x, y, GCELL, GCELL);
+  c.textAlign = 'center'; c.textBaseline = 'middle'; c.font = `500 ${GCELL*0.62}px Inter, system-ui, sans-serif`;
+  c.shadowColor = 'rgba(111,245,230,0.9)'; c.shadowBlur = 10; c.fillStyle = '#d8fff8'; c.fillText(ch, x + GCELL/2, y + GCELL/2 + 2);
+  c.shadowBlur = 0; c.fillText(ch, x + GCELL/2, y + GCELL/2 + 2);
+}
 function glyphAtlas(){
-  const cell = 64, cv = document.createElement('canvas'); cv.width = cv.height = cell*8;
-  const c = cv.getContext('2d'); c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.font = `500 ${cell*0.62}px Inter, system-ui, sans-serif`;
   const L = 'abcdefghijklmnopqrstuvwxyz';
-  for (let i=0;i<26;i++){
-    const x = (i%8)*cell + cell/2, y = Math.floor(i/8)*cell + cell/2;
-    c.shadowColor = 'rgba(111,245,230,0.9)'; c.shadowBlur = 10; c.fillStyle = '#d8fff8'; c.fillText(L[i], x, y + 2);
-    c.shadowBlur = 0; c.fillText(L[i], x, y + 2);
-  }
-  const t = new THREE.CanvasTexture(cv); t.minFilter = THREE.LinearFilter; t.generateMipmaps = false; return t;
+  for (let i=0;i<26;i++){ drawGlyph(L[i], i); glyphCell.set(L[i], i); }
+  atlasTex = new THREE.CanvasTexture(atlasCv); atlasTex.minFilter = THREE.LinearFilter; atlasTex.generateMipmaps = false; return atlasTex;
+}
+function cellFor(ch){
+  if (glyphCell.has(ch)) return glyphCell.get(ch);
+  const i = nextCell; nextCell = nextCell >= 63 ? 26 : nextCell + 1;
+  for (const [k, v] of glyphCell) if (v === i) glyphCell.delete(k);
+  drawGlyph(ch, i); glyphCell.set(ch, i); if (atlasTex) atlasTex.needsUpdate = true;
+  return i;
 }
 const NG = 48;
 const glyphGeo = new THREE.BufferGeometry();
@@ -295,6 +332,9 @@ async function loadEar(){
 
 /* ---------- layout ---------- */
 let W, H, DPR, qDPR = Math.min(window.devicePixelRatio || 1, 1.75), drops = 0, portrait = false;
+// How high the ear sits in the tall layout: the preview leaves room for its
+// caption below; in the app the space is the ear's alone.
+const EAR_Y = () => APP ? 0.12 : 0.3;
 const EAR_BASE = new THREE.Vector3(0.62, 0.02, 0), FUN_DIR = new THREE.Vector3(-1, 0.06, 0.62).normalize();
 function applySize(){
   DPR = qDPR;
@@ -307,11 +347,13 @@ function applySize(){
 }
 function layout(){
   const r = stage.getBoundingClientRect(); W = Math.max(1, r.width); H = Math.max(1, r.height);
-  camera.aspect = W/H; portrait = W/H < 0.9;
+  // Below about square the wide layout crops the ear: the camera backs off
+  // so the scene's width always fits, and the ear sits a little up.
+  camera.aspect = W/H; portrait = W/H < 1.1;
   camera.setViewOffset(W, H, 0, H*0.07, W, H);
-  camera.position.z = portrait ? 4.6/Math.max(W/H, 0.5)*0.62 : 4.6;
+  camera.position.z = portrait ? 4.6/Math.max(W/H, 0.45)*(APP ? 0.82 : 0.62) : 4.6;
   camera.updateProjectionMatrix();
-  earGroup.position.copy(EAR_BASE); earGroup.scale.setScalar(portrait ? 0.62 : 0.82); if (portrait) earGroup.position.set(0.3, 0.3, 0);
+  earGroup.position.copy(EAR_BASE); earGroup.scale.setScalar(portrait ? 0.62 : 0.82); if (portrait) earGroup.position.set(0.3, EAR_Y(), 0);
   bgU.uAsp.value = W/H;
   applySize();
 }
@@ -322,6 +364,25 @@ function setMode(m){ mode = m; $('bVoice').setAttribute('aria-pressed', m === 'v
 $('bVoice').onclick = () => setMode('voice'); $('bType').onclick = () => setMode('type');
 let paused = false;
 $('pp').onclick = () => { paused = !paused; $('pp').textContent = paused ? 'Play' : 'Pause'; $('pp').setAttribute('aria-label', paused ? 'Play animation' : 'Pause animation'); };
+// What the app calls. All safe to call before the ear has loaded.
+window.recallEar = {
+  setMode(m){ setMode(m === 'type' ? 'type' : 'voice'); },
+  setActive(on){ live.active = !!on; if (!on) live.hist.length = 0; },
+  level(x){ live.hist.push({t: time, a: clamp(+x || 0, 0, 1)}); while (live.hist.length && live.hist[0].t < time - 4) live.hist.shift(); },
+  key(ch){
+    if (typeof ch !== 'string' || !ch) return;
+    for (const c of Array.from(ch).slice(0, 4)){
+      live.keys.push({t: time, g: /\s/.test(c) ? -1 : cellFor(c), r: Math.random()});
+    }
+    while (live.keys.length && live.keys[0].t < time - 2) live.keys.shift();
+  },
+  saved(){ live.savedAt = time; },
+  // for logs and checks: what the scene is doing right now
+  state(){ return { time: +time.toFixed(2), mode, mix: +mix.toFixed(2), active: +live.activeS.toFixed(2), keys: live.keys.length, levels: live.hist.length }; },
+};
+// In the app the WebView already sits where the screen wants it: the
+// page's own safe-area padding would leave dark bands at the top and bottom.
+if (APP){ document.body.classList.add('app'); document.documentElement.style.padding = '0'; }
 let curSub = '';
 function setSub(text, saved){
   if (curSub === text) return; curSub = text;
@@ -353,15 +414,19 @@ function frame(ms){
   const ampNow = lerp(voiceAmp(t - TRAVEL), typeAmp(t - TRAVEL*0.9), mix);
   ampS = lerp(ampS, ampNow, 1 - Math.exp(-dt*14));
 
-  // save beat at the end of each phrase
-  const beadForm = smooth(seg(pl, 2.75, 3.15)), beadIn = easeInOut(seg(pl, 3.15, 3.55));
-  const beadOn = beadForm*(1 - smooth(seg(pl, 3.45, 3.6)));
-  const saveR = lerp(-0.05, 1.25, easeOut(seg(pl, 3.45, 4.0 + 0.6))), saveA = pl > 3.45 ? Math.pow(1 - seg(pl, 3.45, 4.0 + 0.6), 1.3) : 0;
-  const flash = Math.exp(-Math.pow((pl - 3.52)/0.12, 2));
+  // save beat: at the end of each demo phrase, or when the app says saved
+  // (sp runs the same 2.75 → 4.6 beat from that moment)
+  let sp = pl;
+  if (APP){ sp = live.savedAt === null ? -1 : 2.75 + (time - live.savedAt); if (sp > 4.8) live.savedAt = null; }
+  live.activeS = lerp(live.activeS, live.active ? 1 : 0, 1 - Math.exp(-dt*3));
+  const beadForm = smooth(seg(sp, 2.75, 3.15)), beadIn = easeInOut(seg(sp, 3.15, 3.55));
+  const beadOn = beadForm*(1 - smooth(seg(sp, 3.45, 3.6)));
+  const saveR = lerp(-0.05, 1.25, easeOut(seg(sp, 3.45, 4.0 + 0.6))), saveA = sp > 3.45 ? Math.pow(1 - seg(sp, 3.45, 4.0 + 0.6), 1.3) : 0;
+  const flash = Math.exp(-Math.pow((sp - 3.52)/0.12, 2));
 
   // ear: a slow, breathing float
   earGroup.rotation.set(0.05 + Math.sin(t*0.4)*0.03, -0.38 + Math.sin(t*0.27)*0.06, Math.sin(t*0.33)*0.02);
-  earGroup.position.y = (portrait ? 0.3 : 0.02) + Math.sin(t*0.8)*0.025;
+  earGroup.position.y = (portrait ? EAR_Y() : 0.02) + Math.sin(t*0.8)*0.025;
   earGroup.updateMatrixWorld();
   C.copy(canalLocal); earGroup.localToWorld(C);
   EU.uT.value = t; EU.uAmp.value = ampS; EU.uSaveR.value = saveR; EU.uSaveA.value = saveA; EU.uGlow.value = flash*0.8;
@@ -372,14 +437,15 @@ function frame(ms){
   FU.uLen.value = portrait ? 1.35 : 1.95;
 
   // rings: each carries the loudness it was born with
-  const ra = rings.geometry.attributes, base = Math.floor(lt/RSTEP);
+  const ra = rings.geometry.attributes, base = Math.floor(t/RSTEP);
   for (let k=0;k<NR;k++){
-    const j = base - k, born = j*RSTEP, age = lt - born, s = 1 - age/TRAVEL;
+    const j = base - k, born = j*RSTEP, age = t - born, s = 1 - age/TRAVEL;
     const a = lerp(voiceAmp(born), typeAmp(born)*0.6, mix);
     ra.iS.setX(k, s >= 0 ? s : -1); ra.iA.setX(k, s >= 0 ? Math.max(a, 0.05) : 0);
   }
   ra.iS.needsUpdate = ra.iA.needsUpdate = true;
-  rings.material.uniforms.uVis.value = lerp(1, 0.55, mix);
+  // at rest (before the mic, or the keyboard) the funnel fades away
+  rings.material.uniforms.uVis.value = lerp(1, 0.55, mix)*live.activeS;
 
   // waveform bars: the voice in flight toward the canal
   const bh = bars.geometry.attributes.iH, bs = bars.geometry.attributes.iS;
@@ -390,9 +456,9 @@ function frame(ms){
   // typed letters spiralling in
   const ga = glyphGeo.attributes; let n = 0;
   if (mix > 0.01){
-    for (const k of KEYS){
-      let age = lt - k.t; if (age < 0) age += LOOP;
-      const T = 1.45; if (age > T || n >= NG) continue;
+    for (const k of (APP ? live.keys : KEYS)){
+      let age = APP ? t - k.t : lt - k.t; if (age < 0) age += LOOP;
+      const T = 1.45; if (age > T || n >= NG || k.g < 0) continue;
       const s = 1 - easeInOut(age/T)*0.97, R = lerp(0.05, 0.42, s)*(0.4 + 0.6*k.r);
       const th = k.r*TAU + (1 - s)*3.2;
       tmp.copy(C).addScaledVector(D, FU.uLen.value*s*0.92).addScaledVector(U, Math.cos(th)*R).addScaledVector(Vv, Math.sin(th)*R);
@@ -407,12 +473,12 @@ function frame(ms){
   glyphs.visible = mix > 0.01;
 
   // rim dots: a level meter from the lobe up, then a full sweep when saved
-  const da = dots.geometry.attributes, lvl = ampS*NDOT*1.15, sweep = seg(pl, 3.45, 4.15)*(NDOT + 6);
+  const da = dots.geometry.attributes, lvl = ampS*NDOT*1.15, sweep = seg(sp, 3.45, 4.15)*(NDOT + 6);
   for (let i=0;i<NDOT;i++){
     const fromLobe = NDOT - 1 - i;
     let a = 0.3 + 0.12*Math.sin(t*2 + i*0.7);
     a += clamp(lvl - fromLobe, 0, 1)*0.85;
-    const sw = pl > 3.45 ? Math.exp(-Math.pow((fromLobe - sweep + 3)/2.2, 2)) : 0;
+    const sw = sp > 3.45 ? Math.exp(-Math.pow((fromLobe - sweep + 3)/2.2, 2)) : 0;
     a = clamp(a + sw, 0, 1.4);
     da.aAlpha.setX(i, a); da.aSize.setX(i, 8 + 7*clamp(lvl - fromLobe, 0, 1) + 8*sw);
     da.aCol.setXYZ(i, lerp(0.44, 0.85, sw), lerp(0.96, 1.0, sw), lerp(0.90, 0.97, sw));
@@ -436,7 +502,7 @@ function frame(ms){
     const R = d.r*(0.25 + 0.75*s);
     tmp.copy(C).addScaledVector(D, 2.4*s).addScaledVector(U, Math.cos(d.a + s*2)*R).addScaledVector(Vv, Math.sin(d.a + s*2)*R);
     dda.position.setXYZ(i, tmp.x, tmp.y, tmp.z); dda.aSize.setX(i, d.sz); dda.aCol.setXYZ(i, 0.44, 0.96, 0.9);
-    dda.aAlpha.setX(i, 0.35*smooth(seg(s, 0.02, 0.2))*smooth(seg(1 - s, 0.0, 0.3)));
+    dda.aAlpha.setX(i, 0.35*smooth(seg(s, 0.02, 0.2))*smooth(seg(1 - s, 0.0, 0.3))*(0.35 + 0.65*live.activeS));
   }
   dda.position.needsUpdate = dda.aAlpha.needsUpdate = true;
 
@@ -464,6 +530,7 @@ function frame(ms){
     try { await renderer.compileAsync(scene, camera); } catch(e){ renderer.compile(scene, camera); }
     composer.render();
     glc.classList.add('on');
+    window.ReactNativeWebView?.postMessage('ready');
     msg.style.opacity = 0; setTimeout(() => msg.remove(), 700);
     requestAnimationFrame(ms => { last = lastMs = ms; frame(ms); });
   } catch(e){ msg.textContent = 'Couldn’t load the ear model.'; console.error(e); }
