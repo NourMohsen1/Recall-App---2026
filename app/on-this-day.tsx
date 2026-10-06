@@ -86,6 +86,12 @@ function DayCard({
 }) {
   const router = useRouter();
   const lines = memories.map(memoryDisplayText).filter(Boolean) as string[];
+  // The card is a fixed height, and notes vary — three two-line notes don't
+  // fit. Each note is measured, and one that wouldn't fit whole is left for
+  // the day page rather than drawn over the footer.
+  const [bodyH, setBodyH] = useState(0);
+  const [rowBottoms, setRowBottoms] = useState<Record<number, number>>({});
+  const fits = (i: number) => i === 0 || !bodyH || rowBottoms[i] == null || rowBottoms[i] <= bodyH;
   const uris = memories.filter((m) => m.kind === 'photo').flatMap((m) => m.photoUris ?? []);
   const camera = uris.find((u) => !sources[u]);
   const photo = camera ?? uris[0];
@@ -123,7 +129,7 @@ function DayCard({
         )}
       </View>
 
-      <View style={styles.body}>
+      <View style={[styles.body, styles.clipBody]} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
         {!(lines.length === 0 && guess) && <Text style={styles.kicker}>YOUR DAY</Text>}
         {lines.length === 0 && guess ? (
           // Dashed and tinted, like every guess in Recall — never mistaken
@@ -139,7 +145,14 @@ function DayCard({
           </View>
         ) : lines.length > 0 ? (
           lines.slice(0, 3).map((l, i) => (
-            <View key={i} style={styles.lineRow}>
+            <View
+              key={i}
+              style={[styles.lineRow, !fits(i) && styles.lineHidden]}
+              onLayout={(e) => {
+                const bottom = Math.ceil(e.nativeEvent.layout.y + e.nativeEvent.layout.height);
+                setRowBottoms((b) => (b[i] === bottom ? b : { ...b, [i]: bottom }));
+              }}
+            >
               <View style={styles.lineDot} />
               <Text numberOfLines={2} style={[styles.lineText, rtlIfArabic(l)]}>
                 {l}
@@ -218,6 +231,13 @@ function NewsCard({
 }) {
   const [liked, setLiked] = useState(false);
   const [hidden, setHidden] = useState(false);
+  // A long headline leaves less room: the summary gets the lines that are
+  // left above the footer, never more.
+  const [bodyH, setBodyH] = useState(0);
+  const [headBottom, setHeadBottom] = useState(0);
+  const SUMMARY_LINE = 20;
+  const summaryLines =
+    bodyH && headBottom ? Math.min(3, Math.floor((bodyH - headBottom - 6) / SUMMARY_LINE)) : 3;
 
   const topicChip = (
     <View style={styles.topicChip}>
@@ -286,14 +306,24 @@ function NewsCard({
       <Pressable style={styles.media} onPress={onMore}>
         <NewsImage uri={item.image} topicKey={topic.key} />
       </Pressable>
-      <Pressable style={styles.body} onPress={onMore}>
+      <Pressable
+        style={[styles.body, styles.clipBody]}
+        onPress={onMore}
+        onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}
+      >
         {topicChip}
-        <Text numberOfLines={3} style={styles.headline}>
+        <Text
+          numberOfLines={3}
+          style={styles.headline}
+          onLayout={(e) => setHeadBottom(Math.ceil(e.nativeEvent.layout.y + e.nativeEvent.layout.height))}
+        >
           {item.headline}
         </Text>
-        <Text numberOfLines={3} style={styles.summary}>
-          {item.summary}
-        </Text>
+        {summaryLines > 0 && (
+          <Text numberOfLines={summaryLines} style={styles.summary}>
+            {item.summary}
+          </Text>
+        )}
       </Pressable>
       <View style={styles.footer}>
         <View style={styles.feedback}>
@@ -776,8 +806,12 @@ const styles = StyleSheet.create({
   },
   mediaTagText: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.ink },
   body: { flex: 1, paddingHorizontal: 18, paddingTop: 16 },
+  // Cards are a fixed height; nothing may spill into the footer.
+  clipBody: { overflow: 'hidden' },
   kicker: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: colors.teal, marginBottom: 10 },
   lineRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  // Still laid out (so it stays measured), just not seen.
+  lineHidden: { opacity: 0 },
   lineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.teal, marginTop: 8 },
   lineText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#3E4647' },
   muted: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#8B9394' },
