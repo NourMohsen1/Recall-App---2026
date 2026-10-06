@@ -329,7 +329,9 @@ async function listTasks(args: { status?: string }): Promise<ToolResult> {
     tasks: filtered.slice(0, 30).map((t) => ({
       title: t.title,
       notes: t.notes,
-      due: t.dueDate ? { date: t.dueDate, when: spokenWhen(t.dueDate), time: t.dueTime } : null,
+      due: t.dueDate
+        ? { date: t.dueDate, when: spokenWhen(t.dueDate), time: t.dueTime, part_of_day: t.duePeriod }
+        : null,
       done: t.done,
       came_from: t.source === 'memory' ? t.sourceText : undefined,
     })),

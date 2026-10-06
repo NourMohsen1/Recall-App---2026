@@ -15,6 +15,7 @@ import { startPhotoAnalysis } from '../src/photoAnalysisQueue';
 import { installFaceEmbedder } from '../src/faceEmbedderTflite';
 import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
+import { refreshTaskReminders } from '../src/tasks';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImport';
 import { syncRecapNotifications } from '../src/recapNotifications';
@@ -53,6 +54,9 @@ function RootLayout() {
   // places, quietly. Needs no model, so it does not wait for the faces.
   useEffect(() => {
     startPlaceIndexing();
+    // Tasks saved before reminders moved ahead of the time get re-planned
+    // once (no-op after that).
+    refreshTaskReminders();
   }, []);
 
   // "Your recap is ready": keep the schedule matching Profile's switches,

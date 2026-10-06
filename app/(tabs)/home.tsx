@@ -12,7 +12,7 @@ import { syncNewPhotosIfOn } from '../../src/photoImport';
 import { getPhotoReading } from '../../src/photoReading';
 import { LoggedMemory, dateKey, getMemoriesByDay, isManualLog, memoryDisplayText } from '../../src/memoryLog';
 import { getAllDayPlaces } from '../../src/places';
-import { getTasks, type StoredTask } from '../../src/tasks';
+import { getTasks, taskClock, type StoredTask } from '../../src/tasks';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
@@ -71,7 +71,7 @@ export default function Home() {
         const today = dateKey(new Date());
         const next = tasks
           .filter((t) => !t.done && t.dueDate && t.dueDate >= today)
-          .sort((a, b) => (a.dueDate! + (a.dueTime ?? '')).localeCompare(b.dueDate! + (b.dueTime ?? '')))[0];
+          .sort((a, b) => (a.dueDate! + (taskClock(a) ?? '')).localeCompare(b.dueDate! + (taskClock(b) ?? '')))[0];
         setNextTask(next ?? null);
       });
       // Someone who had Recall before this question existed is asked once,

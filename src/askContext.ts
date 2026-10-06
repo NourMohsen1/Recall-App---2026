@@ -5,7 +5,7 @@ import { getLoggedMemories, shownMemories } from './memoryLog';
 import { getAllGuesses } from './guessedPeople';
 import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
 import { getAllDayPlaces, getPlaces, usualWeekday } from './places';
-import { formatDueTime, getTasks } from './tasks';
+import { getTasks, taskTimeLabel } from './tasks';
 import { getUserProfile, identityForPrompt } from './userProfile';
 import { ResolvedEvent, daysOfEvent } from './worldEvents';
 
@@ -561,7 +561,7 @@ export async function buildMemoryContext(
   if (tasks.length > 0) {
     const taskLines = tasks.map((t) => {
       const due = t.dueDate
-        ? `, due ${t.dueDate}${t.dueTime ? ` at ${formatDueTime(t.dueTime)}` : ''}`
+        ? `, due ${t.dueDate}${taskTimeLabel(t) ? ` (${taskTimeLabel(t)})` : ''}`
         : '';
       return `- ${t.title} (${t.done ? 'done' : 'not done'})${due}`;
     });

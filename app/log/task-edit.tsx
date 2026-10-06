@@ -1,77 +1,100 @@
 import { useEffect, useState } from 'react';
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import WheelPicker from '../../src/components/WheelPicker';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import ActionMenuSheet, { type MenuAction } from '../../src/components/ActionMenuSheet';
+import CalendarSheet from '../../src/components/CalendarSheet';
 import { MONTHS_SHORT, WEEKDAYS } from '../../src/data';
-import { deleteTask, getTask, updateTask } from '../../src/tasks';
+import { reminderLabel, reminderOptions } from '../../src/taskNotifications';
+import {
+  PERIOD_START,
+  addTask,
+  deleteTask,
+  extractTasks,
+  getTask,
+  taskExtractionAvailable,
+  taskTimeLabel,
+  updateTask,
+  type DayPeriod,
+  type ReminderChoice,
+} from '../../src/tasks';
 import { colors, fonts } from '../../src/theme';
 
-function localDate(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
-    d.getDate(),
-  ).padStart(2, '0')}`;
-}
+// One screen for a task, new (the + on Tasks) or existing: its name, when
+// it is, when to be reminded, and notes.
+//
+// The time is Apple's own wheel — the one in Clock's alarms — opened under
+// the Time row, as Calendar and Reminders do. A task has no time until one
+// is set: most tasks are "tomorrow", not "tomorrow at 2:00".
 
-// The next two weeks as pickable chips — covers almost every real task
-// without needing a full calendar widget.
-function upcomingDays(count: number) {
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    return {
-      key: localDate(d),
-      label:
-        i === 0
-          ? 'Today'
-          : i === 1
-            ? 'Tomorrow'
-            : `${WEEKDAYS[d.getDay()].slice(0, 3)} ${MONTHS_SHORT[d.getMonth()]} ${d.getDate()}`,
-    };
-  });
+function localDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function dateLabel(dueDate: string): string {
-  const found = upcomingDays(15).find((d) => d.key === dueDate);
-  if (found) return found.label;
+  const today = new Date();
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+  if (dueDate === localDate(today)) return 'Today';
+  if (dueDate === localDate(tomorrow)) return 'Tomorrow';
   const [y, m, d] = dueDate.split('-').map(Number);
   const date = new Date(y, m - 1, d);
-  return `${WEEKDAYS[date.getDay()].slice(0, 3)} ${MONTHS_SHORT[date.getMonth()]} ${date.getDate()}`;
+  const year = y !== today.getFullYear() ? `, ${y}` : '';
+  const month = MONTHS_SHORT[date.getMonth()];
+  return `${WEEKDAYS[date.getDay()].slice(0, 3)}, ${month.charAt(0)}${month.slice(1).toLowerCase()} ${d}${year}`;
 }
 
-const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1));
-const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0'));
-const AMPM = ['AM', 'PM'];
+function hhmm(d: Date): string {
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function timeAsDate(t: string): Date {
+  const [h, m] = t.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+/** The next whole hour — where the wheel starts for a task with no time. */
+function nextHour(): string {
+  const d = new Date();
+  return `${String((d.getHours() + 1) % 24).padStart(2, '0')}:00`;
+}
+
+// Worth asking the AI about: the name mentions a day or a time
+// ("dentist tomorrow at 2", "بكرة", "bokra"). Otherwise saving stays instant.
+const SOUNDS_DATED =
+  /\d|today|tonight|tomorrow|morning|afternoon|evening|night|noon|next|mon|tue|wed|thu|fri|sat|sun|week|month|بكر|النهارد|الليل|الصبح|العصر|الضهر|المغرب|الساعة|الاسبوع|الأسبوع|يوم|bokra|bukra|el sa3a|elsa3a|ba3d/i;
 
 export default function TaskEdit() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const isNew = !id;
 
-  const [loaded, setLoaded] = useState(false);
+  const [loaded, setLoaded] = useState(isNew);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [dueDate, setDueDate] = useState<string | undefined>(undefined);
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dueDate, setDueDate] = useState<string | undefined>();
+  const [dueTime, setDueTime] = useState<string | undefined>();
+  const [duePeriod, setDuePeriod] = useState<DayPeriod | undefined>();
+  const [reminder, setReminder] = useState<ReminderChoice | undefined>();
+  const [remindEarly, setRemindEarly] = useState(false);
+  const [timeOpen, setTimeOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [reminderMenu, setReminderMenu] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // The alarm-style wheel: hour / minute / AM-PM, plus a "Remind me" switch
-  // (like Snooze) deciding whether the time counts at all.
-  const [hourIdx, setHourIdx] = useState(8); // 9 o'clock
-  const [minIdx, setMinIdx] = useState(0);
-  const [pmIdx, setPmIdx] = useState(0); // AM
-  const [remind, setRemind] = useState(true);
 
   useEffect(() => {
     if (!id) return;
@@ -83,35 +106,86 @@ export default function TaskEdit() {
       setTitle(task.title);
       setNotes(task.notes ?? '');
       setDueDate(task.dueDate);
-      if (task.dueTime) {
-        const [h, m] = task.dueTime.split(':').map(Number);
-        setPmIdx(h >= 12 ? 1 : 0);
-        setHourIdx((h % 12 || 12) - 1);
-        setMinIdx(m);
-        setRemind(true);
-      } else {
-        setRemind(false);
-      }
+      setDueTime(task.dueTime);
+      setDuePeriod(task.dueTime ? undefined : task.duePeriod);
+      setReminder(task.reminder);
+      setRemindEarly(!!task.remindEarly);
+      // A task at a time opens with its wheel showing, like an alarm.
+      setTimeOpen(!!task.dueTime);
       setLoaded(true);
     });
   }, [id]);
 
-  const wheelTime = (): string => {
-    const h24 = ((hourIdx + 1) % 12) + (pmIdx === 1 ? 12 : 0);
-    return `${String(h24).padStart(2, '0')}:${MINUTES[minIdx]}`;
+  const when = { title, dueDate, dueTime, duePeriod, reminder, remindEarly };
+
+  // A reminder choice that no longer fits ("15 minutes before" once the
+  // time is gone) falls back to the default.
+  const keepReminderIfFits = (next: { dueTime?: string; duePeriod?: DayPeriod }) => {
+    if (reminder && !reminderOptions({ ...when, ...next }).some((o) => o.key === reminder)) setReminder(undefined);
+  };
+
+  const setTime = (t: string) => {
+    setDueTime(t);
+    setDuePeriod(undefined);
+    if (!dueDate) setDueDate(localDate(new Date()));
+    keepReminderIfFits({ dueTime: t, duePeriod: undefined });
+  };
+
+  const toggleTime = () => {
+    Keyboard.dismiss();
+    if (timeOpen) {
+      setTimeOpen(false);
+      return;
+    }
+    // Opening the wheel is choosing to give the task a time: it starts at
+    // the part of the day already said, or the next hour.
+    if (!dueTime) setTime(duePeriod ? PERIOD_START[duePeriod] : nextHour());
+    setTimeOpen(true);
+  };
+
+  const removeTime = () => {
+    setDueTime(undefined);
+    setDuePeriod(undefined);
+    setTimeOpen(false);
+    keepReminderIfFits({ dueTime: undefined, duePeriod: undefined });
   };
 
   const save = async () => {
     const trimmed = title.trim();
-    if (!trimmed || saving || !id) return;
+    if (!trimmed || saving) return;
     setSaving(true);
-    await updateTask(id, {
+    const fields = {
       title: trimmed,
       notes: notes.trim() || undefined,
       dueDate,
-      // A time only means something when there's a date and the reminder is on.
-      dueTime: dueDate && remind ? wheelTime() : undefined,
-    });
+      dueTime: dueDate ? dueTime : undefined,
+      duePeriod: dueDate && !dueTime ? duePeriod : undefined,
+      reminder,
+    };
+    if (id) {
+      await updateTask(id, fields);
+    } else {
+      // "Dentist tomorrow at 2" typed as the name, with no date picked:
+      // Recall reads the day and time from the words, as it does for logs.
+      // A date the user picked is never overridden.
+      if (!dueDate && SOUNDS_DATED.test(trimmed) && taskExtractionAvailable()) {
+        const parsed = await Promise.race([
+          extractTasks(trimmed),
+          new Promise<null>((r) => setTimeout(() => r(null), 8000)),
+        ]);
+        const found = parsed?.length === 1 ? parsed[0] : undefined;
+        if (found?.dueDate) {
+          console.log(`[tasks] read "${trimmed}" as ${found.dueDate} ${found.dueTime ?? found.duePeriod ?? ''}`);
+          Object.assign(fields, {
+            title: found.title || trimmed,
+            dueDate: found.dueDate,
+            dueTime: found.dueTime,
+            duePeriod: found.duePeriod,
+          });
+        }
+      }
+      await addTask({ ...fields, source: 'manual' });
+    }
     // Always opened from the Tasks tab — an explicit target instead of
     // back()/canGoBack(), which don't reliably restore the active tab (see
     // day/[offset]/index.tsx for why).
@@ -137,130 +211,123 @@ export default function TaskEdit() {
     return <SafeAreaView style={styles.safe} edges={['top']} />;
   }
 
+  const chosenLabel = reminderLabel(when);
+  const reminderActions: MenuAction[] = reminderOptions(when).map((o) => {
+    const chosen = o.label === chosenLabel;
+    return {
+      key: o.key,
+      icon: chosen ? 'check-circle' : o.key === 'none' ? 'bell-off-outline' : 'bell-outline',
+      label: o.label,
+      onPress: () => {
+        // "Evening before & 2 hours before" is the default for saved
+        // tickets — choosing it is choosing the default.
+        setReminder(o.key === 'early' ? undefined : o.key);
+        setReminderMenu(false);
+      },
+    };
+  });
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      {/* Cancel · title · Save — like the alarm editor */}
       <View style={styles.header}>
         <Pressable onPress={() => router.dismissTo('/tasks')} hitSlop={10}>
           <Text style={styles.headerAction}>Cancel</Text>
         </Pressable>
-        <Text style={styles.headerTitle}>Edit Task</Text>
+        <Text style={styles.headerTitle}>{isNew ? 'New Task' : 'Edit Task'}</Text>
         <Pressable onPress={save} hitSlop={10} disabled={!title.trim() || saving}>
-          <Text
-            style={[
-              styles.headerAction,
-              styles.headerSave,
-              (!title.trim() || saving) && { opacity: 0.4 },
-            ]}
-          >
-            {saving ? 'Saving…' : 'Save'}
+          <Text style={[styles.headerAction, styles.headerSave, (!title.trim() || saving) && { opacity: 0.4 }]}>
+            {saving ? 'Saving…' : isNew ? 'Add' : 'Save'}
           </Text>
         </Pressable>
       </View>
 
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-          {/* Task name front and center */}
           <TextInput
             style={styles.titleInput}
             value={title}
             onChangeText={setTitle}
             placeholder="Task name"
             placeholderTextColor="#9AA4A5"
+            autoFocus={isNew}
             multiline
           />
 
-          {/* The time wheel — always live, exactly like the alarm screen.
-              Picking a time here sets the due date to today automatically
-              if none is chosen yet, so spinning it just works right away. */}
-          <View style={styles.wheelCard}>
-            <View style={styles.wheelRow}>
-              <WheelPicker
-                items={HOURS}
-                index={hourIdx}
-                onChange={(i) => {
-                  setHourIdx(i);
-                  if (!dueDate) setDueDate(localDate(new Date()));
-                }}
-                width={76}
-              />
-              <WheelPicker
-                items={MINUTES}
-                index={minIdx}
-                onChange={(i) => {
-                  setMinIdx(i);
-                  if (!dueDate) setDueDate(localDate(new Date()));
-                }}
-                width={76}
-              />
-              <WheelPicker
-                items={AMPM}
-                index={pmIdx}
-                onChange={(i) => {
-                  setPmIdx(i);
-                  if (!dueDate) setDueDate(localDate(new Date()));
-                }}
-                width={70}
-              />
-            </View>
-          </View>
-
-          {/* Grouped settings, alarm-style */}
+          {/* When — the day, the time, and the reminder that follows from them */}
           <View style={styles.group}>
-            <Pressable style={styles.row} onPress={() => setDatePickerOpen((v) => !v)}>
-              <Text style={styles.rowLabel}>Due date</Text>
+            <Pressable
+              style={styles.row}
+              onPress={() => {
+                Keyboard.dismiss();
+                setCalendarOpen(true);
+              }}
+            >
+              <View style={styles.rowLead}>
+                <MaterialCommunityIcons name="calendar-blank-outline" size={20} color={colors.teal} />
+                <Text style={styles.rowLabel}>Date</Text>
+              </View>
               <View style={styles.rowValueWrap}>
-                <Text style={styles.rowValue}>{dueDate ? dateLabel(dueDate) : 'None'}</Text>
-                <Ionicons
-                  name={datePickerOpen ? 'chevron-down' : 'chevron-forward'}
-                  size={16}
-                  color="#B4B8B8"
-                />
+                <Text style={[styles.rowValue, dueDate && styles.rowValueSet]}>
+                  {dueDate ? dateLabel(dueDate) : 'None'}
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="#B4B8B8" />
               </View>
             </Pressable>
 
-            {datePickerOpen && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.dateChips}
-              >
-                <Pressable
-                  onPress={() => setDueDate(undefined)}
-                  style={[styles.chip, !dueDate && styles.chipActive]}
-                >
-                  <Text style={[styles.chipText, !dueDate && styles.chipTextActive]}>No date</Text>
+            <Pressable style={[styles.row, styles.rowBorder]} onPress={toggleTime}>
+              <View style={styles.rowLead}>
+                <MaterialCommunityIcons name="clock-outline" size={20} color={colors.teal} />
+                <Text style={styles.rowLabel}>Time</Text>
+              </View>
+              <View style={styles.rowValueWrap}>
+                <Text style={[styles.rowValue, (dueTime || duePeriod) && styles.rowValueSet]}>
+                  {taskTimeLabel({ dueTime, duePeriod }) ?? 'None'}
+                </Text>
+                <Ionicons name={timeOpen ? 'chevron-down' : 'chevron-forward'} size={16} color="#B4B8B8" />
+              </View>
+            </Pressable>
+
+            {timeOpen && dueTime && (
+              <View style={styles.wheelWrap}>
+                <DateTimePicker
+                  value={timeAsDate(dueTime)}
+                  mode="time"
+                  display="spinner"
+                  themeVariant="light"
+                  textColor="#1B1B1B"
+                  onValueChange={(_, d) => setTime(hhmm(d))}
+                  style={styles.wheel}
+                />
+                <Pressable onPress={removeTime} hitSlop={8} style={styles.removeTime}>
+                  <Text style={styles.removeTimeText}>Remove time</Text>
                 </Pressable>
-                {upcomingDays(14).map((d) => (
-                  <Pressable
-                    key={d.key}
-                    onPress={() => setDueDate(d.key)}
-                    style={[styles.chip, dueDate === d.key && styles.chipActive]}
-                  >
-                    <Text style={[styles.chipText, dueDate === d.key && styles.chipTextActive]}>
-                      {d.label}
-                    </Text>
-                  </Pressable>
-                ))}
-              </ScrollView>
+              </View>
             )}
 
-            <View style={[styles.row, styles.rowBorder]}>
-              <Text style={styles.rowLabel}>Remind me</Text>
-              <Switch
-                value={remind}
-                onValueChange={setRemind}
-                trackColor={{ false: '#DCE0E0', true: colors.accent }}
-                thumbColor={colors.white}
-                disabled={!dueDate}
-              />
-            </View>
+            {dueDate && (
+              <Pressable
+                style={[styles.row, styles.rowBorder]}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setReminderMenu(true);
+                }}
+              >
+                <View style={styles.rowLead}>
+                  <MaterialCommunityIcons
+                    name={reminder === 'none' ? 'bell-off-outline' : 'bell-outline'}
+                    size={20}
+                    color={colors.teal}
+                  />
+                  <Text style={styles.rowLabel}>Reminder</Text>
+                </View>
+                <View style={styles.rowValueWrap}>
+                  <Text style={[styles.rowValue, styles.rowValueSet]}>{reminderLabel(when)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color="#B4B8B8" />
+                </View>
+              </Pressable>
+            )}
           </View>
 
-          {/* Notes / description */}
           <View style={styles.group}>
             <Text style={[styles.rowLabel, styles.notesLabel]}>Notes</Text>
             <TextInput
@@ -274,11 +341,35 @@ export default function TaskEdit() {
             />
           </View>
 
-          <Pressable style={styles.deleteBtn} onPress={remove}>
-            <Text style={styles.deleteText}>Delete Task</Text>
-          </Pressable>
+          {!isNew && (
+            <Pressable style={styles.deleteBtn} onPress={remove}>
+              <Text style={styles.deleteText}>Delete Task</Text>
+            </Pressable>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <CalendarSheet
+        visible={calendarOpen}
+        value={dueDate}
+        onPick={(day) => {
+          setDueDate(day);
+          if (!day) {
+            // No day, no time: a time only means something on a day.
+            setDueTime(undefined);
+            setDuePeriod(undefined);
+            setTimeOpen(false);
+            setReminder(undefined);
+          }
+        }}
+        onClose={() => setCalendarOpen(false)}
+      />
+      <ActionMenuSheet
+        visible={reminderMenu}
+        title="Remind me"
+        actions={reminderActions}
+        onClose={() => setReminderMenu(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -312,15 +403,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  wheelCard: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    marginTop: 14,
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  wheelRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-
   group: { backgroundColor: colors.white, borderRadius: 16, marginTop: 14 },
   row: {
     flexDirection: 'row',
@@ -330,22 +412,16 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   rowBorder: { borderTopWidth: 1, borderTopColor: '#EFF1F1' },
+  rowLead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   rowLabel: { fontFamily: fonts.medium, fontSize: 15, color: '#1B1B1B' },
-  rowValueWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  rowValue: { fontFamily: fonts.regular, fontSize: 15, color: '#8B9394' },
+  rowValueWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, marginLeft: 12 },
+  rowValue: { fontFamily: fonts.regular, fontSize: 15, color: '#8B9394', flexShrink: 1, textAlign: 'right' },
+  rowValueSet: { color: colors.teal },
 
-  dateChips: { gap: 8, paddingHorizontal: 16, paddingBottom: 14 },
-  chip: {
-    borderWidth: 1,
-    borderColor: '#D5DBDB',
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    backgroundColor: colors.white,
-  },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontFamily: fonts.regular, fontSize: 13, color: '#3E4647' },
-  chipTextActive: { color: colors.white, fontFamily: fonts.medium },
+  wheelWrap: { alignItems: 'center', paddingBottom: 12 },
+  wheel: { width: 320, height: 216 },
+  removeTime: { paddingVertical: 4, paddingHorizontal: 10 },
+  removeTimeText: { fontFamily: fonts.medium, fontSize: 14, color: '#8B9394' },
 
   notesLabel: { paddingHorizontal: 16, paddingTop: 14 },
   notesInput: {

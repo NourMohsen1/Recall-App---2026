@@ -129,6 +129,20 @@ on the same days. Unnamed spots show Apple's landmark/street label — the only
 thing that leaves the phone. A background sweep (`startPlaceIndexing`) reads
 locations of older photos and files everything.
 
+**Tasks and reminders** (`src/tasks.ts`, `src/taskNotifications.ts`,
+`app/log/task-edit.tsx`, Oct 2026). A task's time is when it *happens*; the
+reminder comes before it, and is automatic — there is no "Remind me" switch.
+Defaults (`planTaskReminders`): a time → 1 hour before; from a saved
+ticket/letter (`remindEarly`) → the evening before and 2 hours before; a
+date and a part of the day → when that part starts (afternoon → 1 pm); a
+date only → 9 am. A task added too late for its reminder still gets one.
+"Tomorrow afternoon" is stored as `duePeriod`, shown as "Afternoon" — never
+turned into a made-up "3:00 PM". The + on Tasks opens the same editor as
+editing; a name like "dentist tomorrow at 2" with no date picked is read by
+the AI on save. The time wheel is Apple's own
+(`@react-native-community/datetimepicker`, native — changing it needs a
+rebuild).
+
 **Attachments** (`src/attachments.ts`, `app/log/attachment.tsx`): a screenshot
 or PDF saved as a `document` memory. The local native module
 `modules/text-reader` reads its text on the phone (Vision + PDFKit); only the

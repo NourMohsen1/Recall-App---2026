@@ -16,7 +16,7 @@ import {
   recordNamedPlaceForDay,
   type PlaceKind,
 } from './places';
-import { ParsedTask, addTask } from './tasks';
+import { ParsedTask, addTask, isDayPeriod } from './tasks';
 import { chatCompletion, textAvailable, textProviders } from './aiProviders';
 import { transcribeAudio, transcriptionAvailable } from './transcription';
 import { getUserProfile, identityForPrompt } from './userProfile';
@@ -144,12 +144,6 @@ function readHappened(h: { date?: string | null; time?: string | null } | null |
   return date || time ? { date, time } : undefined;
 }
 
-const PERIOD_TIMES: Record<string, string> = {
-  morning: '09:00',
-  afternoon: '15:00',
-  evening: '20:00',
-  night: '20:00',
-};
 
 export async function analyzeMemory(
   text: string,
@@ -259,15 +253,14 @@ export async function analyzeMemory(
       .filter((t): t is { title: string } & typeof t => !!t.title?.trim())
       .map((t) => {
         const dueDate = t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : undefined;
-        let dueTime: string | undefined;
-        if (t.time && /^\d{2}:\d{2}$/.test(t.time)) dueTime = t.time;
-        else if (t.period && PERIOD_TIMES[t.period.toLowerCase()]) {
-          dueTime = PERIOD_TIMES[t.period.toLowerCase()];
-        }
+        const dueTime = t.time && /^\d{2}:\d{2}$/.test(t.time) ? t.time : undefined;
+        // "Tomorrow afternoon" stays "afternoon" — not a made-up 3:00 pm.
+        const period = t.period?.toLowerCase();
         return {
           title: t.title.trim(),
           dueDate,
           dueTime,
+          duePeriod: !dueTime && isDayPeriod(period) ? period : undefined,
           details: t.details?.trim() || undefined,
           icon: isSirKind(t.kind) ? t.kind : undefined,
         };

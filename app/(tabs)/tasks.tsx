@@ -8,7 +8,8 @@ import { MONTHS_SHORT } from '../../src/data';
 import {
   StoredTask,
   confirmNoDueDate,
-  formatDueTime,
+  taskClock,
+  taskTimeLabel,
   getTasks,
   markTasksSeen,
   toggleTask,
@@ -100,7 +101,7 @@ function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
     else if (d >= bounds.lastWeek) at('last').tasks.push(t);
     else at('earlier').tasks.push(t);
   }
-  const when = (t: StoredTask) => `${t.dueDate ?? ''} ${t.dueTime ?? '00:00'}`;
+  const when = (t: StoredTask) => `${t.dueDate ?? ''} ${taskClock(t) ?? '00:00'}`;
   for (const s of sections) {
     s.tasks.sort((a, b) => when(b).localeCompare(when(a)));
     // Earlier covers everything before last week: its range is what is in it.
@@ -123,7 +124,7 @@ function nextUpId(tasks: StoredTask[], now: Date): string | null {
   let best: { id: string; at: string } | null = null;
   for (const t of tasks) {
     if (t.done || !t.dueDate) continue;
-    const at = `${t.dueDate} ${t.dueTime ?? '23:59'}`;
+    const at = `${t.dueDate} ${taskClock(t) ?? '23:59'}`;
     if (at < nowKey) continue;
     if (!best || at < best.at) best = { id: t.id, at };
   }
@@ -222,9 +223,9 @@ function TaskCard({
               {description}
             </Text>
           ) : null}
-          {task.dueTime ? (
+          {taskTimeLabel(task) ? (
             <Text style={[styles.taskTime, muted && styles.mutedText, overdue && styles.overdueTime]}>
-              {formatDueTime(task.dueTime)}
+              {taskTimeLabel(task)}
             </Text>
           ) : null}
           {overdue && <Text style={styles.overdueText}>Overdue</Text>}
@@ -389,7 +390,7 @@ export default function Tasks() {
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Tasks</Text>
-        <Pressable onPress={() => router.push('/log/task')} hitSlop={12} style={styles.addBtn}>
+        <Pressable onPress={() => router.push('/log/task-edit')} hitSlop={12} style={styles.addBtn}>
           <Ionicons name="add" size={26} color={colors.white} />
         </Pressable>
       </View>

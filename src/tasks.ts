@@ -1,6 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { chatCompletion, textAvailable, textProviders } from './aiProviders';
-import { cancelTaskReminder, scheduleEarlyReminders, scheduleTaskReminder } from './taskNotifications';
+import { cancelTaskReminder, scheduleTaskReminders } from './taskNotifications';
+import { isDayPeriod, type DayPeriod, type ReminderChoice } from './taskTime';
+
+export {
+  PERIOD_LABEL,
+  PERIOD_START,
+  formatDueTime,
+  isDayPeriod,
+  taskClock,
+  taskTimeLabel,
+  type DayPeriod,
+  type ReminderChoice,
+} from './taskTime';
 
 // Local-first task store. Tasks come from two doors: the user creates one
 // deliberately (+ button on the Tasks page), or the app notices a commitment
@@ -13,14 +25,21 @@ export type StoredTask = {
   title: string;
   notes?: string; // the user's own description / details for the task
   dueDate?: string; // local YYYY-MM-DD
-  dueTime?: string; // 24h HH:MM — only when the user gave a time or a period
+  dueTime?: string; // 24h HH:MM — only when the user gave an actual time
+  // "Tomorrow afternoon": the user said a part of the day, not a time. Kept
+  // as the word — showing it as "3:00 PM" would present a guess as a fact.
+  duePeriod?: DayPeriod;
+  // When to be reminded. Unset means the default for the task — see
+  // planTaskReminders: an hour before a time, the morning of a date.
+  reminder?: ReminderChoice;
   done: boolean;
   createdAt: string; // ISO
   source: 'manual' | 'memory';
   sourceText?: string; // the sentence the task was extracted from
   sourceDate?: string; // YYYY-MM-DD of the memory day it was extracted from
   seen?: boolean; // false = auto-created and not yet viewed on the Tasks page
-  notificationId?: string; // scheduled due-reminder, so it can be cancelled
+  reminderIds?: string[]; // every scheduled reminder, so they can be cancelled
+  notificationId?: string; // older tasks: their single due-reminder
   // The user never said when — the Tasks page asks them to confirm a due
   // date (or explicitly choose to keep it dateless).
   needsDueDate?: boolean;
@@ -28,35 +47,24 @@ export type StoredTask = {
   // task can show where it came from, and the memory it belongs to.
   attachment?: { uri: string; kind: 'image' | 'pdf'; name?: string; previewUri?: string };
   memoryId?: string;
-  // Something that happens AT a time (an appointment): also reminded the
-  // evening before and two hours before. See scheduleEarlyReminders.
+  // Something that happens AT a time (an appointment, from a saved ticket
+  // or letter): by default reminded the evening before and two hours before.
   remindEarly?: boolean;
-  earlyReminderIds?: string[];
+  earlyReminderIds?: string[]; // older tasks: their early reminders
 };
 
 // Every reminder a task has, set or cleared together.
-async function scheduleAll(t: StoredTask): Promise<Pick<StoredTask, 'notificationId' | 'earlyReminderIds'>> {
-  const notificationId = (await scheduleTaskReminder(t.title, t.dueDate, t.dueTime)) ?? undefined;
-  const early = t.remindEarly ? await scheduleEarlyReminders(t.title, t.dueDate, t.dueTime) : [];
-  return { notificationId, earlyReminderIds: early.length > 0 ? early : undefined };
+async function scheduleAll(t: StoredTask): Promise<Pick<StoredTask, 'reminderIds' | 'notificationId' | 'earlyReminderIds'>> {
+  const ids = t.done ? [] : await scheduleTaskReminders(t);
+  return { reminderIds: ids.length > 0 ? ids : undefined, notificationId: undefined, earlyReminderIds: undefined };
 }
 
 async function cancelAll(t: StoredTask): Promise<void> {
   await cancelTaskReminder(t.notificationId);
-  for (const id of t.earlyReminderIds ?? []) await cancelTaskReminder(id);
+  for (const id of [...(t.earlyReminderIds ?? []), ...(t.reminderIds ?? [])]) await cancelTaskReminder(id);
 }
 
 const STORAGE_KEY = 'storedTasks';
-
-// The user speaks in day-parts, not clock times. Each period maps to a
-// reasonable middle of its window: morning 6–12 → 9:00, afternoon 12–5 →
-// 3:00 pm, evening/night 5–11 → 8:00 pm.
-const PERIOD_TIMES: Record<string, string> = {
-  morning: '09:00',
-  afternoon: '15:00',
-  evening: '20:00',
-  night: '20:00',
-};
 
 export async function getTasks(): Promise<StoredTask[]> {
   const raw = await AsyncStorage.getItem(STORAGE_KEY);
@@ -68,7 +76,7 @@ async function writeTasks(tasks: StoredTask[]): Promise<void> {
 }
 
 export async function addTask(
-  task: Omit<StoredTask, 'id' | 'createdAt' | 'done' | 'notificationId' | 'earlyReminderIds'>,
+  task: Omit<StoredTask, 'id' | 'createdAt' | 'done' | 'reminderIds' | 'notificationId' | 'earlyReminderIds'>,
 ): Promise<StoredTask> {
   const existing = await getTasks();
 
@@ -95,10 +103,11 @@ export async function addTask(
   return entry;
 }
 
-// Edits title / notes / due date / due time and keeps the reminder in sync.
+// Edits title / notes / when / reminder and keeps the reminders in sync.
 export async function updateTask(
   id: string,
-  patch: Pick<StoredTask, 'title'> & { notes?: string; dueDate?: string; dueTime?: string },
+  patch: Pick<StoredTask, 'title'> &
+    Partial<Pick<StoredTask, 'notes' | 'dueDate' | 'dueTime' | 'duePeriod' | 'reminder'>>,
 ): Promise<void> {
   const existing = await getTasks();
   const target = existing.find((t) => t.id === id);
@@ -111,13 +120,46 @@ export async function updateTask(
     notes: patch.notes,
     dueDate: patch.dueDate,
     dueTime: patch.dueTime,
+    duePeriod: patch.dueTime ? undefined : patch.duePeriod,
+    reminder: patch.reminder,
+    reminderIds: undefined,
     notificationId: undefined,
     earlyReminderIds: undefined,
     // Editing IS the confirmation — whatever the user saved is the answer.
     needsDueDate: false,
   };
-  if (!updated.done) Object.assign(updated, await scheduleAll(updated));
+  Object.assign(updated, await scheduleAll(updated));
   await writeTasks(existing.map((t) => (t.id === id ? updated : t)));
+}
+
+// Reminders used to fire AT a task's time ("dentist at 2:00" rang at 2:00).
+// Once per plan version, every open task still ahead is re-planned, so
+// tasks saved before the change get their earlier reminder too.
+const REMINDER_PLAN_KEY = 'taskReminderPlan';
+const REMINDER_PLAN_VERSION = '2';
+
+export async function refreshTaskReminders(): Promise<void> {
+  try {
+    if ((await AsyncStorage.getItem(REMINDER_PLAN_KEY)) === REMINDER_PLAN_VERSION) return;
+    const existing = await getTasks();
+    const today = localDate(new Date());
+    let n = 0;
+    const next: StoredTask[] = [];
+    for (const t of existing) {
+      if (t.done || !t.dueDate || t.dueDate < today) {
+        next.push(t);
+        continue;
+      }
+      await cancelAll(t);
+      next.push({ ...t, ...(await scheduleAll(t)) });
+      n += 1;
+    }
+    await writeTasks(next);
+    await AsyncStorage.setItem(REMINDER_PLAN_KEY, REMINDER_PLAN_VERSION);
+    console.log(`[tasks] re-planned reminders for ${n} open tasks`);
+  } catch (e) {
+    console.warn('[tasks] could not re-plan reminders:', e);
+  }
 }
 
 export async function toggleTask(id: string): Promise<void> {
@@ -126,14 +168,10 @@ export async function toggleTask(id: string): Promise<void> {
   if (!target) return;
 
   const updated: StoredTask = { ...target, done: !target.done };
-  if (updated.done) {
-    // No point reminding about something already finished.
-    await cancelAll(updated);
-    updated.notificationId = undefined;
-    updated.earlyReminderIds = undefined;
-  } else {
-    Object.assign(updated, await scheduleAll(updated));
-  }
+  // No point reminding about something already finished; scheduleAll sets
+  // nothing for a done task.
+  await cancelAll(target);
+  Object.assign(updated, await scheduleAll(updated));
   await writeTasks(existing.map((t) => (t.id === id ? updated : t)));
 }
 
@@ -163,13 +201,6 @@ export async function getTask(id: string): Promise<StoredTask | null> {
   return existing.find((t) => t.id === id) ?? null;
 }
 
-export function formatDueTime(dueTime: string): string {
-  const [hStr, m] = dueTime.split(':');
-  let h = Number(hStr);
-  const ap = h >= 12 ? 'PM' : 'AM';
-  h = h % 12 || 12;
-  return `${h}:${m} ${ap}`;
-}
 
 // ---------------------------------------------------------------------------
 // AI extraction — turns free-form journal text into structured tasks.
@@ -205,7 +236,7 @@ function localDate(d: Date): string {
 
 const WEEKDAYS_LONG = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-export type ParsedTask = { title: string; dueDate?: string; dueTime?: string };
+export type ParsedTask = { title: string; dueDate?: string; dueTime?: string; duePeriod?: DayPeriod };
 
 // Parses journal/dictated text into zero or more structured tasks.
 // Returns null when the AI call itself failed (no key, network, bad JSON) so
@@ -236,13 +267,9 @@ export async function extractTasks(text: string): Promise<ParsedTask[] | null> {
       .filter((t): t is ExtractedTask & { title: string } => !!t.title?.trim())
       .map((t) => {
         const dueDate = t.date && /^\d{4}-\d{2}-\d{2}$/.test(t.date) ? t.date : undefined;
-        let dueTime: string | undefined;
-        if (t.time && /^\d{2}:\d{2}$/.test(t.time)) {
-          dueTime = t.time;
-        } else if (t.period && PERIOD_TIMES[t.period.toLowerCase()]) {
-          dueTime = PERIOD_TIMES[t.period.toLowerCase()];
-        }
-        return { title: t.title.trim(), dueDate, dueTime };
+        const dueTime = t.time && /^\d{2}:\d{2}$/.test(t.time) ? t.time : undefined;
+        const period = t.period?.toLowerCase();
+        return { title: t.title.trim(), dueDate, dueTime, duePeriod: !dueTime && isDayPeriod(period) ? period : undefined };
       });
   } catch {
     return null;
