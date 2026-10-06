@@ -48,6 +48,7 @@ const INTAKE_PROMPT = `You are the intake brain of Recall, a personal memory-log
 Respond with ONLY a JSON object in this exact shape:
 {
   "polished": "...",
+  "happened": {"date": "YYYY-MM-DD" | null, "time": "HH:MM" | null},
   "tasks": [{"title": "...", "date": "YYYY-MM-DD" | null, "period": "morning"|"afternoon"|"evening"|"night" | null, "time": "HH:MM" | null, "details": "..." | null, "kind": "..." | null}],
   "people": [{"name": "...", "descriptor": "..." | null, "note": "..."}],
   "places": [{"name": "...", "kind": "...", "moment": "..." | null}],
@@ -55,7 +56,17 @@ Respond with ONLY a JSON object in this exact shape:
   "recurring": [{"kind": "...", "label": "...", "every": "year"|"month", "date": "MM-DD" | "today" | null, "day_of_month": 1-31 | null, "person": "..." | null}]
 }
 
-"polished" — the memory itself, cleaned and reorganized: fix rambling and fillers, keep EVERY event and detail, first person, past tense where natural, in the SAME language(s) the user used (Arabic stays Arabic, mixed stays mixed). Reminders/to-dos MUST be removed entirely from the polished text — they live in "tasks" instead. Example: "…grabbed coffee with Lina, oh and remind me to book the flight friday" → polished ends at "…grabbed coffee with Lina." and the flight goes into tasks. Never invent details. If the entry is already clean, return it as-is.
+"polished" — the memory itself, cleaned and reorganized: fix rambling and fillers, keep EVERY event and detail, first person, past tense where natural, in the SAME language(s) the user used (Arabic stays Arabic, mixed stays mixed). Reminders/to-dos MUST be removed entirely from the polished text — they live in "tasks" instead. Example: "…grabbed coffee with Lina, oh and remind me to book the flight friday" → polished ends at "…grabbed coffee with Lina." and the flight goes into tasks. Never invent details. A clean TYPED entry may come back as-is.
+
+POLISH, DON'T REWRITE. Change as little as needed: fix spelling, fillers and repetition, add punctuation — never reword what happened. Every detail keeps its exact meaning: body parts (edy/إيدي = hand, dahry/ضهري = back, regl/رجلي = leg — never swap one for another), people, places, numbers, times, who did what and who won. Keep the user's own SCRIPT: an entry marked FRANCO ENTRY is written back in Franco, in Latin letters — converting it to Arabic script misreads words (measured: "jamica", a football pitch, became "الجامعة", the university). Never translate: Arabic stays Arabic, English stays English, mixed stays mixed. If you are not sure what a word means, keep the user's word exactly as written.
+
+"happened" — WHEN this entry's events took place, only from what the entry itself says. date: only when the entry says the events were on a different day than ENTRY DAY below ("yesterday", "on Friday", "last night" written the next morning) — resolve it against TODAY, the day the entry was written; otherwise null. time: when the events started, in this order of preference —
+  1. an explicit time ("at 9", "el sa3a 2", "2:00 pm"); for an hour without am/pm, judge from what was done ("played football at 9, then went out" → 21:00);
+  2. a day part, in any language (الصبح, بالليل, b3d el dohr, "in the morning"): early morning 07:00, morning 09:00, noon 12:00, afternoon 15:00, evening 19:00, night 21:00, late night 23:30;
+  3. no time words at all: the time the activity itself usually happens — breakfast 08:00, lunch 13:00, dinner 20:00, class or work in the day, a party or a movie out at night;
+  4. nothing to go on: null (the app keeps it where it is — midday for a day it was added to later). Never a future date or time — plans are tasks. When "happened.date" moves the entry to another day, "polished" must read right ON that day: drop the word that pointed there ("Yesterday afternoon I met Dave" → "In the afternoon I met Dave").
+
+SPOKEN ENTRY — when the entry is marked SPOKEN ENTRY, it is a raw speech-to-text transcript, never something to show as it is. Speech recognition mishears words, especially names, places and English words inside Arabic speech ("إيميل من غير إس" is an email from the IRS; "المشرفين" may be "the refund"). Work out what the person most likely said from the rest of the entry and the SAME-DAY CONTEXT, and write that. Then ALWAYS rewrite it as a short, clean written memory: complete sentences, no fillers or thinking aloud ("يعني", "تمام، مش مشكلة", "um", "like"), no repetition. Keep the language the person spoke (Arabic stays Arabic, mixed stays mixed). Where a word or part truly can't be worked out, leave it out rather than guess.
 
 "tasks" — only genuine future to-dos: "remind me to…", "I have to…", "X asked me to…". Things that already happened are never tasks. title is a short imperative phrase in the user's own words with lead-ins stripped: "remind me to give Jeff the brief" → "Give Jeff the brief". Keep the entry's language. date resolves relative words ("tomorrow", weekday names) against TODAY given below; null when no day was mentioned. period only when the user said a day-part word. time only for an explicit clock time (24h).
 
@@ -101,6 +112,8 @@ export type ParsedRecurring = {
 
 export type IntakeResult = {
   polished?: string;
+  /** When the events took place, if the entry said: another day, a time. */
+  happened?: { date?: string; time?: string };
   tasks: IntakeTask[];
   people: { name: string; descriptor?: string; note?: string }[];
   places: ParsedPlace[];
@@ -109,6 +122,12 @@ export type IntakeResult = {
   recurring: ParsedRecurring[];
 };
 
+function readHappened(h: { date?: string | null; time?: string | null } | null | undefined): IntakeResult['happened'] {
+  const date = typeof h?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(h.date) ? h.date : undefined;
+  const time = typeof h?.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(h.time) ? h.time : undefined;
+  return date || time ? { date, time } : undefined;
+}
+
 const PERIOD_TIMES: Record<string, string> = {
   morning: '09:00',
   afternoon: '15:00',
@@ -116,7 +135,10 @@ const PERIOD_TIMES: Record<string, string> = {
   night: '20:00',
 };
 
-export async function analyzeMemory(text: string): Promise<IntakeResult | null> {
+export async function analyzeMemory(
+  text: string,
+  options: { spoken?: boolean; sameDay?: string[]; entryDay?: string } = {},
+): Promise<IntakeResult | null> {
   if (!intakeAvailable() || !text.trim()) return null;
 
   const now = new Date();
@@ -144,9 +166,9 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
         messages: [
           {
             role: 'system',
-            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}. Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}\n\nKNOWN PLACES:\n${knownPlaces.join('\n') || '(none yet)'}`,
+            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}.${entryDayLine(options.entryDay, now)} Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}\n\nKNOWN PLACES:\n${knownPlaces.join('\n') || '(none yet)'}`,
           },
-          { role: 'user', content: text },
+          { role: 'user', content: entryFor(text, options) },
         ],
         response_format: { type: 'json_object' },
         temperature: 0.2,
@@ -156,6 +178,7 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
   try {
     const parsed = JSON.parse(result.content) as {
       polished?: string;
+      happened?: { date?: string | null; time?: string | null } | null;
       tasks?: {
         title?: string;
         date?: string | null;
@@ -235,6 +258,7 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
 
     return {
       polished: parsed.polished?.trim() || undefined,
+      happened: readHappened(parsed.happened),
       tasks,
       people: (parsed.people ?? [])
         .filter((p): p is { name: string } & typeof p => !!p.name?.trim())
@@ -269,6 +293,40 @@ export async function analyzeMemory(text: string): Promise<IntakeResult | null> 
 // Capped: a long PDF is mostly small print, and the useful part — who, when,
 // where — is nearly always near the top.
 const DOCUMENT_TEXT_LIMIT = 6000;
+
+/** Arabic written in Latin letters and numbers ("3shan", "le3bt", "a7a",
+ *  "2ol"): two or more such words, and no Arabic script. */
+export function isFranco(text: string): boolean {
+  if (/[\u0600-\u06FF]/.test(text)) return false;
+  const words = text.toLowerCase().match(/[a-z0-9']+/g) ?? [];
+  return words.filter((w) => /[a-z]/.test(w) && /[235789]/.test(w) && !/^\d+(am|pm|st|nd|rd|th|s|k)?$/.test(w)).length >= 2;
+}
+
+/** The day the entry is filed under, when it isn't today — a note added
+ *  to a past day from its page. */
+function entryDayLine(entryDay: string | undefined, now: Date): string {
+  if (!entryDay || entryDay === localDate(now)) return ' ENTRY DAY is today.';
+  const [y, m, d] = entryDay.split('-').map(Number);
+  return ` ENTRY DAY is ${WEEKDAYS_LONG[new Date(y, m - 1, d).getDay()]}, ${entryDay} — the user added this to that day, writing today.`;
+}
+
+/** The entry as the model reads it: a spoken one marked as a transcript,
+ *  with what else the user logged that day to make sense of misheard words. */
+function entryFor(text: string, options: { spoken?: boolean; sameDay?: string[] }): string {
+  if (!options.spoken) {
+    return isFranco(text)
+      ? `FRANCO ENTRY — write "polished" in Franco-Arabic, Latin letters, like the user wrote it. Do NOT convert it to Arabic script.\n\n${text}`
+      : text;
+  }
+  const context = (options.sameDay ?? []).filter(Boolean).slice(0, 6);
+  return [
+    'SPOKEN ENTRY (speech-to-text transcript — may contain misheard words):',
+    text,
+    ...(context.length
+      ? ['', 'SAME-DAY CONTEXT (other things the user logged that day — only to understand the entry, not to copy):', ...context.map((c) => `- ${c.slice(0, 300)}`)]
+      : []),
+  ].join('\n');
+}
 
 export function documentEntry(note: string, memory: LoggedMemory): string {
   const a = memory.attachments?.[0];
@@ -306,9 +364,15 @@ export async function processMemoryIntake(
     // A saved screenshot or file: the AI reads the user's note and the words
     // the phone read from the file. `rawText` stays the user's own note — the
     // document's text is kept on the attachment, not passed off as theirs.
-    const memory = (await getLoggedMemories()).find((m) => m.id === memoryId);
+    const all = await getLoggedMemories();
+    const memory = all.find((m) => m.id === memoryId);
     const attachment = memory?.kind === 'document' ? memory.attachments?.[0] : undefined;
-    const result = await analyzeMemory(attachment ? documentEntry(rawText, memory!) : rawText);
+    const spoken = memory?.kind === 'voice';
+    const result = await analyzeMemory(attachment ? documentEntry(rawText, memory!) : rawText, {
+      spoken,
+      sameDay: spoken ? sameDayText(all, memoryId, dayKey) : undefined,
+      entryDay: dayKey,
+    });
     // Analysis unavailable (no key / network) — leave the memory unrefined
     // so the sweep retries it next time the app opens.
     if (!result) return false;
@@ -318,10 +382,22 @@ export async function processMemoryIntake(
     //     transcript screen still shows the exact words that were said).
     const polished =
       result.polished && result.polished !== rawText ? result.polished : undefined;
+    if (spoken) console.log(`[intake] voice note ${memoryId} ${polished ? 'polished' : 'came back unchanged — the transcript stays'}`);
+    // When it happened, as the entry says — so a day reads in order and
+    // "yesterday afternoon I met Dave" lands on yesterday afternoon. Only
+    // for words the user wrote or said: a photo's own time is the truth,
+    // and a document's dates belong to what it describes.
+    const moved = memory && (memory.kind === 'text' || memory.kind === 'voice') ? retime(memory, dayKey, result.happened) : null;
+    if (moved) {
+      console.log(`[intake] ${memoryId} happened ${moved.day} ${moved.takenAt.slice(11, 16)} (was filed ${dayKey})`);
+      dayKey = moved.day;
+    }
     await updateMemory(memoryId, {
       ...(polished ? { text: polished } : {}),
       rawText,
       refined: true,
+      polishVersion: POLISH_VERSION,
+      ...(moved ? { takenAt: moved.takenAt } : {}),
     });
 
     // 2 — Commitments become tasks. Ones without a date are flagged so the
@@ -402,12 +478,33 @@ export async function processMemoryIntake(
       });
     }
     return true;
-  } catch {
-    // Best-effort by design — the memory itself is already safe.
+  } catch (e) {
+    // Best-effort by design — the memory itself is already safe, and it is
+    // left unrefined so the sweep tries again. Said out loud, though.
+    console.warn(`[intake] could not process ${memoryId}:`, e);
     return false;
   } finally {
     inFlight.delete(memoryId);
   }
+}
+
+/** The new day and time a memory belongs at, or null to leave it. Never
+ *  moved into the future, and never more than a month back. */
+function retime(
+  memory: LoggedMemory,
+  dayKey: string,
+  happened: IntakeResult['happened'],
+): { day: string; takenAt: string } | null {
+  if (!happened || memory.placedByUser) return null;
+  const day = happened.date ?? dayKey;
+  const [y, mo, d] = day.split('-').map(Number);
+  const at = new Date(memory.takenAt);
+  const [hh, mm] = happened.time ? happened.time.split(':').map(Number) : [at.getHours(), at.getMinutes()];
+  const when = new Date(y, mo - 1, d, hh, mm);
+  const now = Date.now();
+  if (when.getTime() > now || now - when.getTime() > 31 * 86400000) return null;
+  if (when.getTime() === at.getTime()) return null;
+  return { day, takenAt: when.toISOString() };
 }
 
 // A failed attempt is retried on the next sweep rather than given up on
@@ -416,6 +513,65 @@ export async function processMemoryIntake(
 // being tried again.
 const lastAttemptAt = new Map<string, number>();
 const RETRY_COOLDOWN_MS = 20_000;
+
+/** What else the user logged that day, for making sense of a transcript. */
+function sameDayText(all: LoggedMemory[], memoryId: string, dayKey: string): string[] {
+  return all
+    .filter((m) => m.id !== memoryId && dateKey(new Date(m.takenAt)) === dayKey)
+    .map((m) => m.text?.trim() ?? '')
+    .filter(Boolean);
+}
+
+// The polish rules changed (Oct 2026): voice notes are rewritten as
+// transcripts, nothing is reworded — "edy" (hand) once came back as "ضهري"
+// (back) — Franco stays Franco, and each entry is placed at the time it
+// says. Voice notes from before, and typed notes from the last week, are
+// polished once more under these rules: the text and its time only — their
+// tasks, people and places were filed the first time and are not again.
+const POLISH_VERSION = 2;
+const RECHECK_TYPED_DAYS = 7;
+
+async function repolishUnderNewRules(limit = 4): Promise<boolean> {
+  const all = await getLoggedMemories();
+  const weekAgo = Date.now() - RECHECK_TYPED_DAYS * 86400000;
+  const stale = all
+    .filter(
+      (m) =>
+        m.refined &&
+        (m.polishVersion ?? 0) < POLISH_VERSION &&
+        !!(m.rawText ?? m.text)?.trim() &&
+        (m.kind === 'voice' || (m.kind === 'text' && new Date(m.createdAt).getTime() > weekAgo)) &&
+        !inFlight.has(m.id) &&
+        Date.now() - (lastAttemptAt.get(m.id) ?? 0) > RETRY_COOLDOWN_MS,
+    )
+    .slice(0, limit);
+  let changed = false;
+  for (const m of stale) {
+    lastAttemptAt.set(m.id, Date.now());
+    const raw = (m.rawText ?? m.text)!;
+    const day = dateKey(new Date(m.takenAt));
+    const spoken = m.kind === 'voice';
+    const result = await analyzeMemory(raw, {
+      spoken,
+      sameDay: spoken ? sameDayText(all, m.id, day) : undefined,
+      entryDay: day,
+    });
+    if (!result) continue;
+    const polished = result.polished?.trim();
+    const moved = retime(m, day, result.happened);
+    await updateMemory(m.id, {
+      ...(polished && polished !== raw.trim() ? { text: polished } : {}),
+      rawText: raw,
+      polishVersion: POLISH_VERSION,
+      ...(moved ? { takenAt: moved.takenAt } : {}),
+    });
+    console.log(
+      `[intake] re-polished ${m.kind} ${m.id}: ${polished && polished !== raw.trim() ? 'rewritten' : 'unchanged'}${moved ? `, now ${moved.day} ${moved.takenAt.slice(11, 16)}` : ''}`,
+    );
+    changed = true;
+  }
+  return changed;
+}
 
 // Retroactive pass: any memory the intake never analyzed — logged before the
 // pipeline existed, still mid-flight from a direct call, or whose analysis
@@ -444,6 +600,7 @@ export async function polishPendingMemories(limit = 6): Promise<boolean> {
       const ok = await processMemoryIntake(m.id, m.text ?? '', dateKey(new Date(m.takenAt)));
       changed = changed || ok;
     }
+    if (await repolishUnderNewRules().catch((e) => (console.warn('[intake] re-polish failed:', e), false))) changed = true;
     return changed;
   } catch {
     return false;

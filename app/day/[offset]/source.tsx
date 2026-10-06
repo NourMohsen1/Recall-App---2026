@@ -20,6 +20,20 @@ import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../../../s
 import { colors, fonts } from '../../../src/theme';
 import { withAppNav } from '../../../src/components/AppNav';
 
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// When the user actually typed or said it — not when it happened, which is
+// what places it on this day. Something added later says so: "on Oct 6 at
+// 9:14 pm" on Oct 4's page.
+function enteredAt(m: { createdAt: string; takenAt: string }): string {
+  const entered = new Date(m.createdAt);
+  const happened = new Date(m.takenAt);
+  const time = formatClockTime(entered);
+  return entered.toDateString() === happened.toDateString()
+    ? `at ${time}`
+    : `on ${MONTHS_SHORT[entered.getMonth()]} ${entered.getDate()} at ${time}`;
+}
+
 function Header({ onBack }: { onBack: () => void }) {
   return (
     <View style={styles.header}>
@@ -127,7 +141,7 @@ function RealSource({
   return (
     <>
       <Text style={styles.title}>
-        This Data was recorded by voice at {formatClockTime(new Date(voice.takenAt))}
+        Recorded by voice {enteredAt(voice)}
       </Text>
 
       {unavailable ? (
@@ -181,7 +195,7 @@ function TypedSource({ memory }: { memory: LoggedMemory }) {
   return (
     <View style={styles.typedBlock}>
       <Text style={styles.title}>
-        This Data was typed at {formatClockTime(new Date(memory.takenAt))}
+        Typed {enteredAt(memory)}
       </Text>
       {original ? (
         <Text style={[styles.typedText, rtlIfArabic(original)]}>{original}</Text>

@@ -53,6 +53,12 @@ export type LoggedMemory = {
   // a recording made during a quiet outage would be written off forever.
   // That is exactly what happened to the 3 Sep recording.
   transcribeAttempts?: number;
+  /** Which polish rules this memory was last polished under — see
+   *  repolishUnderNewRules in memoryIntake.ts. */
+  polishVersion?: number;
+  /** The user put this memory in its place by dragging it — the app never
+   *  re-times it after that. */
+  placedByUser?: boolean;
 };
 
 const STORAGE_KEY = 'loggedMemories';
@@ -63,6 +69,49 @@ const STORAGE_KEY = 'loggedMemories';
  *  them away. This is what the Home week's green dots count. */
 export function isManualLog(m: LoggedMemory): boolean {
   return m.kind !== 'photo' || m.manual === true || !!m.text?.trim();
+}
+
+/** A day's memories in the order the user dragged them into, kept by
+ *  their times: the moved one takes a time between its new neighbours, and
+ *  anything that would then be out of order is nudged a minute later.
+ *  Never past the end of the day, and never into the future. */
+export async function reorderDay(orderedIds: string[], movedId: string): Promise<void> {
+  const all = await getLoggedMemories();
+  const byId = new Map(all.map((m) => [m.id, m]));
+  const list = orderedIds.map((id) => byId.get(id)).filter((m): m is LoggedMemory => !!m);
+  if (list.length < 2) return;
+  const t = list.map((m) => new Date(m.takenAt).getTime());
+  const i = list.findIndex((m) => m.id === movedId);
+  const day = new Date(list[0].takenAt);
+  const dayStart = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+  const dayEnd = Math.min(dayStart + 86400000 - 60000, Date.now());
+  const prev = i > 0 ? t[i - 1] : undefined;
+  const next = i < t.length - 1 ? t[i + 1] : undefined;
+  const fits = (i >= 0) && (prev === undefined || t[i] > prev) && (next === undefined || t[i] < next);
+  if (i >= 0 && !fits) {
+    if (prev !== undefined && next !== undefined) t[i] = prev + (next - prev) / 2;
+    else if (next !== undefined) t[i] = Math.max(dayStart, next - 30 * 60000);
+    else if (prev !== undefined) t[i] = Math.min(dayEnd, prev + 30 * 60000);
+  }
+  for (let k = 1; k < t.length; k++) if (t[k] <= t[k - 1]) t[k] = t[k - 1] + 60000;
+  // Pushed past the end: walk back from the end instead.
+  for (let k = t.length - 1; k >= 0; k--) {
+    const limit = k === t.length - 1 ? dayEnd : t[k + 1] - 60000;
+    if (t[k] > limit) t[k] = limit;
+  }
+  // Only what actually had to change: the moved one, and any it pushed.
+  // The rest keep their exact times.
+  const changes = new Map<string, string>();
+  list.forEach((m, k) => {
+    const before = new Date(m.takenAt).getTime();
+    if (m.id !== movedId && t[k] === before) return;
+    changes.set(m.id, new Date(Math.round(t[k] / 60000) * 60000).toISOString());
+  });
+  const updated = all.map((m) =>
+    changes.has(m.id) ? { ...m, takenAt: changes.get(m.id)!, placedByUser: true } : m,
+  );
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  console.log(`[day] reordered ${list.length} memories; ${changes.size} re-timed`);
 }
 
 // Local-timezone day key, e.g. "2026-07-02". All grouping uses this.

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import ReorderableList from '../src/components/ReorderableList';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -18,6 +20,7 @@ import {
   formatClockTime,
   getLoggedMemories,
   memoryDisplayText,
+  reorderDay,
 } from '../src/memoryLog';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
@@ -56,7 +59,15 @@ function EmptyTile({ style }: { style?: object }) {
   );
 }
 
-function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
+function TodayRecap({
+  memories,
+  onDragging,
+  onReordered,
+}: {
+  memories: LoggedMemory[];
+  onDragging: (d: boolean) => void;
+  onReordered: () => void;
+}) {
   const router = useRouter();
   const today = dateKey(new Date());
   const entries = memories
@@ -79,8 +90,17 @@ function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
           and places at the end. */}
       <View>
         <View style={styles.spine} />
-        {entries.map((m) => (
-          <View key={m.id} style={styles.segment}>
+        {/* Hold an entry and drag it to put the day in order. */}
+        <ReorderableList
+          items={entries}
+          keyOf={(m) => m.id}
+          onDragging={onDragging}
+          onReorder={async (next, { to }) => {
+            await reorderDay(next.map((m) => m.id), next[to].id);
+            onReordered();
+          }}
+          renderItem={(m) => (
+          <View style={styles.segment}>
             <View style={styles.spineDot} />
             <View style={{ flex: 1 }}>
               <View style={styles.segmentHeader}>
@@ -94,7 +114,8 @@ function TodayRecap({ memories }: { memories: LoggedMemory[] }) {
               )}
             </View>
           </View>
-        ))}
+          )}
+        />
         {hasVoice && (
           <Pressable
             style={styles.sourceBtn}
@@ -152,6 +173,8 @@ function Recap() {
     }
   };
   const [memories, setMemories] = useState<LoggedMemory[]>([]);
+  // An entry is being dragged: the page holds still under the finger.
+  const [dragging, setDragging] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -163,9 +186,15 @@ function Recap() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <ScreenHeader title="Recap" />
+      {/* Inside one week, month or year, back returns to the list of them. */}
+      <ScreenHeader title="Recap" onBack={period !== 'Today' && offset !== null ? () => setOffset(null) : undefined} />
       <View style={styles.body}>
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={!dragging}
+        >
           {analyzing && <AnalyzingBanner />}
 
           {/* Period switcher */}
@@ -186,28 +215,27 @@ function Recap() {
             ))}
           </View>
 
-          {period === 'Today' && <TodayRecap memories={memories} />}
+          {period === 'Today' && (
+            <TodayRecap
+              memories={memories}
+              onDragging={setDragging}
+              onReordered={() => getLoggedMemories().then(setMemories)}
+            />
+          )}
           {period !== 'Today' && offset === null && <RecapOverview kind={KIND[period]} onOpen={setOffset} />}
           {period !== 'Today' && offset !== null && (
             <>
-              <Pressable onPress={() => setOffset(null)} hitSlop={8} style={styles.allBack}>
-                <Ionicons name="chevron-back" size={16} color={colors.primary} />
-                <Text style={styles.allBackText}>
-                  {period === 'Weekly' ? 'All weeks' : period === 'Monthly' ? 'All months' : 'All years'}
-                </Text>
-              </Pressable>
               <RecapView kind={KIND[period]} offset={offset} onOffset={setOffset} onOpenUnit={openUnit} />
             </>
           )}
         </ScrollView>
+        </GestureHandlerRootView>
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  allBack: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 16, alignSelf: 'flex-start' },
-  allBackText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.primary },
   safe: { flex: 1, backgroundColor: colors.white },
   body: { flex: 1, backgroundColor: colors.pale },
   scroll: { padding: 16, paddingBottom: 140 },

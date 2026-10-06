@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import ReorderableList from '../../../src/components/ReorderableList';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -35,6 +37,7 @@ import {
   formatClockTime,
   getMemoriesByDay,
   memoryDisplayText,
+  reorderDay,
   saveMemory,
   updateMemory,
 } from '../../../src/memoryLog';
@@ -75,6 +78,8 @@ function DayDetailScreen() {
   const [people, setPeople] = useState<string[]>([]);
   const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
   const [editing, setEditing] = useState(false);
+  // A note is being dragged: the page holds still under the finger.
+  const [dragging, setDragging] = useState(false);
   const [editTarget, setEditTarget] = useState<LoggedMemory | null>(null);
   const [adding, setAdding] = useState(false);
   const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
@@ -388,15 +393,30 @@ function DayDetailScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        scrollEnabled={!dragging}
+      >
         {analyzing && <AnalyzingBanner />}
 
         {/* What the user actually logged that day */}
         {entries.length > 0 && (
           <View style={styles.segments}>
             <View style={styles.spine} />
-            {entries.map((m) => (
-              <View key={m.id} style={styles.segment}>
+            {/* Hold a note and drag it to put the day in order. */}
+            <ReorderableList
+              items={entries}
+              keyOf={(m) => m.id}
+              enabled={entries.length > 1}
+              onDragging={(d) => setDragging(d)}
+              onReorder={async (next, { to }) => {
+                await reorderDay(next.map((m) => m.id), next[to].id);
+                reload();
+              }}
+              renderItem={(m) => (
+              <View style={styles.segment}>
                 <View style={styles.spineDot} />
                 <View style={{ flex: 1 }}>
                   <View style={styles.segmentHeader}>
@@ -453,7 +473,8 @@ function DayDetailScreen() {
                   )}
                 </View>
               </View>
-            ))}
+              )}
+            />
           </View>
         )}
 
@@ -621,6 +642,7 @@ function DayDetailScreen() {
           </View>
         )}
       </ScrollView>
+      </GestureHandlerRootView>
 
       <MemoryEditSheet
         visible={!!editTarget || adding}

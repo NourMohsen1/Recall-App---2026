@@ -143,6 +143,16 @@ name → profile, interests → On This Day (`quizAnswers[0]`), recap
 frequency → recap notifications, Positive Focus. No accounts: memories live
 on the phone and return with its iCloud backup.
 
+**Polishing never rewrites** (`src/memoryIntake.ts`, Oct 2026). Voice notes
+are always polished as transcripts (misheard words worked out from the
+same day's notes); the raw words live only in Source. Nothing is reworded:
+"edy" (hand) once came back as "ضهري" (back). Franco stays Franco —
+converting it to Arabic script misread "jamica" (a pitch) as "الجامعة"; the
+code detects Franco (`isFranco`) and says so next to the entry, because the
+rule alone was ignored 3 times in 4. Each entry is placed at the time it
+states (`happened`), and moved to another day when it says so ("yesterday
+afternoon…"), never into the future. Measured 4/4 on Nour's real notes.
+
 **Nothing sexual comes in from the web** (`src/contentSafety.ts`). Users can
 type their own On This Day topics ("Other") and "what I care about" text,
 which steer a web search, so: a typed topic is checked (short word list,

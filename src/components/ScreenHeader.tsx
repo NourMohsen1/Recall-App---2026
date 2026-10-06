@@ -15,10 +15,14 @@ import { colors, fonts } from '../theme';
 export default function ScreenHeader({
   title,
   backTo = '/home',
+  onBack,
   action,
 }: {
   title: string;
   backTo?: string;
+  /** Replaces leaving the screen — a step back inside it (Recap: from one
+   *  week back to the list of weeks). */
+  onBack?: () => void;
   /** Optional top-right control, mirroring the back arrow on the left. */
   action?: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void; label?: string };
 }) {
@@ -26,7 +30,7 @@ export default function ScreenHeader({
   return (
     <View style={styles.header}>
       <Pressable
-        onPress={() => router.dismissTo(backTo as Parameters<typeof router.dismissTo>[0])}
+        onPress={onBack ?? (() => router.dismissTo(backTo as Parameters<typeof router.dismissTo>[0]))}
         hitSlop={12}
         style={styles.back}
       >
