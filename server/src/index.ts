@@ -38,6 +38,8 @@ export type Env = {
   SESSION_SECRET?: string;
   /** Account ids to pause, comma-separated. A plain variable, not a secret. */
   BLOCKED_ACCOUNTS?: string;
+  /** Tavily web search, for On This Day (/search/news). */
+  TAVILY_API_KEY?: string;
 };
 
 // ── Sign in with Apple ────────────────────────────────────────────────────
@@ -279,6 +281,54 @@ export default {
       return new Response(minted.body, {
         status: minted.status,
         headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    // News search for On This Day: Tavily finds real articles around a
+    // date; the app then has DeepSeek write the cards from them. Only this
+    // one shape of search is offered — a query, a date window, a few
+    // results — so the token can't be used for anything else on Tavily.
+    if (pathname === '/search/news') {
+      if (!env.TAVILY_API_KEY) return deny(503, 'Search is not set up on this server.');
+      let q: { query?: unknown; from?: unknown; to?: unknown; max?: unknown };
+      try {
+        q = (await request.json()) as typeof q;
+      } catch {
+        return deny(400, 'Body is not valid JSON.');
+      }
+      const day = /^\d{4}-\d{2}-\d{2}$/;
+      if (typeof q.query !== 'string' || !q.query.trim() || q.query.length > 400) return deny(400, 'Bad query.');
+      if (typeof q.from !== 'string' || typeof q.to !== 'string' || !day.test(q.from) || !day.test(q.to)) {
+        return deny(400, 'Bad dates.');
+      }
+      const max = Math.min(8, Math.max(1, Number(q.max) || 5));
+      const res = await fetch('https://api.tavily.com/search', {
+        method: 'POST',
+        headers: { authorization: `Bearer ${env.TAVILY_API_KEY}`, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          query: q.query.trim(),
+          topic: 'news',
+          search_depth: 'basic',
+          start_date: q.from,
+          end_date: q.to,
+          max_results: max,
+          chunks_per_source: 2,
+        }),
+      });
+      if (!res.ok) {
+        console.log(`[search] tavily ${res.status}`);
+        return deny(res.status === 429 ? 429 : 502, `Search failed (${res.status}).`);
+      }
+      const data = (await res.json()) as {
+        results?: { title?: string; url?: string; content?: string; published_date?: string | null }[];
+      };
+      return json({
+        results: (data.results ?? []).map((r) => ({
+          title: r.title ?? '',
+          url: r.url ?? '',
+          content: (r.content ?? '').slice(0, 900),
+          published: r.published_date ?? null,
+        })),
       });
     }
 

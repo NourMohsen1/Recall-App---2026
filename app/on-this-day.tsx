@@ -18,7 +18,8 @@ import AnalyzingBanner from '../src/components/AnalyzingBanner';
 import PhotoImage from '../src/components/PhotoImage';
 import ScreenHeader from '../src/components/ScreenHeader';
 import TopicActionSheet from '../src/components/TopicActionSheet';
-import TopicInterestSheet from '../src/components/TopicInterestSheet';
+import FollowSheet from '../src/components/FollowSheet';
+import PersonAvatar from '../src/components/PersonAvatar';
 import TopicSwapSheet from '../src/components/TopicSwapSheet';
 import { placePhoto } from '../src/images';
 import { useMemoryPolish } from '../src/memoryIntake';
@@ -29,11 +30,13 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 const animateList = () => LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-import {
-  LoggedMemory,
-  dateKey,
-  getMemoriesByDay,
-} from '../src/memoryLog';
+import { learnFollows } from '../src/follows';
+import { getAllGuesses, type GuessesByDay } from '../src/guessedPeople';
+import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../src/memoryLog';
+import { getAllDayPeople, getAllPersonMeta } from '../src/peopleTags';
+import { getAllPhotoSources } from '../src/photoMeta';
+import { SOURCE_LABEL_STYLES, type AnySourceKey } from '../src/photoSource';
+import { getAllDayPlaces, type DayPlace } from '../src/places';
 import {
   Topic,
   TopicItem,
@@ -43,7 +46,6 @@ import {
   getTopicEvents,
   topicIcon,
   getTopicInterests,
-  setTopicInterest,
   swapTopic,
 } from '../src/onThisDay';
 import { rtlIfArabic } from '../src/transcription';
@@ -66,19 +68,57 @@ function dateFor(offset: number) {
   return d;
 }
 
-// What the user actually logged that day — no placeholders.
-function memoryContent(real: LoggedMemory[]) {
-  const texts = real.map((m) => m.text).filter(Boolean) as string[];
-  const photoUri = real.find((m) => m.kind === 'photo')?.photoUris?.[0];
-  if (texts.length === 0 && !photoUri) return null;
-  return { lines: texts.slice(0, 4), photoUri };
+// What the user actually logged that day — no placeholders. A camera
+// photo is preferred for the picture; a day with only screenshots or saved
+// images shows one of those, labelled for what it is, because it is not a
+// photo *from* that day.
+function memoryContent(real: LoggedMemory[], sources: Record<string, string>) {
+  const texts = real.map(memoryDisplayText).filter(Boolean) as string[];
+  const uris = real.filter((m) => m.kind === 'photo').flatMap((m) => m.photoUris ?? []);
+  const camera = uris.find((u) => !sources[u]);
+  const saved = camera ? undefined : uris.find((u) => sources[u]);
+  if (texts.length === 0 && !camera && !saved) return null;
+  return {
+    lines: texts.slice(0, 3),
+    photoUri: camera ?? saved,
+    /** Set when the picture is a screenshot or saved from an app. */
+    savedFrom: saved ? (sources[saved] as AnySourceKey) : undefined,
+  };
 }
 
-function PlusGrid() {
+/** Everything about a day the Memory card shows besides what was logged. */
+export type DayCompany = {
+  people: string[];
+  /** Recognised by face, not confirmed — drawn as the guesses they are. */
+  guessed: string[];
+  photos: Record<string, string | undefined>;
+  place?: string;
+};
+
+const SLOTS = 6;
+
+// The six circles under the photo: who was there, then ⊕ for the slots
+// nobody fills — the same grid the design gives an empty day.
+function PeopleGrid({ company }: { company: DayCompany }) {
+  const all = [
+    ...company.people.map((name) => ({ name, guess: false })),
+    ...company.guessed.map((name) => ({ name, guess: true })),
+  ];
+  const overflow = all.length > SLOTS;
+  const shown = all.slice(0, overflow ? SLOTS - 1 : SLOTS);
+  const empty = SLOTS - shown.length - (overflow ? 1 : 0);
   return (
     <View style={styles.plusGrid}>
-      {Array.from({ length: 6 }).map((_, i) => (
-        <Ionicons key={i} name="add-circle-outline" size={24} color={colors.teal} />
+      {shown.map((p) => (
+        <PersonAvatar key={p.name} name={p.name} photoUri={company.photos[p.name]} size={24} unconfirmed={p.guess} />
+      ))}
+      {overflow && (
+        <View style={styles.moreSlot}>
+          <Text style={styles.moreText}>+{all.length - shown.length}</Text>
+        </View>
+      )}
+      {Array.from({ length: empty }).map((_, i) => (
+        <Ionicons key={`e${i}`} name="add-circle-outline" size={24} color={colors.teal} />
       ))}
     </View>
   );
@@ -88,56 +128,96 @@ function MemoryCard({
   offset,
   real,
   future,
+  company,
+  sources,
 }: {
   offset: number;
   real: LoggedMemory[];
   future: boolean;
+  company: DayCompany;
+  sources: Record<string, string>;
 }) {
   const router = useRouter();
-  const content = future ? null : memoryContent(real);
+  const content = future ? null : memoryContent(real, sources);
+  const label = content?.savedFrom ? SOURCE_LABEL_STYLES[content.savedFrom] : undefined;
+  const noPeople = company.people.length + company.guessed.length === 0;
 
   return (
     <Pressable
-      style={styles.card}
-      onPress={() =>
-        future ? undefined : router.push(`/day/${offset}` as any)
-      }
+      style={[styles.card, styles.memoryCard]}
+      onPress={() => (future ? undefined : router.push(`/day/${offset}` as any))}
     >
-      <View style={{ flex: 1, paddingRight: 10 }}>
-        <Text style={styles.cardTitle}>Memory</Text>
-        {future ? (
-          <Text style={styles.futureText}>We can’t predict the Future…</Text>
-        ) : content ? (
-          content.lines.length > 0 ? (
-            content.lines.map((line, i) => (
-              <Text key={i} numberOfLines={2} style={[styles.memoryLine, rtlIfArabic(line)]}>
-                {line}
+      <View style={styles.memoryTop}>
+        <View style={{ flex: 1, paddingRight: 10 }}>
+          <Text style={styles.cardTitle}>Memories</Text>
+          {future ? (
+            <Text style={styles.futureText}>We can’t predict the Future…</Text>
+          ) : content ? (
+            content.lines.length > 0 ? (
+              content.lines.map((line, i) => (
+                <View key={i} style={styles.memoryLineRow}>
+                  <View style={styles.memoryDot} />
+                  <Text numberOfLines={2} style={[styles.memoryLine, rtlIfArabic(line)]}>
+                    {line}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={styles.futureText}>
+                {!content.savedFrom
+                  ? 'Photos from this day.'
+                  : content.savedFrom === 'screenshot'
+                    ? 'A screenshot you took this day.'
+                    : `${label?.text ?? 'Saved'} this day.`}
               </Text>
-            ))
+            )
           ) : (
-            <Text style={styles.futureText}>Photos from this day.</Text>
-          )
-        ) : (
-          <Text style={styles.futureText}>Nothing logged this day…</Text>
-        )}
+            <Text style={styles.futureText}>{noPeople ? 'Nothing logged this day…' : 'No notes this day.'}</Text>
+          )}
+        </View>
+
+        {/* The picture, then who was there in the six slots under it. */}
+        <View style={styles.cardMedia}>
+          {content?.photoUri ? (
+            <View>
+              <PhotoImage uri={content.photoUri} style={styles.photo} />
+              {label && (
+                <View style={[styles.sourcePill, { backgroundColor: label.bg }]}>
+                  <MaterialCommunityIcons
+                    name={content.savedFrom === 'screenshot' ? 'cellphone-screenshot' : 'download-outline'}
+                    size={10}
+                    color={label.fg}
+                  />
+                  <Text numberOfLines={1} style={[styles.sourcePillText, { color: label.fg }]}>
+                    {content.savedFrom === 'screenshot' ? 'Screenshot' : label.text.replace(/^Saved from /, '')}
+                  </Text>
+                </View>
+              )}
+            </View>
+          ) : (
+            <View style={styles.emptyPhoto} />
+          )}
+          {future ? (
+            <View style={styles.plusGrid}>
+              {Array.from({ length: SLOTS }).map((_, i) => (
+                <Ionicons key={i} name="add-circle-outline" size={24} color={colors.teal} />
+              ))}
+            </View>
+          ) : (
+            <PeopleGrid company={company} />
+          )}
+        </View>
       </View>
 
-      <View style={styles.cardMedia}>
-        {future || !content ? (
-          <>
-            <View style={styles.emptyPhoto} />
-            <PlusGrid />
-          </>
-        ) : (
-          <>
-            {content.photoUri ? (
-              <PhotoImage uri={content.photoUri} style={styles.photo} />
-            ) : (
-              <View style={styles.emptyPhoto} />
-            )}
-          </>
-        )}
-      </View>
+      {/* Where — along the bottom. */}
+      {!future && company.place && (
+        <View style={styles.memoryFoot}>
+          <MaterialCommunityIcons name="map-marker-outline" size={13} color={colors.teal} />
+          <Text numberOfLines={1} style={styles.placeText}>
+            {company.place}
+          </Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -170,6 +250,17 @@ function EventImage({
         size={32}
         color={colors.teal}
       />
+    </View>
+  );
+}
+
+// News from a nearby day, said plainly — "2 days before" — so it is never
+// mistaken for something that happened on the day itself.
+function WhenLabel({ when }: { when: string }) {
+  return (
+    <View style={styles.whenPill}>
+      <MaterialCommunityIcons name="calendar-arrow-left" size={11} color={colors.teal} />
+      <Text style={styles.whenText}>{when}</Text>
     </View>
   );
 }
@@ -243,6 +334,7 @@ function TopicCard({
                 {events.map((ev, i) => (
                   <View key={i} style={styles.eventPage}>
                     <View style={{ flex: 1 }}>
+                      {ev.when && <WhenLabel when={ev.when} />}
                       <Text style={styles.topicHeadline} numberOfLines={3}>
                         {ev.headline}
                       </Text>
@@ -265,6 +357,7 @@ function TopicCard({
           <Text style={styles.futureText}>Looking this day up…</Text>
         ) : item ? (
           <>
+            {item.when && <WhenLabel when={item.when} />}
             <Text style={styles.topicHeadline} numberOfLines={3}>
               {item.headline}
             </Text>
@@ -281,7 +374,7 @@ function TopicCard({
           <Pressable style={styles.tuneRow} onPress={onTune}>
             <MaterialCommunityIcons name="tune-variant" size={13} color={colors.teal} />
             <Text numberOfLines={1} style={styles.tuneText}>
-              {interest ? `Tuned to: ${interest}` : `Tune ${label} to your taste`}
+              {interest ? `Following ${interest}` : `What you follow in ${label}`}
             </Text>
           </Pressable>
         )}
@@ -314,9 +407,18 @@ function OnThisDay() {
   const [loadingFeeds, setLoadingFeeds] = useState(true);
   const [swapTarget, setSwapTarget] = useState<Topic | null>(null);
 
-  // Per-topic taste text ("Premier League, F1…") and the sheet to edit it.
+  // What the user follows per topic ("Al Ahly, Premier League…") and the
+  // sheet that shows and edits it.
   const [interests, setInterests] = useState<Partial<Record<TopicKey, string>>>({});
   const [tuneTarget, setTuneTarget] = useState<Topic | null>(null);
+
+  // Who and where each day, for the Memory cards.
+  const [dayPeople, setDayPeople] = useState<Record<string, string[]>>({});
+  const [guesses, setGuesses] = useState<GuessesByDay>({});
+  const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
+  const [dayPlaces, setDayPlaces] = useState<Record<string, DayPlace[]>>({});
+  // Which pictures are screenshots or saved from apps, not camera photos.
+  const [photoSources, setPhotoSources] = useState<Record<string, string>>({});
 
   // The "…" action sheet — one entry point for expand / tune / swap.
   const [actionTarget, setActionTarget] = useState<{ topic: Topic; date: Date } | null>(null);
@@ -377,6 +479,32 @@ function OnThisDay() {
       getMemoriesByDay().then(setByDay);
       getInterestTopics().then(setTopics);
       getTopicInterests().then(setInterests);
+      Promise.all([getAllDayPeople(), getAllGuesses()]).then(([people, guessed]) => {
+        setDayPeople(people);
+        setGuesses(guessed);
+        const today = dateKey(new Date());
+        console.log(
+          `[otd] people on ${today}: ${(people[today] ?? []).length} tagged, ${(guessed[today] ?? []).length} recognised; ${Object.keys(people).length} days have someone tagged`,
+        );
+      });
+      getAllDayPlaces().then(setDayPlaces);
+      Promise.all([getAllPhotoSources(), getMemoriesByDay()]).then(([sources, days]) => {
+        setPhotoSources(sources);
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const uris = (days.get(dateKey(y)) ?? []).flatMap((m) => m.photoUris ?? []);
+        const marked = uris.filter((u) => sources[u]).map((u) => sources[u]);
+        console.log(`[otd] yesterday's pictures: ${uris.length}, of them ${marked.length} not from the camera (${marked.join(', ') || 'none'})`);
+      });
+      getAllPersonMeta().then((meta) =>
+        setPersonPhotos(Object.fromEntries(Object.entries(meta).map(([n, m]) => [n, m.photoUri]))),
+      );
+      // Quietly read new memories for what the user follows; when something
+      // new turns up, the feeds are refetched with it.
+      learnFollows().then((added) => {
+        if (added > 0) followsChanged();
+      });
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []),
   );
 
@@ -390,21 +518,10 @@ function OnThisDay() {
     setTopics(next);
   };
 
-  const handleTuneSave = async (text: string) => {
-    if (!tuneTarget) return;
-    const check = await setTopicInterest(tuneTarget.key, text);
-    if (!check.ok) {
-      Alert.alert(
-        check.reason === 'blocked' ? 'That can’t be used here' : 'Couldn’t check that just now',
-        check.reason === 'blocked'
-          ? 'Recall doesn’t show sexual or explicit content. Try something else.'
-          : 'Recall checks what it searches for first. Try again when you’re online.',
-      );
-      return;
-    }
-    setTuneTarget(null);
+  // Follows changed (added, removed or learned): the day feeds and any
+  // expanded events were searched for the old ones.
+  const followsChanged = async () => {
     setInterests(await getTopicInterests());
-    // Taste changed → both the day feeds and any expanded events are stale.
     setFeeds({});
     setEventsByKey({});
     setExpandedKeys(new Set());
@@ -481,7 +598,20 @@ function OnThisDay() {
           decelerationRate="fast"
           contentContainerStyle={{ gap: CARD_GAP, paddingRight: 16 }}
         >
-          <MemoryCard offset={offset} real={real} future={future} />
+          <MemoryCard
+            offset={offset}
+            real={real}
+            future={future}
+            sources={photoSources}
+            company={{
+              people: dayPeople[key] ?? [],
+              guessed: (guesses[key] ?? [])
+                .map((g) => g.name)
+                .filter((n) => !(dayPeople[key] ?? []).some((p) => p.toLowerCase() === n.toLowerCase())),
+              photos: personPhotos,
+              place: (dayPlaces[key] ?? []).find((p) => p.named)?.label ?? dayPlaces[key]?.[0]?.label,
+            }}
+          />
           {topics.map((t) => {
             const expandKey = `${key}:${t.key}`;
             return (
@@ -597,12 +727,12 @@ function OnThisDay() {
         onClose={() => setSwapTarget(null)}
       />
 
-      <TopicInterestSheet
-        visible={!!tuneTarget}
+      <FollowSheet
         topic={tuneTarget}
-        initialText={tuneTarget ? (interests[tuneTarget.key] ?? '') : ''}
-        onSave={handleTuneSave}
-        onClose={() => setTuneTarget(null)}
+        onClose={(changed) => {
+          setTuneTarget(null);
+          if (changed) followsChanged();
+        }}
       />
 
       <TopicActionSheet
@@ -722,6 +852,7 @@ const styles = StyleSheet.create({
   },
   tuneText: { flex: 1, fontFamily: fonts.medium, fontSize: 11, color: colors.teal },
   memoryLine: {
+    flex: 1,
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
@@ -743,6 +874,59 @@ const styles = StyleSheet.create({
   },
 
   cardMedia: { width: 84 },
+
+  // The Memory card stacks: what was logged and the photo, then who/where.
+  memoryCard: { flexDirection: 'column' },
+  memoryTop: { flexDirection: 'row', flex: 1 },
+  memoryLineRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: 4 },
+  memoryDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: colors.teal, marginTop: 7 },
+  memoryFoot: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F2F2',
+  },
+  moreSlot: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.pale,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreText: { fontFamily: fonts.semiBold, fontSize: 9, color: colors.primary },
+  // The app's own source label (src/photoSource.ts), small, on the photo.
+  sourcePill: {
+    position: 'absolute',
+    left: 5,
+    bottom: 5,
+    right: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    borderRadius: 999,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  sourcePillText: { fontFamily: fonts.semiBold, fontSize: 9 },
+  placeText: { flex: 1, fontFamily: fonts.medium, fontSize: 11, color: colors.teal },
+
+  whenPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    alignSelf: 'flex-start',
+    backgroundColor: colors.pale,
+    borderRadius: 999,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    marginBottom: 6,
+  },
+  whenText: { fontFamily: fonts.medium, fontSize: 10, color: colors.teal },
   photo: { width: '100%', height: 78, borderRadius: 10, overflow: 'hidden' },
   emptyPhoto: {
     width: '100%',

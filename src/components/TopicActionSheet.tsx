@@ -37,8 +37,8 @@ export default function TopicActionSheet({
     },
     {
       icon: 'tune-variant',
-      label: `Tune ${topic.label} to your taste`,
-      sub: tuned ? 'Tuned — tap to change' : 'Teams, artists, leagues you care about',
+      label: `What you follow in ${topic.label}`,
+      sub: tuned ? 'See or change what this shows' : 'Teams, leagues, artists, countries',
       onPress: onTune,
     },
     {

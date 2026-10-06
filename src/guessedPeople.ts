@@ -36,7 +36,7 @@ export type Guess = {
   box?: { x: number; y: number; w: number; h: number };
 };
 
-type GuessesByDay = Record<string, Guess[]>;
+export type GuessesByDay = Record<string, Guess[]>;
 type RejectedByDay = Record<string, string[]>;
 
 async function readJSON<T>(key: string, fallback: T): Promise<T> {

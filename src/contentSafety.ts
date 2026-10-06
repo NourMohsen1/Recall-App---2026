@@ -29,7 +29,7 @@ const BLOCKED = [
   /\b(seks|sks|sharmoot\w*)\b/i,
 ];
 
-function blockedWords(text: string): boolean {
+export function blockedWords(text: string): boolean {
   return BLOCKED.some((re) => re.test(text));
 }
 

@@ -94,6 +94,20 @@ export function visionAvailable(): boolean {
 
 export type ChatResult = { ok: true; content: string; provider: Provider } | { ok: false; status: number; body: string };
 
+// DeepSeek's text model "thinks" before answering by default. Measured on
+// Recall's own logging prompt (Oct 2026): with thinking off, the same
+// Arabic voice note came back just as right — the misheard "IRS" worked
+// out, no invented tasks — in 1.3 s instead of 11 s, at about a ninth of
+// the cost (185 output tokens instead of 2,196). So the fixed jobs here run
+// without it. Ask (askAI.ts) builds its own requests and keeps thinking,
+// for reasoning across many memories. Only DeepSeek's text model gets
+// this — OpenAI would refuse the unknown field.
+function withoutThinking(p: Provider, body: Record<string, unknown>): Record<string, unknown> {
+  return p.name === 'deepseek' && p.model === MODELS.deepseekText && !('thinking' in body)
+    ? { ...body, thinking: { type: 'disabled' } }
+    : body;
+}
+
 // Sends the same request to each provider in turn until one answers.
 //
 // `buildBody` takes the model name because the body has to name the model,
@@ -111,7 +125,7 @@ export async function chatCompletion(
       const res = await fetch(p.url, {
         method: 'POST',
         headers: { Authorization: `Bearer ${p.key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildBody(p.model)),
+        body: JSON.stringify(withoutThinking(p, buildBody(p.model))),
       });
       if (!res.ok) {
         last = { status: res.status, body: (await res.text()).slice(0, 400) };
