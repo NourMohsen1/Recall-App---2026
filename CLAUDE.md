@@ -153,6 +153,17 @@ rule alone was ignored 3 times in 4. Each entry is placed at the time it
 states (`happened`), and moved to another day when it says so ("yesterday
 afternoon…"), never into the future. Measured 4/4 on Nour's real notes.
 
+**On This Day shows same-day facts** (`src/onThisDay.ts`, Oct 2026): the
+day of the user's life beside what happened in the world THAT day ("the
+doctor's day was the day Liverpool beat City"). Tavily searches only that
+day and the next morning; DeepSeek must give each event's own date and it
+is checked in code (`event_date === target`) — previews, reactions and
+follow-ups are dropped. A story shown on one day is remembered
+(`otdStories`) and never used within six days of it. 👍 follows a story's
+subject, 👎 mutes it (`follows.ts`); "Your mix" (header) shows and undoes
+all of it. Measured: Liverpool–City on 10 Mar 2024 kept; the 11 Mar
+write-ups of the same match dropped.
+
 **Nothing sexual comes in from the web** (`src/contentSafety.ts`). Users can
 type their own On This Day topics ("Other") and "what I care about" text,
 which steer a web search, so: a typed topic is checked (short word list,
