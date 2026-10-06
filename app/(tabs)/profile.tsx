@@ -267,12 +267,15 @@ export default function Profile() {
             </View>
           ))}
         </View>
+        {/* Licences that ask to be credited. */}
+        <Text style={styles.credit}>Brain animation model: “Human Brain” by agher08 (Sketchfab), CC BY 4.0</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  credit: { fontFamily: fonts.regular, fontSize: 11, color: '#A3ABAC', textAlign: 'center', marginTop: 28 },
   devLink: { marginTop: 12, paddingVertical: 10, alignItems: 'center' },
   devLinkText: { fontFamily: fonts.medium, fontSize: 12, color: '#8B9394', textDecorationLine: 'underline' },
   rowHint: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },

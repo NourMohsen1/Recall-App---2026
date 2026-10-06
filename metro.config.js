@@ -12,4 +12,8 @@ const config = getSentryExpoConfig(__dirname);
 // to recognise anything.
 config.resolver.assetExts.push('tflite');
 
+// The live-voice brain animation is a self-contained web page (three.js +
+// the model), shown in a WebView — bundled the same way.
+config.resolver.assetExts.push('html');
+
 module.exports = config;

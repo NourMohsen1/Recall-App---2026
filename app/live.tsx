@@ -9,6 +9,7 @@ import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession, type ChatMessage } from '../src/chatSessions';
 import { liveVoiceAvailable, startLiveVoice, type LiveSession } from '../src/realtimeVoice';
 import { colors, fonts } from '../src/theme';
+import BrainAnimation from '../src/components/BrainAnimation';
 import { useLightStatusBar } from '../src/statusBar';
 
 // Talking to Recall, live.
@@ -59,6 +60,9 @@ export default function LiveConversation() {
   const scroller = useRef<ScrollView | null>(null);
 
   const available = liveVoiceAvailable();
+  // The latest exchange only: what was just said, and the answer to it.
+  const lastUser = turns.map((t) => t.role).lastIndexOf('user');
+  const recent = lastUser >= 0 ? turns.slice(lastUser) : turns.slice(-1);
 
   // The orb breathes while it listens and while it talks, so the screen is
   // never ambiguous about whose turn it is.
@@ -200,10 +204,15 @@ export default function LiveConversation() {
 
   return (
     <View style={styles.fill}>
+      {/* Inside the brain: it plays while the conversation is on, and
+          holds still when it isn't. */}
+      <BrainAnimation playing={phase !== 'idle'} style={StyleSheet.absoluteFill} />
+      {/* Darkens toward the bottom so the words and the orb stay readable. */}
       <LinearGradient
-        colors={[colors.ink, colors.dark, colors.teal, colors.dark]}
-        locations={[0, 0.4, 0.75, 1]}
+        colors={['rgba(2,20,22,0.55)', 'rgba(2,20,22,0)', 'rgba(2,20,22,0.25)', 'rgba(2,20,22,0.9)']}
+        locations={[0, 0.22, 0.55, 1]}
         style={StyleSheet.absoluteFill}
+        pointerEvents="none"
       />
       <SafeAreaView style={styles.fill} edges={['top']}>
         <View style={styles.header}>
@@ -222,42 +231,36 @@ export default function LiveConversation() {
           <Text style={styles.headerTitle}>Talk to Recall</Text>
         </View>
 
-        {/* What was said, newest at the bottom. Kept on screen rather than
-            disappearing as it's spoken: half the point of asking about your
-            own life is being able to read the answer back. */}
-        <ScrollView
-          ref={scroller}
-          style={styles.transcript}
-          contentContainerStyle={styles.transcriptInner}
-          showsVerticalScrollIndicator={false}
-        >
-          {turns.length === 0 && !error && (
-            <Text style={styles.hint}>
-              {available
-                ? 'Ask about anything you’ve recorded. Where you were, who you were with, what you said you’d do.'
-                : 'Talking needs an API key with speech access.'}
-            </Text>
-          )}
-          {turns.map((t, i) => (
-            <View key={i} style={t.role === 'user' ? styles.userRow : styles.aiRow}>
-              <Text
-                style={[
-                  t.role === 'user' ? styles.userText : styles.aiText,
-                  rtlIfArabic(t.text),
-                ]}
-              >
-                {t.text}
-              </Text>
-            </View>
-          ))}
-          {/* What it consulted, so an answer can be checked rather than
-              believed. This matters more here than anywhere: spoken aloud, a
-              guess and a fact sound the same. */}
-          {lookedUp.length > 0 && phase !== 'listening' && (
-            <Text style={styles.lookedUp}>It {lookedUp.join(', then ')}.</Text>
-          )}
-          {error && <Text style={styles.error}>{error}</Text>}
-        </ScrollView>
+        {/* The brain has the screen; the words sit just above the mic as
+            captions — only the latest exchange, on a dark glass panel so
+            they read over the animation. The whole conversation is still
+            saved, and is in Ask's history. */}
+        <View style={{ flex: 1 }} />
+        {(recent.length > 0 || error || (lookedUp.length > 0 && phase !== 'listening')) && (
+          <View style={styles.captions}>
+            <ScrollView
+              ref={scroller}
+              style={styles.captionsScroll}
+              contentContainerStyle={styles.transcriptInner}
+              showsVerticalScrollIndicator={false}
+            >
+              {recent.map((t, i) => (
+                <Text
+                  key={`${turns.length}-${i}`}
+                  style={[t.role === 'user' ? styles.userText : styles.aiText, rtlIfArabic(t.text)]}
+                >
+                  {t.text}
+                </Text>
+              ))}
+              {/* What it consulted, so an answer can be checked rather than
+                  believed — spoken aloud, a guess and a fact sound the same. */}
+              {lookedUp.length > 0 && phase !== 'listening' && (
+                <Text style={styles.lookedUp}>It {lookedUp.join(', then ')}.</Text>
+              )}
+              {error && <Text style={styles.error}>{error}</Text>}
+            </ScrollView>
+          </View>
+        )}
 
         <View style={[styles.orbArea, { paddingBottom: Math.max(insets.bottom, 18) + 8 }]}>
           <Pressable onPress={onOrbPress} disabled={!available || phase === 'thinking'}>
@@ -318,35 +321,19 @@ const styles = StyleSheet.create({
   },
   back: { position: 'absolute', left: 16, top: 6, padding: 4 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },
-  transcript: { flex: 1 },
-  transcriptInner: { paddingHorizontal: 22, paddingBottom: 20, gap: 14 },
-  hint: {
-    fontFamily: fonts.regular,
-    fontSize: 15,
-    lineHeight: 23,
-    color: 'rgba(255,255,255,0.55)',
-    marginTop: 40,
-    textAlign: 'center',
-  },
-  userRow: { alignSelf: 'flex-end', maxWidth: '85%' },
-  userText: {
-    fontFamily: fonts.medium,
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.white,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 18,
+  captions: {
+    marginHorizontal: 16,
+    marginBottom: 18,
+    borderRadius: 22,
+    backgroundColor: 'rgba(2,20,22,0.62)',
+    borderWidth: 1,
+    borderColor: 'rgba(111,245,230,0.14)',
     overflow: 'hidden',
   },
-  aiRow: { alignSelf: 'flex-start', maxWidth: '95%' },
-  aiText: {
-    fontFamily: fonts.regular,
-    fontSize: 17,
-    lineHeight: 26,
-    color: 'rgba(255,255,255,0.95)',
-  },
+  captionsScroll: { maxHeight: 200 },
+  transcriptInner: { paddingHorizontal: 18, paddingVertical: 14, gap: 10 },
+  userText: { fontFamily: fonts.medium, fontSize: 14, lineHeight: 20, color: 'rgba(255,255,255,0.6)' },
+  aiText: { fontFamily: fonts.regular, fontSize: 17, lineHeight: 25, color: colors.white },
   lookedUp: {
     fontFamily: fonts.regular,
     fontSize: 12,
