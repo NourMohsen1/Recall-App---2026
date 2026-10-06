@@ -59,6 +59,12 @@ export type LoggedMemory = {
   /** The user put this memory in its place by dragging it — the app never
    *  re-times it after that. */
   placedByUser?: boolean;
+  /** One log that told about several moments of the day was split into
+   *  them (memoryIntake.ts): the original stays as the source — its words,
+   *  its recording — and is not shown on the day itself. */
+  split?: boolean;
+  /** A moment split out of a longer log: the original's id. */
+  partOf?: string;
 };
 
 const STORAGE_KEY = 'loggedMemories';
@@ -129,8 +135,21 @@ export async function getLoggedMemories(): Promise<LoggedMemory[]> {
   return parsed.map((m) => ({ ...m, takenAt: m.takenAt ?? m.createdAt }));
 }
 
-export async function getMemoriesByDay(): Promise<Map<string, LoggedMemory[]>> {
-  const all = await getLoggedMemories();
+/** What the day shows: a split log appears as its moments, not twice. */
+export function shownMemories(all: LoggedMemory[]): LoggedMemory[] {
+  return all.filter((m) => !m.split);
+}
+
+/** What the user actually logged, once each: originals, not their moments. */
+export function originalMemories(all: LoggedMemory[]): LoggedMemory[] {
+  return all.filter((m) => !m.partOf);
+}
+
+/** By day, oldest first. `sources`: the original logs (the Source page)
+ *  instead of what the day shows. */
+export async function getMemoriesByDay(options: { sources?: boolean } = {}): Promise<Map<string, LoggedMemory[]>> {
+  const everything = await getLoggedMemories();
+  const all = options.sources ? originalMemories(everything) : shownMemories(everything);
   const byDay = new Map<string, LoggedMemory[]>();
   for (const m of all) {
     const key = dateKey(new Date(m.takenAt));
@@ -188,7 +207,35 @@ export async function updateMemory(id: string, patch: Partial<LoggedMemory>): Pr
 
 export async function deleteMemory(id: string): Promise<void> {
   const existing = await getLoggedMemories();
-  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(existing.filter((m) => m.id !== id)));
+  const gone = existing.find((m) => m.id === id);
+  let kept = existing.filter((m) => m.id !== id && m.partOf !== id);
+  // The last moment of a split log deleted: the original goes with it.
+  if (gone?.partOf && !kept.some((m) => m.partOf === gone.partOf)) kept = kept.filter((m) => m.id !== gone.partOf);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(kept));
+}
+
+/** A log split into its moments: the original kept as the source, each
+ *  moment saved as its own memory at its own time. */
+export async function splitMemory(
+  parentId: string,
+  moments: { text: string; takenAt: string }[],
+): Promise<void> {
+  const all = await getLoggedMemories();
+  const parent = all.find((m) => m.id === parentId);
+  if (!parent || moments.length < 2) return;
+  const children: LoggedMemory[] = moments.map((mo, i) => ({
+    id: `${parentId}-m${i + 1}`,
+    createdAt: parent.createdAt,
+    takenAt: mo.takenAt,
+    kind: parent.kind,
+    text: mo.text,
+    refined: true,
+    polishVersion: parent.polishVersion,
+    partOf: parentId,
+  }));
+  const rest = all.filter((m) => m.partOf !== parentId).map((m) => (m.id === parentId ? { ...m, split: true } : m));
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([...children, ...rest]));
+  console.log(`[intake] split ${parentId} into ${children.length} moments`);
 }
 
 // What the user reads on a card for one logged memory.

@@ -21,6 +21,7 @@ import {
   getLoggedMemories,
   memoryDisplayText,
   reorderDay,
+  shownMemories,
 } from '../src/memoryLog';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
@@ -178,11 +179,11 @@ function Recap() {
 
   useFocusEffect(
     useCallback(() => {
-      getLoggedMemories().then(setMemories);
+      getLoggedMemories().then((all) => setMemories(shownMemories(all)));
     }, []),
   );
 
-  const analyzing = useMemoryPolish(useCallback(() => getLoggedMemories().then(setMemories), []));
+  const analyzing = useMemoryPolish(useCallback(() => getLoggedMemories().then((all) => setMemories(shownMemories(all))), []));
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -219,7 +220,7 @@ function Recap() {
             <TodayRecap
               memories={memories}
               onDragging={setDragging}
-              onReordered={() => getLoggedMemories().then(setMemories)}
+              onReordered={() => getLoggedMemories().then((all) => setMemories(shownMemories(all)))}
             />
           )}
           {period !== 'Today' && offset === null && <RecapOverview kind={KIND[period]} onOpen={setOffset} />}

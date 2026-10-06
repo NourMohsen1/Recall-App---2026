@@ -225,7 +225,7 @@ function SourceScreen() {
   const [entries, setEntries] = useState<LoggedMemory[]>([]);
 
   const reload = useCallback(() => {
-    getMemoriesByDay().then((byDay) => {
+    getMemoriesByDay({ sources: true }).then((byDay) => {
       const day = byDay.get(dateKey(dateWithOffset(offsetNum))) ?? [];
       // Every way the day was logged, oldest first — a voice note in the
       // morning and a typed one at night are two separate sources and both

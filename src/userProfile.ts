@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getLoggedMemories } from './memoryLog';
+import { getLoggedMemories, originalMemories } from './memoryLog';
 
 // Who the user is.
 //
@@ -67,7 +67,7 @@ export async function joinedDate(profile: UserProfile): Promise<Date | null> {
 }
 
 export async function memoryCount(): Promise<number> {
-  return (await getLoggedMemories()).length;
+  return originalMemories(await getLoggedMemories()).length;
 }
 
 // The standing "who am I talking to" line handed to the AI. Empty when the

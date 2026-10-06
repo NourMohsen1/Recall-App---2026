@@ -19,9 +19,8 @@ import { colors, fonts } from '../../src/theme';
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 // A day gets its green dot only when the user logged something themselves
-// that day — typed, spoken, attached, or photos they picked. Photos Recall
-// imported on its own don't count, so the dots show whether the user kept
-// up, day by day. Counted by when they logged, not by the day it's about.
+// for that day — typed, spoken, attached, or photos they picked, at the
+// time or later. Photos Recall imported on its own don't count.
 function getWeek(loggedKeys: Set<string>) {
   const today = new Date();
   const start = new Date(today);
@@ -104,10 +103,11 @@ export default function Home() {
     }
   }, []);
 
+  // A day is marked when it has something the user logged themselves —
+  // including what they added to it later (logging Monday on Tuesday marks
+  // Monday), since the day is what they kept up with.
   const manualDays = new Set<string>();
-  for (const list of byDay.values()) {
-    for (const m of list) if (isManualLog(m)) manualDays.add(dateKey(new Date(m.createdAt)));
-  }
+  for (const [day, list] of byDay) if (list.some(isManualLog)) manualDays.add(day);
   const week = getWeek(manualDays);
 
   // Yesterday's Summary prefers what the user actually logged yesterday.

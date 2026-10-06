@@ -1,7 +1,7 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { PLACES, WEEKDAYS } from './data';
 import { getAllDayMarkers, getRecurringMarkers, occursOn } from './dayMarkers';
-import { getLoggedMemories } from './memoryLog';
+import { getLoggedMemories, shownMemories } from './memoryLog';
 import { getAllGuesses } from './guessedPeople';
 import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
 import { getAllDayPlaces, getPlaces, usualWeekday } from './places';
@@ -118,7 +118,7 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
     return fresh;
   };
 
-  for (const m of await getLoggedMemories()) {
+  for (const m of shownMemories(await getLoggedMemories())) {
     const key = isoDate(new Date(m.takenAt));
     const rec = get(key);
     if (m.kind === 'text' && m.text) rec.logged.push(m.text);

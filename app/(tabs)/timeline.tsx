@@ -19,6 +19,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
+import AddPlaceSheet from '../../src/components/AddPlaceSheet';
 import PlaceTile from '../../src/components/PlaceTile';
 import ReadDayCard from '../../src/components/ReadDayCard';
 import { mayReadDay, onPhotoReadingChanged } from '../../src/photoReading';
@@ -716,12 +717,15 @@ export default function Timeline() {
   const latestPhotoMemory = photoMemories[photoMemories.length - 1];
   const showDayCard = bullets.length > 0 || !!latestVoice;
   const showPhotoLib = realPhotoUris.length > 0;
-  const showPlaces = places.length > 0;
+  const [addingPlace, setAddingPlace] = useState(false);
   // A day with only guesses on it still has people on it — that is the
   // whole point of the app noticing. Requiring a confirmed name here would
   // have hidden every face it found until the user had already done the
   // work themselves.
   const showPeople = people.length > 0 || guessed.length > 0;
+  // Places shows on any day that happened and has something on it, so a
+  // place Recall missed can be added from its "+".
+  const showPlaces = places.length > 0 || (selected <= 0 && (showDayCard || showPhotoLib || showPeople));
   const hasContent =
     showDayCard || showPhotoLib || showPlaces || showPeople || (!otdFuture && otdTopics.length > 0);
   const showAssumedSlot =
@@ -743,7 +747,7 @@ export default function Timeline() {
     const peopleW = Math.max(200, 32 + peopleCols * 72 + (peopleCols - 1) * 12);
     const photoCols = across(realPhotoUris.length);
     const photoW = Math.max(250, 32 + photoCols * TILE_SIZE + (photoCols - 1) * 8);
-    const placeCols = across(places.length);
+    const placeCols = across(places.length + (selected <= 0 ? 1 : 0));
     const placesW = Math.max(200, 32 + placeCols * PLACE_TILE + (placeCols - 1) * 14);
 
     // Two columns that flow from the top: what the user lived on the left
@@ -1116,7 +1120,7 @@ export default function Timeline() {
                         </Pressable>
                       </View>
                       <View style={styles.placeGrid}>
-                        {places.slice(0, 6).map((place) => (
+                        {places.slice(0, 5).map((place) => (
                           <PlaceTile
                             key={place.placeId}
                             label={place.label}
@@ -1131,6 +1135,15 @@ export default function Timeline() {
                             }
                           />
                         ))}
+                        {/* A place Recall missed, added by hand. */}
+                        {selected <= 0 && (
+                          <Pressable style={{ width: PLACE_TILE, alignItems: 'center' }} onPress={() => setAddingPlace(true)}>
+                            <View style={[styles.addPlaceTile, { width: PLACE_TILE, height: PLACE_TILE }]}>
+                              <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={colors.teal} />
+                            </View>
+                            <Text style={styles.addPlaceLabel}>Add</Text>
+                          </Pressable>
+                        )}
                       </View>
                     </View>
                   )}
@@ -1293,6 +1306,12 @@ export default function Timeline() {
             </Animated.View>
           </GestureDetector>
         </View>
+
+        <AddPlaceSheet
+          dayKey={dateKey(dateWithOffset(selected))}
+          visible={addingPlace}
+          onClose={() => setAddingPlace(false)}
+        />
       </View>
 
       <SirPicker visible={pickerOpen} onPick={addSir} onClose={() => setPickerOpen(false)} />
@@ -1310,6 +1329,15 @@ export default function Timeline() {
 }
 
 const styles = StyleSheet.create({
+  addPlaceTile: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#2B2B2B', marginTop: 6, textAlign: 'center' },
   canvasContent: { position: 'absolute', left: MARGIN, top: MARGIN, width: CANVAS_W, height: CANVAS_H },
   safe: { flex: 1, backgroundColor: colors.muted },
   header: {

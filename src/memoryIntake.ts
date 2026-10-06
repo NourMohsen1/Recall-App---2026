@@ -7,7 +7,7 @@ import {
   isSirKind,
   type SirKind,
 } from './dayMarkers';
-import { dateKey, getLoggedMemories, localFile, updateMemory, type LoggedMemory } from './memoryLog';
+import { dateKey, getLoggedMemories, localFile, splitMemory, updateMemory, type LoggedMemory } from './memoryLog';
 import { addPersonMention, getKnownPeopleForPrompt } from './peopleTags';
 import {
   isPlaceKind,
@@ -49,6 +49,7 @@ Respond with ONLY a JSON object in this exact shape:
 {
   "polished": "...",
   "happened": {"date": "YYYY-MM-DD" | null, "time": "HH:MM" | null},
+  "moments": [{"time": "HH:MM" | null, "text": "..."}],
   "tasks": [{"title": "...", "date": "YYYY-MM-DD" | null, "period": "morning"|"afternoon"|"evening"|"night" | null, "time": "HH:MM" | null, "details": "..." | null, "kind": "..." | null}],
   "people": [{"name": "...", "descriptor": "..." | null, "note": "..."}],
   "places": [{"name": "...", "kind": "...", "moment": "..." | null}],
@@ -59,6 +60,8 @@ Respond with ONLY a JSON object in this exact shape:
 "polished" — the memory itself, cleaned and reorganized: fix rambling and fillers, keep EVERY event and detail, first person, past tense where natural, in the SAME language(s) the user used (Arabic stays Arabic, mixed stays mixed). Reminders/to-dos MUST be removed entirely from the polished text — they live in "tasks" instead. Example: "…grabbed coffee with Lina, oh and remind me to book the flight friday" → polished ends at "…grabbed coffee with Lina." and the flight goes into tasks. Never invent details. A clean TYPED entry may come back as-is.
 
 POLISH, DON'T REWRITE. Change as little as needed: fix spelling, fillers and repetition, add punctuation — never reword what happened. Every detail keeps its exact meaning: body parts (edy/إيدي = hand, dahry/ضهري = back, regl/رجلي = leg — never swap one for another), people, places, numbers, times, who did what and who won. Keep the user's own SCRIPT: an entry marked FRANCO ENTRY is written back in Franco, in Latin letters — converting it to Arabic script misreads words (measured: "jamica", a football pitch, became "الجامعة", the university). Never translate: Arabic stays Arabic, English stays English, mixed stays mixed. If you are not sure what a word means, keep the user's word exactly as written.
+
+"moments" — when the entry tells about SEVERAL separate parts of the day ("in the morning I went to the café… then the doctor… at night football"), split "polished" into those parts, in the order they happened: each "text" is one part, polished by the same rules (same language and script, nothing reworded, nothing left out — together they say everything "polished" says), and each "time" is when that part started, by the same rules as "happened.time" below — use "then"/"after that" to keep later parts later. Return an empty list when the entry is about one moment, or when the parts have no order in the day. Never more than 8.
 
 "happened" — WHEN this entry's events took place, only from what the entry itself says. date: only when the entry says the events were on a different day than ENTRY DAY below ("yesterday", "on Friday", "last night" written the next morning) — resolve it against TODAY, the day the entry was written; otherwise null. time: when the events started, in this order of preference —
   1. an explicit time ("at 9", "el sa3a 2", "2:00 pm"); for an hour without am/pm, judge from what was done ("played football at 9, then went out" → 21:00);
@@ -114,6 +117,8 @@ export type IntakeResult = {
   polished?: string;
   /** When the events took place, if the entry said: another day, a time. */
   happened?: { date?: string; time?: string };
+  /** The day's separate parts, when one log told about several. */
+  moments?: { time?: string; text: string }[];
   tasks: IntakeTask[];
   people: { name: string; descriptor?: string; note?: string }[];
   places: ParsedPlace[];
@@ -121,6 +126,17 @@ export type IntakeResult = {
   markers: { kind: SirKind; label: string }[];
   recurring: ParsedRecurring[];
 };
+
+function readMoments(m: { time?: string | null; text?: string | null }[] | null | undefined): IntakeResult['moments'] {
+  const list = (m ?? [])
+    .map((x) => ({
+      text: typeof x?.text === 'string' ? x.text.trim() : '',
+      time: typeof x?.time === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(x.time) ? x.time : undefined,
+    }))
+    .filter((x) => x.text)
+    .slice(0, 8);
+  return list.length >= 2 ? list : undefined;
+}
 
 function readHappened(h: { date?: string | null; time?: string | null } | null | undefined): IntakeResult['happened'] {
   const date = typeof h?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(h.date) ? h.date : undefined;
@@ -179,6 +195,7 @@ export async function analyzeMemory(
     const parsed = JSON.parse(result.content) as {
       polished?: string;
       happened?: { date?: string | null; time?: string | null } | null;
+      moments?: { time?: string | null; text?: string | null }[] | null;
       tasks?: {
         title?: string;
         date?: string | null;
@@ -259,6 +276,7 @@ export async function analyzeMemory(
     return {
       polished: parsed.polished?.trim() || undefined,
       happened: readHappened(parsed.happened),
+      moments: readMoments(parsed.moments),
       tasks,
       people: (parsed.people ?? [])
         .filter((p): p is { name: string } & typeof p => !!p.name?.trim())
@@ -399,6 +417,10 @@ export async function processMemoryIntake(
       polishVersion: POLISH_VERSION,
       ...(moved ? { takenAt: moved.takenAt } : {}),
     });
+    // One log about the whole day becomes its moments, each at its time.
+    if (memory && (memory.kind === 'text' || memory.kind === 'voice') && result.moments && !memory.placedByUser) {
+      await splitMemory(memoryId, momentTimes(result.moments, dayKey, moved?.takenAt ?? memory.takenAt));
+    }
 
     // 2 — Commitments become tasks. Ones without a date are flagged so the
     //     Tasks page can ask the user to confirm a due date.
@@ -488,6 +510,41 @@ export async function processMemoryIntake(
   }
 }
 
+/** Each moment's time on the day: its own when it has one; between its
+ *  neighbours when it doesn't; always in order, never in the future. A log
+ *  with no times at all keeps its parts together around its own time. */
+function momentTimes(moments: { time?: string; text: string }[], dayKey: string, fallbackIso: string): { text: string; takenAt: string }[] {
+  const [y, mo, d] = dayKey.split('-').map(Number);
+  const at = (hhmm: string) => {
+    const [h, m] = hhmm.split(':').map(Number);
+    return new Date(y, mo - 1, d, h, m).getTime();
+  };
+  const t: (number | undefined)[] = moments.map((m) => (m.time ? at(m.time) : undefined));
+  const base = new Date(fallbackIso).getTime();
+  if (!t.some((x) => x !== undefined)) t[0] = base;
+  // Fill the gaps between known times, evenly; before the first and after
+  // the last, an hour apart.
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] !== undefined) continue;
+    let p = i - 1;
+    while (p >= 0 && t[p] === undefined) p--;
+    let n = i + 1;
+    while (n < t.length && t[n] === undefined) n++;
+    if (p >= 0 && n < t.length) t[i] = t[p]! + ((t[n]! - t[p]!) * (i - p)) / (n - p);
+    else if (p >= 0) t[i] = t[p]! + 3600000 * (i - p);
+    else t[i] = t[n]! - 3600000 * (n - i);
+  }
+  const dayStart = new Date(y, mo - 1, d).getTime();
+  const dayEnd = Math.min(dayStart + 86400000 - 60000, Date.now());
+  const out: number[] = [];
+  for (let i = 0; i < t.length; i++) {
+    let v = Math.min(dayEnd, Math.max(dayStart, t[i]!));
+    if (i > 0 && v <= out[i - 1]) v = out[i - 1] + 60000;
+    out.push(v);
+  }
+  return moments.map((m, i) => ({ text: m.text, takenAt: new Date(Math.round(out[i] / 60000) * 60000).toISOString() }));
+}
+
 /** The new day and time a memory belongs at, or null to leave it. Never
  *  moved into the future, and never more than a month back. */
 function retime(
@@ -528,7 +585,8 @@ function sameDayText(all: LoggedMemory[], memoryId: string, dayKey: string): str
 // says. Voice notes from before, and typed notes from the last week, are
 // polished once more under these rules: the text and its time only — their
 // tasks, people and places were filed the first time and are not again.
-const POLISH_VERSION = 2;
+// v3 (Oct 2026): a log about the whole day is split into its moments.
+const POLISH_VERSION = 3;
 const RECHECK_TYPED_DAYS = 7;
 
 async function repolishUnderNewRules(limit = 4): Promise<boolean> {
@@ -538,6 +596,7 @@ async function repolishUnderNewRules(limit = 4): Promise<boolean> {
     .filter(
       (m) =>
         m.refined &&
+        !m.partOf &&
         (m.polishVersion ?? 0) < POLISH_VERSION &&
         !!(m.rawText ?? m.text)?.trim() &&
         (m.kind === 'voice' || (m.kind === 'text' && new Date(m.createdAt).getTime() > weekAgo)) &&
@@ -565,6 +624,9 @@ async function repolishUnderNewRules(limit = 4): Promise<boolean> {
       polishVersion: POLISH_VERSION,
       ...(moved ? { takenAt: moved.takenAt } : {}),
     });
+    if (result.moments && !m.placedByUser) {
+      await splitMemory(m.id, momentTimes(result.moments, moved?.day ?? day, moved?.takenAt ?? m.takenAt));
+    }
     console.log(
       `[intake] re-polished ${m.kind} ${m.id}: ${polished && polished !== raw.trim() ? 'rewritten' : 'unchanged'}${moved ? `, now ${moved.day} ${moved.takenAt.slice(11, 16)}` : ''}`,
     );

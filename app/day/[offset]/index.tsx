@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import AddPlaceSheet from '../../../src/components/AddPlaceSheet';
 import ReorderableList from '../../../src/components/ReorderableList';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -80,6 +81,7 @@ function DayDetailScreen() {
   const [editing, setEditing] = useState(false);
   // A note is being dragged: the page holds still under the finger.
   const [dragging, setDragging] = useState(false);
+  const [addingPlace, setAddingPlace] = useState(false);
   const [editTarget, setEditTarget] = useState<LoggedMemory | null>(null);
   const [adding, setAdding] = useState(false);
   const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
@@ -522,7 +524,9 @@ function DayDetailScreen() {
           </>
         )}
 
-        {places.length > 0 && (
+        {/* Always offered on a day that has happened, so a place Recall
+            missed can be added by hand. */}
+        {(places.length > 0 || offsetNum <= 0) && (
           <>
             <View style={styles.divider} />
             <Text style={styles.placesTitle}>Places</Text>
@@ -539,6 +543,14 @@ function DayDetailScreen() {
                   }
                 />
               ))}
+              {offsetNum <= 0 && (
+                <Pressable style={{ width: 100, alignItems: 'center' }} onPress={() => setAddingPlace(true)}>
+                  <View style={[styles.addPlaceTile, { width: 100, height: 100 }]}>
+                    <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={colors.teal} />
+                  </View>
+                  <Text style={styles.addPlaceLabel}>Add</Text>
+                </Pressable>
+              )}
             </View>
           </>
         )}
@@ -643,6 +655,15 @@ function DayDetailScreen() {
         )}
       </ScrollView>
       </GestureHandlerRootView>
+
+      <AddPlaceSheet
+        dayKey={dayKey}
+        visible={addingPlace}
+        onClose={(added) => {
+          setAddingPlace(false);
+          if (added) reload();
+        }}
+      />
 
       <MemoryEditSheet
         visible={!!editTarget || adding}
@@ -753,6 +774,15 @@ const styles = StyleSheet.create({
   },
   peopleReading: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
   placesTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111', marginBottom: 14 },
+  addPlaceTile: {
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    borderColor: colors.muted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#2B2B2B', marginTop: 6, textAlign: 'center' },
   placeGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 12 },
 
   empty: { paddingTop: 80, alignItems: 'center' },
