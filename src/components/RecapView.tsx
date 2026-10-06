@@ -84,24 +84,32 @@ export default function RecapView({
     </Pressable>
   ));
 
+  const unit = kind === 'week' ? 'Week' : kind === 'month' ? 'Month' : 'Year';
+
   return (
+    <>
+      {/* Step a period back or forward — one line above the card. */}
+      <View style={styles.navRow}>
+        <Pressable onPress={() => onOffset(offset - 1)} hitSlop={10} style={styles.navBtn}>
+          <Ionicons name="chevron-back" size={18} color={colors.primary} />
+          <Text style={styles.navText}>Last {unit}</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => canGoForward && onOffset(offset + 1)}
+          hitSlop={10}
+          disabled={!canGoForward}
+          style={[styles.navBtn, !canGoForward && { opacity: 0.3 }]}
+        >
+          <Text style={styles.navText}>Next {unit}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+        </Pressable>
+      </View>
+
     <View style={styles.card}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Pressable onPress={() => onOffset(offset - 1)} hitSlop={10} style={styles.arrow}>
-            <Ionicons name="chevron-back" size={20} color={colors.primary} />
-          </Pressable>
           <Text style={styles.title}>{period.title}</Text>
-          <View style={{ flex: 1 }} />
           <Text style={styles.range}>{period.range}</Text>
-          <Pressable
-            onPress={() => canGoForward && onOffset(offset + 1)}
-            hitSlop={10}
-            style={[styles.arrow, !canGoForward && { opacity: 0.25 }]}
-            disabled={!canGoForward}
-          >
-            <Ionicons name="chevron-forward" size={20} color={colors.primary} />
-          </Pressable>
         </View>
         {/* A month is one photo at a time, fading through the month. */}
         {kind === 'month' ? (
@@ -174,6 +182,7 @@ export default function RecapView({
         )}
       </View>
     </View>
+    </>
   );
 }
 
@@ -186,13 +195,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: 26,
     overflow: 'hidden',
-    marginTop: 18,
+    marginTop: 14,
     borderWidth: 1,
     borderColor: '#C9D5D6',
   },
-  header: { backgroundColor: '#ADC3C5', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  arrow: { paddingVertical: 4 },
+  header: { backgroundColor: '#ADC3C5', paddingHorizontal: 18, paddingTop: 18, paddingBottom: 16 },
+  // Title and dates share a top edge, at the card's two sides.
+  headerRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  navRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 18 },
+  navBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  navText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
   // Sized against the rest of the page: the day titles are 17.
   title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: '#1B1B1B' },
   range: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: '#1B1B1B', textAlign: 'right' },

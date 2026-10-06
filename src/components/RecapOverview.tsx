@@ -27,7 +27,7 @@ export default function RecapOverview({ kind, onOpen }: { kind: RecapKind; onOpe
         const has = units.some((u) => u.hasContent);
         out.push({
           offset: -i,
-          title: kind === 'week' ? (i === 0 ? 'This\nWeek' : i === 1 ? 'Last\nWeek' : 'Earlier') : period.title,
+          title: period.title,
           range: period.range,
           tiles,
           photo: tiles.find((t) => t.photo)?.photo,

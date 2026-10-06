@@ -1,5 +1,5 @@
-import { useCallback, useRef, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -127,7 +127,11 @@ function nextUpId(tasks: StoredTask[], now: Date): string | null {
     if (at < nowKey) continue;
     if (!best || at < best.at) best = { id: t.id, at };
   }
-  return best?.id ?? null;
+  if (best) return best.id;
+  // Nothing dated still ahead: the cue moves on to the first open task
+  // with no date, so ticking off the last appointment never leaves the
+  // page without anything marked as next.
+  return tasks.find((t) => !t.done && !t.dueDate)?.id ?? null;
 }
 
 // The switch in the design is ON for a task still to do and OFF once it is
@@ -278,9 +282,16 @@ export default function Tasks() {
   );
 
   const onToggle = async (id: string) => {
+    const wasNext = id === nextId;
     await toggleTask(id);
+    // The outline slides to the next task rather than blinking over…
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // …and when the one just ticked off was the highlighted one, the page
+    // follows it to wherever the next one is — even above, out of view.
+    followNext.current = wasNext;
     reload();
   };
+
 
   // Tasks the AI created without a due date get one confirmation popup each
   // per visit — set a date, or keep it dateless and stop being asked.
@@ -328,6 +339,11 @@ export default function Tasks() {
       scrolled.current = false;
     }, []),
   );
+  // Where each card sits inside its week, so the page can go to whichever
+  // task becomes next.
+  const cardY = useRef<Record<string, number>>({});
+  const followNext = useRef(false);
+
   const tryScroll = () => {
     if (scrolled.current) return;
     let y: number | undefined;
@@ -347,6 +363,19 @@ export default function Tasks() {
     sectionY.current[key] = y;
     tryScroll();
   };
+
+  useEffect(() => {
+    if (!followNext.current || !nextId || !nextSection) return;
+    followNext.current = false;
+    const t = setTimeout(() => {
+      const top = sectionY.current[nextSection];
+      const inSection = cardY.current[nextId];
+      if (top == null || inSection == null) return;
+      const y = inSection < 120 ? top : top + inSection - 24;
+      scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: true });
+    }, 280);
+    return () => clearTimeout(t);
+  }, [nextId, nextSection]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -391,14 +420,13 @@ export default function Tasks() {
                 task={task}
                 isNew={newIds.has(task.id)}
                 isNext={task.id === nextId}
-                onLayoutY={
-                  task.id === nextId
-                    ? (y) => {
-                        nextCardY.current = y;
-                        tryScroll();
-                      }
-                    : undefined
-                }
+                onLayoutY={(y) => {
+                  cardY.current[task.id] = y;
+                  if (task.id === nextId) {
+                    nextCardY.current = y;
+                    tryScroll();
+                  }
+                }}
                 onToggle={() => onToggle(task.id)}
                 onEdit={() => router.push({ pathname: '/log/task-edit', params: { id: task.id } })}
                 onOpenSource={

@@ -92,6 +92,18 @@ function headerRange(a: Date, b: Date): string {
     : `${MONTHS_SHORT[a.getMonth()]}–${MONTHS_SHORT[b.getMonth()]}\n${a.getDate()}–${b.getDate()}`;
 }
 
+/** "Week 2\nof September" — weeks before last week are named by their
+ *  place in a month, so a list of them reads like a calendar rather than
+ *  "Earlier, Earlier, Earlier". A week belongs to the month its Thursday
+ *  falls in (the usual rule), so Aug 31–Sep 6 is September's first. */
+function weekName(monday: Date, offset: number): string {
+  if (offset === 0) return 'This\nWeek';
+  if (offset === -1) return 'Last\nWeek';
+  if (offset === 1) return 'Next\nWeek';
+  const thursday = addDays(monday, 3);
+  return `Week ${Math.ceil(thursday.getDate() / 7)}\nof ${MONTHS[thursday.getMonth()]}`;
+}
+
 /** The period `offset` steps back from now (0 = this one). */
 export function recapPeriod(kind: RecapKind, offset: number, now = new Date()): RecapPeriod {
   if (kind === 'week') {
@@ -111,7 +123,7 @@ export function recapPeriod(kind: RecapKind, offset: number, now = new Date()): 
     });
     return {
       kind,
-      title: offset === 0 ? 'This\nWeek' : offset === -1 ? 'Last\nWeek' : 'Earlier\nWeek',
+      title: weekName(start, offset),
       range: headerRange(start, end),
       units,
     };

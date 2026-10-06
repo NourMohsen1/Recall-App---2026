@@ -11,6 +11,8 @@ import { syncPhotosWithLibrary } from '../../src/photoGuard';
 import { syncNewPhotosIfOn } from '../../src/photoImport';
 import { getPhotoReading } from '../../src/photoReading';
 import { LoggedMemory, dateKey, getMemoriesByDay, isManualLog, memoryDisplayText } from '../../src/memoryLog';
+import { getAllDayPlaces } from '../../src/places';
+import { getTasks, type StoredTask } from '../../src/tasks';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
@@ -39,21 +41,40 @@ function getWeek(loggedKeys: Set<string>) {
   });
 }
 
-function PlayButton() {
-  return (
-    <View style={styles.playBtn}>
-      <Ionicons name="play" size={18} color={colors.white} style={{ marginLeft: 2 }} />
-    </View>
+/** "Today", "In 1 Day", "In 5 Days" — when the next task is due. */
+function dueIn(dueDate: string): string {
+  const [y, m, d] = dueDate.split('-').map(Number);
+  const now = new Date();
+  const days = Math.round(
+    (new Date(y, m - 1, d).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 86400000,
   );
+  return days <= 0 ? 'Today' : days === 1 ? 'In 1 Day' : `In ${days} Days`;
 }
 
 export default function Home() {
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
+  const [yPlaces, setYPlaces] = useState<string[]>([]);
+  const [nextTask, setNextTask] = useState<StoredTask | null>(null);
   const router = useRouter();
 
   useFocusEffect(
     useCallback(() => {
       getMemoriesByDay().then(setByDay);
+      // Where yesterday happened, named places first — the summary's chips.
+      getAllDayPlaces().then((all) => {
+        const y = new Date();
+        y.setDate(y.getDate() - 1);
+        const spots = all[dateKey(y)] ?? [];
+        setYPlaces([...spots.filter((p) => p.named), ...spots.filter((p) => !p.named)].slice(0, 3).map((p) => p.label));
+      });
+      // The next task that's due, for the Tasks card.
+      getTasks().then((tasks) => {
+        const today = dateKey(new Date());
+        const next = tasks
+          .filter((t) => !t.done && t.dueDate && t.dueDate >= today)
+          .sort((a, b) => (a.dueDate! + (a.dueTime ?? '')).localeCompare(b.dueDate! + (b.dueTime ?? '')))[0];
+        setNextTask(next ?? null);
+      });
       // Someone who had Recall before this question existed is asked once,
       // here. Until they answer, no photos are sent.
       getPhotoReading().then((mode) => {
@@ -132,7 +153,13 @@ export default function Home() {
                 <View style={[styles.dayCircle, day.isToday && styles.dayCircleToday]}>
                   <Text style={[styles.dayNum, day.isToday && styles.dayNumToday]}>{day.date}</Text>
                 </View>
-                {day.hasLog && <View style={styles.logDot} />}
+                {/* Today always has its dot, in the accent; other days only
+                    when the user logged that day, in green. */}
+                {day.isToday ? (
+                  <View style={[styles.logDot, styles.todayDot]} />
+                ) : (
+                  day.hasLog && <View style={styles.logDot} />
+                )}
             </Pressable>
           ))}
         </View>
@@ -151,35 +178,54 @@ export default function Home() {
 
         {analyzing && <AnalyzingBanner />}
 
-        {/* Yesterday's Summary */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
-            <Text style={styles.cardTitle}>Yesterday’s Summary</Text>
-            <PlayButton />
-          </View>
-          <View style={{ marginTop: 10 }}>
+        {/* Yesterday's Summary — opens yesterday */}
+        <Pressable style={styles.card} onPress={() => router.push('/day/-1' as Parameters<typeof router.push>[0])}>
+          <Text style={styles.cardTitle}>Yesterday’s Summary</Text>
+          {yPlaces.length > 0 && (
+            <View style={styles.chipRow}>
+              {yPlaces.map((p) => (
+                <View key={p} style={styles.placeChip}>
+                  <Text numberOfLines={1} style={styles.placeChipText}>
+                    {p}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+          <View style={{ marginTop: 14 }}>
             {usingRealSummary ? (
-              yLines.map((line, i) => (
+              yLines.slice(0, 4).map((line, i, shown) => (
                 <View key={i} style={styles.summaryLine}>
-                  <View style={styles.summaryDot} />
-                  <Text style={[styles.summaryText, rtlIfArabic(line)]}>{line}</Text>
+                  {/* A dot per moment, joined by a dotted line. */}
+                  <View style={styles.rail}>
+                    <View style={styles.summaryDot} />
+                    {i < shown.length - 1 && <View style={styles.railDash} />}
+                  </View>
+                  <Text numberOfLines={2} style={[styles.summaryText, rtlIfArabic(line)]}>
+                    {line}
+                  </Text>
                 </View>
               ))
             ) : (
               <Text style={styles.summaryEmpty}>Nothing logged yesterday yet.</Text>
             )}
           </View>
-        </View>
+        </Pressable>
 
-        {/* On This Day */}
-        <Link href="/on-this-day" asChild>
+        {/* Tasks — the next one due */}
+        <Link href="/tasks" asChild>
           <Pressable style={styles.card}>
             <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>On This Day</Text>
-              <PlayButton />
+              <Text style={styles.cardTitle}>Tasks</Text>
+              {nextTask?.dueDate && (
+                <View style={styles.duePill}>
+                  <Text style={styles.duePillText}>{dueIn(nextTask.dueDate)}</Text>
+                </View>
+              )}
             </View>
-            {/* What the feature is, not a headline from inside it. */}
-            <Text style={styles.cardSubtitle}>See what was happening in the world on any day of your life.</Text>
+            <Text numberOfLines={2} style={styles.cardSubtitle}>
+              {nextTask ? nextTask.title : 'All your tasks are organized and saved here.'}
+            </Text>
           </Pressable>
         </Link>
 
@@ -211,14 +257,12 @@ export default function Home() {
           </Link>
         </View>
 
-        {/* Tasks */}
-        <Link href="/tasks" asChild>
+        {/* On This Day */}
+        <Link href="/on-this-day" asChild>
           <Pressable style={styles.lastCard}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>Tasks</Text>
-              <PlayButton />
-            </View>
-            <Text style={styles.cardSubtitle}>All your tasks are organized and saved here..</Text>
+            <Text style={styles.cardTitle}>On This Day</Text>
+            {/* What the feature is, not a headline from inside it. */}
+            <Text style={styles.cardSubtitle}>See what was happening in the world on any day of your life.</Text>
           </Pressable>
         </Link>
       </ScrollView>
@@ -233,13 +277,14 @@ const styles = StyleSheet.create({
   headerSymbol: { width: 34, height: 34 },
   logoText: { color: colors.primary, fontFamily: fonts.bold, fontSize: 24 },
 
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
-  dayCol: { alignItems: 'center', width: 40 },
+  // 34-pt circles, 15 apart (the design), as one centred group.
+  weekRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginTop: 20 },
+  dayCol: { alignItems: 'center', width: 34 },
   dayLetter: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.ink, marginBottom: 8 },
   dayCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.pale,
     alignItems: 'center',
     justifyContent: 'center',
@@ -249,6 +294,8 @@ const styles = StyleSheet.create({
   dayNumToday: { color: colors.white },
   // Green: logged that day. The same green for today as any other day.
   logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: '#A9D3B6' },
+  // Today's own marker, slightly larger, in the accent.
+  todayDot: { width: 9, height: 9, borderRadius: 5, marginTop: 7, backgroundColor: colors.accent },
 
   chatRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   chatAvatar: {
@@ -296,16 +343,25 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   cardTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.ink },
-  cardSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginTop: 6 },
-  playBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  // Body lines stop short of the card's edge, so they wrap into two
+  // comfortable lines instead of one run edge to edge.
+  cardSubtitle: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#8B9394', marginTop: 6, maxWidth: '82%' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  placeChip: { backgroundColor: colors.pale, borderRadius: 6, paddingVertical: 3, paddingHorizontal: 10, maxWidth: 140 },
+  placeChipText: { fontFamily: fonts.regular, fontSize: 13, color: colors.ink },
+  duePill: { backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 10 },
+  duePillText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  rail: { width: 6, alignItems: 'center', alignSelf: 'stretch' },
+  railDash: {
+    flex: 1,
+    width: 0,
+    borderLeftWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.teal,
+    marginTop: 2,
+    marginBottom: -9,
   },
-  summaryLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 7 },
+  summaryLine: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingBottom: 6 },
   summaryDot: {
     width: 6,
     height: 6,
@@ -313,7 +369,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.teal,
     marginTop: 5,
   },
-  summaryText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#7C8586' },
+  summaryText: { flex: 1, maxWidth: '86%', fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#7C8586' },
   summaryEmpty: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
 
   shortcutRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
