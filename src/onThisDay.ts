@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { chatCompletion, textProviders } from './aiProviders';
 import { isSafeWebImage, SAFE_SEARCH_RULE } from './contentSafety';
-import { getFollows } from './follows';
+import { getFollows, getMuted } from './follows';
 import { dateKey } from './memoryLog';
 
 // "On This Day" feed: for each past day, pull what happened in the world in
@@ -28,6 +28,11 @@ export type TopicItem = {
   image?: string; // direct URL to a related news photo, when the search found one
   /** The photo passed the on-device nudity check (contentSafety.ts). */
   imageChecked?: boolean;
+  /** Who or what the story is about ("Liverpool", "Taylor Swift") — what
+   *  "More like this" follows and "Not for me" mutes. */
+  about?: string;
+  /** Searched, and nothing happened that day — not a news item. */
+  quiet?: boolean;
 };
 
 // Keyed by the label the setup question shows (quizAnswers[0] holds labels).
@@ -144,6 +149,16 @@ export async function getInterestTopics(): Promise<Topic[]> {
     // fall through to quiz-derived topics
   }
   return quizTopics();
+}
+
+/** The topics On This Day shows, in order (Your mix). */
+export async function setInterestTopics(keys: TopicKey[]): Promise<void> {
+  await AsyncStorage.setItem(OVERRIDE_KEY, JSON.stringify(keys));
+}
+
+/** Every topic the user can pick: the built-in ones and the ones they typed. */
+export async function allTopics(): Promise<Topic[]> {
+  return [...TOPIC_OPTIONS, ...(await getCustomTopics())];
 }
 
 // Feedback: "this topic isn't relevant to me" — swaps it for a different one
@@ -307,9 +322,10 @@ function quietItem(t: Topic, taste: string): TopicItem {
   return {
     topic: t.key,
     label: t.label,
-    headline: 'Quiet around this day',
-    summary: `Nothing about ${taste} within a few days of this date.`,
+    headline: 'A quiet day',
+    summary: `Nothing happened with ${taste} on this date.`,
     live: true,
+    quiet: true,
   };
 }
 
@@ -410,10 +426,11 @@ async function newsSearch(query: string, from: string, to: string, max: number):
  *  or one general search for a topic they don't follow anything in. */
 async function topicHits(date: Date, t: Topic, taste: string | undefined, perFollow: number, maxFollows: number): Promise<Hit[] | null> {
   const follows = (taste ?? '').split(',').map((f) => f.trim()).filter(Boolean).slice(0, maxFollows);
-  // News is often published the day after; followed topics may also use
-  // the nearest day within three.
-  const from = shift(date, follows.length ? -3 : -1);
-  const to = shift(date, follows.length ? 3 : 1);
+  // That day, and the next — when most reports about it are published.
+  // Never the days around it: those bring previews and follow-ups, and the
+  // same match three days running.
+  const from = dateKey(date);
+  const to = shift(date, 1);
   const queries = follows.length ? follows.map((f) => `${f} news`) : [`${t.label} news`];
   const lists = await Promise.all(queries.map((q) => newsSearch(q, from, to, perFollow)));
   if (lists.every((l) => l === null)) return null;
@@ -427,42 +444,105 @@ async function topicHits(date: Date, t: Topic, taste: string | undefined, perFol
   return hits;
 }
 
+// ---- Never the same story on two days ----
+// A match on Saturday is still written about on Sunday and Monday. Each
+// story shown is remembered against its day; a nearby day may not use it.
+
+const STORIES_KEY = 'otdStories';
+type Story = { headline: string; source?: string };
+
+async function storiesNear(date: Date, days = 6): Promise<Story[]> {
+  try {
+    const all = JSON.parse((await AsyncStorage.getItem(STORIES_KEY)) ?? '{}') as Record<string, Story[]>;
+    const me = dateKey(date);
+    const out: Story[] = [];
+    for (let d = -days; d <= days; d++) {
+      const k = shift(date, d);
+      if (k !== me) out.push(...(all[k] ?? []));
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function rememberStories(date: Date, stories: Story[]): Promise<void> {
+  try {
+    const all = JSON.parse((await AsyncStorage.getItem(STORIES_KEY)) ?? '{}') as Record<string, Story[]>;
+    const k = dateKey(date);
+    const seen = new Set((all[k] ?? []).map((x) => x.headline));
+    all[k] = [...(all[k] ?? []), ...stories.filter((x) => !seen.has(x.headline))];
+    await AsyncStorage.setItem(STORIES_KEY, JSON.stringify(all));
+  } catch {
+    // best effort — at worst a story could show twice
+  }
+}
+
+const words = (s: string) => new Set(s.toLowerCase().match(/[\p{L}\p{N}]{4,}/gu) ?? []);
+/** Same story, told twice: half the meaningful words in common. */
+function sameStory(a: string, b: string): boolean {
+  const x = words(a);
+  const y = words(b);
+  if (!x.size || !y.size) return false;
+  let both = 0;
+  for (const w of x) if (y.has(w)) both++;
+  return both / Math.min(x.size, y.size) >= 0.5;
+}
+
 function hitsBlock(hits: Hit[]): string {
   return hits
     .map((h, i) => `[${i + 1}] ${h.published ? `(${h.published.slice(0, 16)}) ` : ''}${h.title}\nURL: ${h.url}\n${h.content}`)
     .join('\n\n');
 }
 
-const WRITE_PROMPT = `You write the cards of "On This Day" in Recall, a personal memory app: real news from a date in the user's life, about the things they follow. You are given search results — real articles — for each topic.
+const WRITE_PROMPT = `You write the cards of "On This Day" in Recall, a personal memory app. It sets a day of the user's life beside what happened in the world THAT SAME DAY — "the day you went to the doctor was the day Liverpool beat Manchester City 3–1". You are given search results — real articles — for each topic.
 
-Use ONLY the given results. Never add facts, scores, names or dates that are not in them. Pick the most notable event that happened on the target date. A topic marked FOLLOWS may use the closest event about what they follow within 3 days, and must then say how far off in "when" ("2 days before", "the day after"); otherwise "when" is empty. If a topic's results contain nothing usable — off-topic, ads, betting tips, or nothing near the date — leave that topic out entirely. ${SAFE_SEARCH_RULE}
+Use ONLY the given results. Never add facts, scores, names or dates that are not in them.
 
-headline: at most 12 words. summary: one or two sentences, at most 30 words. source: the URL of the result you used, copied exactly.`;
+Each card is an EVENT THAT HAPPENED ON THE TARGET DATE: a match played, a result, a release, a launch, an announcement, a decision. Not an article about it: never a preview, a prediction, a reaction, an analysis, ratings, "what we learned", a follow-up, or anything about an earlier day. An article published the next morning about the target date's event is fine. Give "event_date": the date the event itself took place, from the article.
+
+If a topic has no such event, leave it out — an empty topic is right, filler is wrong. Never pick a story listed under ALREADY SHOWN, or about something under NOT FOR THIS USER. ${SAFE_SEARCH_RULE}
+
+headline: at most 12 words, stating the fact ("Liverpool beat Manchester City 3–1 at Anfield"). summary: one or two sentences, at most 30 words. about: the one team, person, artist, company or thing the story is about, in 1–3 words. source: the URL of the result you used, copied exactly.`;
+
+type Card = { headline: string; summary: string; about?: string; source?: string };
 
 async function writeCards(
   date: Date,
   blocks: { t: Topic; taste?: string; hits: Hit[] }[],
   perTopic: number,
-): Promise<Map<string, { headline: string; summary: string; when?: string; source?: string }[]>> {
-  const out = new Map<string, { headline: string; summary: string; when?: string; source?: string }[]>();
+): Promise<Map<string, Card[]>> {
+  const out = new Map<string, Card[]>();
   const usable = blocks.filter((b) => b.hits.length > 0);
   if (usable.length === 0) return out;
+  const target = dateKey(date);
   const dateLabel = `${MONTH_NAMES[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  const near = await storiesNear(date);
+  const nearUrls = new Set(near.map((x) => x.source).filter(Boolean));
+  const muted = await getMuted();
   const body = usable
-    .map(
-      (b) =>
-        `### TOPIC "${b.t.key}" — ${b.t.label}${b.taste ? ` — FOLLOWS: ${b.taste}` : ''}\n${hitsBlock(b.hits.slice(0, 10))}`,
-    )
+    .map((b) => {
+      // Articles already used on a nearby day never reach the writer.
+      const fresh = b.hits.filter((h) => !nearUrls.has(h.url)).slice(0, 10);
+      return `### TOPIC "${b.t.key}" — ${b.t.label}${b.taste ? ` — FOLLOWS: ${b.taste}` : ''}\n${hitsBlock(fresh)}`;
+    })
     .join('\n\n');
+  const notes = [
+    near.length ? `ALREADY SHOWN on nearby days:\n${near.slice(0, 30).map((x) => `- ${x.headline}`).join('\n')}` : '',
+    muted.length ? `NOT FOR THIS USER: ${muted.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n');
+  const item = '{"topic":"<topic key>","event_date":"YYYY-MM-DD","headline":"...","summary":"...","about":"...","source":"<url>"}';
   const shape =
     perTopic === 1
-      ? '{"items":[{"topic":"<topic key>","headline":"...","summary":"...","when":"","source":"<url>"}]} — at most one item per topic'
-      : `{"items":[{"topic":"<topic key>","headline":"...","summary":"...","when":"","source":"<url>"}]} — up to ${perTopic} DISTINCT events, about different things where possible`;
+      ? `{"items":[${item}]} — at most one item per topic`
+      : `{"items":[${item}]} — up to ${perTopic} DISTINCT events, about different things where possible`;
   const result = await chatCompletion(textProviders(), (model) => ({
     model,
     messages: [
       { role: 'system', content: WRITE_PROMPT },
-      { role: 'user', content: `Target date: ${dateLabel}.\n\n${body}\n\nRespond with ONLY JSON: ${shape}` },
+      { role: 'user', content: `Target date: ${dateLabel} (${target}).\n\n${body}${notes ? `\n\n${notes}` : ''}\n\nRespond with ONLY JSON: ${shape}` },
     ],
     response_format: { type: 'json_object' },
     temperature: 0.2,
@@ -473,22 +553,35 @@ async function writeCards(
   }
   try {
     const parsed = JSON.parse(result.content) as {
-      items?: { topic?: string; headline?: string; summary?: string; when?: string; source?: string }[];
+      items?: { topic?: string; event_date?: string; headline?: string; summary?: string; about?: string; source?: string }[];
     };
+    let dropped = 0;
     for (const b of usable) {
       const urls = new Set(b.hits.map((h) => h.url));
       const items = (parsed.items ?? [])
         .filter((i) => i.topic === b.t.key && i.headline)
+        .filter((i) => {
+          // The checks the writer is told about, done again in code.
+          const ok =
+            i.event_date === target &&
+            !(i.source && nearUrls.has(i.source)) &&
+            !near.some((x) => sameStory(x.headline, i.headline!)) &&
+            !muted.some((m) => `${i.about ?? ''} ${i.headline}`.toLowerCase().includes(m.toLowerCase()));
+          if (!ok) dropped++;
+          return ok;
+        })
         .slice(0, perTopic)
         .map((i) => ({
           headline: cleanText(i.headline!),
           summary: cleanText(i.summary ?? ''),
-          when: cleanWhen(i.when),
+          about: i.about ? cleanText(i.about).slice(0, 40) : undefined,
           // Only a URL that really was in the results — never one it made up.
           source: i.source && urls.has(i.source) ? i.source : undefined,
         }));
       if (items.length) out.set(b.t.key, items);
     }
+    if (dropped) console.log(`[otd] ${target}: dropped ${dropped} card(s) — another day, already shown, or muted`);
+    await rememberStories(date, [...out.values()].flat().map((c) => ({ headline: c.headline, source: c.source })));
   } catch {
     console.warn('[otd] the written cards were not JSON');
   }
@@ -512,10 +605,10 @@ async function fetchFromNews(
   const items = topics.map((t) => {
     const card = cards.get(t.key)?.[0];
     if (card) return { topic: t.key, label: t.label, ...card, live: true };
-    // Searched, nothing worth showing: say so rather than show a demo item.
+    // Searched, nothing happened that day: say so rather than show filler.
     return interests[t.key]
       ? { ...quietItem(t, interests[t.key]!), source: undefined }
-      : { topic: t.key, label: t.label, headline: `Quiet day for ${t.label}`, summary: 'Nothing notable turned up around this date.', live: true, source: undefined };
+      : { topic: t.key, label: t.label, headline: `A quiet day for ${t.label}`, summary: 'Nothing notable happened on this date.', live: true, quiet: true, source: undefined };
   });
   console.log(`[otd] ${dateKey(date)}: ${cards.size} of ${topics.length} topics from real articles`);
   return withImages(items);
@@ -535,7 +628,7 @@ async function fetchFromInternet(
       return `- "${t.key}": ${followedLine(t, interests[t.key])}`;
     })
     .join('\n');
-  const prompt = `Search the web for what happened on ${dateLabel} (or the closest coverage of that date) for each topic below. For each topic give one real event from that date. ${SAFE_SEARCH_RULE}\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<exactly one of the quoted topic keys above>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","when":"<empty if it happened on that date, else how far off, e.g. 2 days before>","source":"<the real URL of the news article this came from>"}]}`;
+  const prompt = `Search the web for what happened on ${dateLabel} for each topic below. For each topic give one real event that took place on that exact date — a result, release, launch or announcement; never a preview, reaction or follow-up about another day. Leave a topic out if nothing happened. ${SAFE_SEARCH_RULE}\n${topicLines}\n\nRespond with ONLY a JSON object, no other text, in this exact shape:\n{"items":[{"topic":"<exactly one of the quoted topic keys above>","headline":"<short bold headline, max 12 words>","summary":"<1-2 sentences, max 30 words>","when":"<empty if it happened on that date, else how far off, e.g. 2 days before>","source":"<the real URL of the news article this came from>"}]}`;
 
   try {
     const res = await fetch(backendUrl(ENDPOINTS.openAiChat) ?? '', {
@@ -618,8 +711,11 @@ const CACHE_PREFIX = 'otdFeed-';
 
 // Signature of "what would change the results" — topic mix plus the user's
 // per-topic taste text. A cache from a different signature is stale.
+// v3: same-day events only, never repeated across days (Oct 2026) — feeds
+// cached by the earlier rules are fetched again.
+const FEED_VERSION = 3;
 function feedSignature(topics: Topic[], interests: Partial<Record<TopicKey, string>>): string {
-  return tinyHash(topics.map((t) => `${t.key}:${interests[t.key] ?? ''}`).join('|'));
+  return tinyHash(`${FEED_VERSION}|` + topics.map((t) => `${t.key}:${interests[t.key] ?? ''}`).join('|'));
 }
 
 export async function getDayFeed(date: Date, topics: Topic[]): Promise<TopicItem[]> {
@@ -660,7 +756,7 @@ export async function getDayFeed(date: Date, topics: Topic[]): Promise<TopicItem
 
 // ---- Expanded topic: several events from one topic on one day ----
 
-const EVENTS_CACHE_PREFIX = 'otdEvents-';
+const EVENTS_CACHE_PREFIX = 'otdEvents3-'; // v3: same-day events only
 const EVENTS_COUNT = 4;
 
 // Up to 4 real events for a single topic on a given day, steered by the

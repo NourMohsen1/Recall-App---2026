@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { chatCompletion, textAvailable, textProviders } from './aiProviders';
 import { blockedWords, checkTopic, type TopicCheck } from './contentSafety';
-import { getLoggedMemories } from './memoryLog';
+import { getLoggedMemories, originalMemories } from './memoryLog';
 import { TOPIC_OPTIONS, getCustomTopics, type TopicKey } from './onThisDay';
 
 // What the user follows, topic by topic: not "Sports" but Al Ahly, the
@@ -101,6 +101,50 @@ export async function removeFollow(topic: TopicKey, name: string): Promise<void>
   }
 }
 
+// ── Feedback on a card ────────────────────────────────────────────────────
+// 👍 "More like this" follows what the story was about; 👎 "Not for me"
+// mutes it, so it never comes back — and stops following it too.
+
+const MUTED_KEY = 'otdMuted';
+
+export async function getMuted(): Promise<string[]> {
+  return readJSON<string[]>(MUTED_KEY, []);
+}
+
+/** "More like this": follow it in that topic (no safety check needed —
+ *  the name came from a news story that already passed the filters). */
+export async function likeSubject(topic: TopicKey, name: string): Promise<void> {
+  const clean = name.trim();
+  if (!clean) return;
+  const muted = await getMuted();
+  await AsyncStorage.setItem(MUTED_KEY, JSON.stringify(muted.filter((m) => !same(m, clean))));
+  const all = await getFollows();
+  if (all.some((f) => f.topic === topic && same(f.name, clean))) return;
+  await save([...all, { name: clean, topic, from: 'you' }]);
+  console.log(`[follows] liked ${clean} (${topic})`);
+}
+
+/** "Not for me": never show it again, and stop following it. */
+export async function muteSubject(name: string): Promise<void> {
+  const clean = name.trim();
+  if (!clean) return;
+  const muted = await getMuted();
+  if (!muted.some((m) => same(m, clean))) await AsyncStorage.setItem(MUTED_KEY, JSON.stringify([...muted, clean]));
+  const all = await getFollows();
+  const kept = all.filter((f) => !same(f.name, clean));
+  if (kept.length !== all.length) await save(kept);
+  else listeners.forEach((fn) => fn());
+  const dismissed = await readJSON<string[]>(DISMISSED_KEY, []);
+  if (!dismissed.some((d) => same(d, clean))) await AsyncStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed, clean]));
+  console.log(`[follows] muted ${clean}`);
+}
+
+export async function unmuteSubject(name: string): Promise<void> {
+  const muted = await getMuted();
+  await AsyncStorage.setItem(MUTED_KEY, JSON.stringify(muted.filter((m) => !same(m, name))));
+  listeners.forEach((fn) => fn());
+}
+
 // ── Learning from memories ────────────────────────────────────────────────
 
 const LEARN_PROMPT = (topics: string) => `You read entries from someone's personal memory diary. Find the specific things they FOLLOW that appear in the news: sports teams, leagues, competitions, athletes, artists and bands, TV shows, games, companies, and countries or cities whose news they follow.
@@ -136,7 +180,7 @@ async function learn(force: boolean): Promise<number> {
   if (!force && Date.now() - state.at < RUN_EVERY) return 0;
 
   const read = new Set(state.read);
-  const unread = (await getLoggedMemories())
+  const unread = originalMemories(await getLoggedMemories())
     .filter((m) => !read.has(m.id) && m.text?.trim() && m.kind !== 'photo')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
