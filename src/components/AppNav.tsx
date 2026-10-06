@@ -5,7 +5,7 @@ import MemoryFab from './MemoryFab';
 import { ICONS } from '../images';
 import { colors, fonts } from '../theme';
 
-// The app's bottom menu — Home, Timeline, Tasks, Profile and the "+" —
+// The app's bottom menu — Home, Timeline, Tasks, Ask and the "+" —
 // for screens opened on top of the tabs (Places, People, Recap, a day…),
 // which otherwise cover the real tab bar. Drawn to match it exactly: same
 // height, icons, labels and colours as app/(tabs)/_layout.tsx.
@@ -14,7 +14,7 @@ const TABS = [
   { href: '/home', label: 'Home', icon: ICONS.home },
   { href: '/timeline', label: 'Timeline', icon: ICONS.timeline },
   { href: '/tasks', label: 'Tasks', icon: ICONS.tasks },
-  { href: '/profile', label: 'Profile', icon: ICONS.profile },
+  { href: '/chat', label: 'Ask', icon: ICONS.ask },
 ] as const;
 
 /** Height of the menu, for screens that need room above it. */
@@ -29,9 +29,19 @@ export default function AppNav() {
           <Pressable
             key={t.href}
             style={styles.tab}
-            onPress={() => router.dismissTo(t.href as Parameters<typeof router.dismissTo>[0])}
+            onPress={() =>
+              // Ask opens on top; the tabs are gone back to.
+              t.href === '/chat'
+                ? router.push('/chat')
+                : router.dismissTo(t.href as Parameters<typeof router.dismissTo>[0])
+            }
           >
-            <Image source={t.icon} style={styles.icon} tintColor={colors.primary} resizeMode="contain" />
+            <Image
+              source={t.icon}
+              style={[styles.icon, t.href === '/chat' && styles.iconWide]}
+              tintColor={colors.primary}
+              resizeMode="contain"
+            />
             <Text style={styles.label}>{t.label}</Text>
           </Pressable>
         ))}
@@ -71,5 +81,6 @@ const styles = StyleSheet.create({
   },
   tab: { flex: 1, alignItems: 'center' },
   icon: { width: 26, height: 26 },
+  iconWide: { width: 31 },
   label: { fontFamily: fonts.regular, fontSize: 11, color: colors.primary, marginTop: 3 },
 });

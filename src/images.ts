@@ -17,6 +17,9 @@ export const ICONS = {
   timeline: require('../assets/icons/timeline.png'),
   tasks: require('../assets/icons/tasks.png'),
   profile: require('../assets/icons/profile.png'),
+  // Nour's brain reference (side view), grooves thickened a little so they
+  // hold up at tab size next to the other icons.
+  ask: require('../assets/icons/ask.png'),
   keyboard: require('../assets/icons/keyboard.png'),
   upload: require('../assets/icons/upload.png'),
 };

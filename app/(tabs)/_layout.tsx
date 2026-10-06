@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { ColorValue, Image, StyleSheet, View } from 'react-native';
 import MemoryFab from '../../src/components/MemoryFab';
 import { ICONS } from '../../src/images';
@@ -7,13 +7,16 @@ import { colors, fonts } from '../../src/theme';
 // `color` is whatever the tab bar hands us, which is a ColorValue — it can
 // be a platform color object, not just a string. Image's tintColor accepts
 // the same type, so this just matches the caller instead of narrowing it.
-function TabIcon({ source, color }: { source: any; color: ColorValue }) {
+function TabIcon({ source, color, wide }: { source: any; color: ColorValue; wide?: boolean }) {
+  // The side-view brain is wider than tall: a little wider box gives it the
+  // same height, and so the same weight, as the square icons.
   return (
-    <Image source={source} style={{ width: 26, height: 26 }} tintColor={color} resizeMode="contain" />
+    <Image source={source} style={{ width: wide ? 31 : 26, height: 26 }} tintColor={color} resizeMode="contain" />
   );
 }
 
 export default function TabsLayout() {
+  const router = useRouter();
   return (
     <View style={{ flex: 1 }}>
       <Tabs
@@ -51,13 +54,22 @@ export default function TabsLayout() {
             tabBarIcon: ({ color }) => <TabIcon source={ICONS.tasks} color={color} />,
           }}
         />
+        {/* Ask opens the full chat screen over the tabs, as from Home's pill. */}
         <Tabs.Screen
-          name="profile"
+          name="ask"
           options={{
-            title: 'Profile',
-            tabBarIcon: ({ color }) => <TabIcon source={ICONS.profile} color={color} />,
+            title: 'Ask',
+            tabBarIcon: ({ color }) => <TabIcon source={ICONS.ask} color={color} wide />,
+          }}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              router.push('/chat');
+            },
           }}
         />
+        {/* Profile is opened from Home's top-right corner, not the bar. */}
+        <Tabs.Screen name="profile" options={{ href: null }} />
       </Tabs>
 
       {/* Center memory button: taps open the fan-out actions */}

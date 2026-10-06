@@ -4,15 +4,16 @@ import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
-import { BRAND, MISC, placePhoto } from '../../src/images';
+import { BRAND, ICONS, MISC, placePhoto } from '../../src/images';
 import { PlaceThumb } from '../../src/components/PlaceTile';
 import { polishPendingMemories, useMemoryPolish } from '../../src/memoryIntake';
 import { syncPhotosWithLibrary } from '../../src/photoGuard';
 import { syncNewPhotosIfOn } from '../../src/photoImport';
 import { getPhotoReading } from '../../src/photoReading';
-import { LoggedMemory, dateKey, getMemoriesByDay, isManualLog, memoryDisplayText } from '../../src/memoryLog';
+import { LoggedMemory, dateKey, getMemoriesByDay, isManualLog, localFile, memoryDisplayText } from '../../src/memoryLog';
 import { getAllDayPlaces } from '../../src/places';
 import { getTasks, taskClock, type StoredTask } from '../../src/tasks';
+import { getUserProfile } from '../../src/userProfile';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 
@@ -56,8 +57,12 @@ export default function Home() {
   const [nextTask, setNextTask] = useState<StoredTask | null>(null);
   const router = useRouter();
 
+  // The user's own photo for the Profile button, when they've set one.
+  const [myPhoto, setMyPhoto] = useState<string | undefined>();
+
   useFocusEffect(
     useCallback(() => {
+      getUserProfile().then((p) => setMyPhoto(p.photoUri ? localFile(p.photoUri) : undefined));
       getMemoriesByDay().then(setByDay);
       // Where yesterday happened, named places first — the summary's chips.
       getAllDayPlaces().then((all) => {
@@ -136,6 +141,19 @@ export default function Home() {
             resizeMode="contain"
           />
           <Text style={styles.logoText}>Recall</Text>
+          {/* Profile lives here now that Ask has its place in the bar */}
+          <Pressable
+            style={styles.profileBtn}
+            hitSlop={10}
+            accessibilityLabel="Profile"
+            onPress={() => router.navigate('/profile')}
+          >
+            {myPhoto ? (
+              <Image source={{ uri: myPhoto }} style={styles.profilePhoto} />
+            ) : (
+              <Image source={ICONS.profile} style={styles.profileIcon} tintColor={colors.primary} resizeMode="contain" />
+            )}
+          </Pressable>
         </View>
 
         {/* Week strip */}
@@ -276,6 +294,9 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4 },
   headerSymbol: { width: 34, height: 34 },
   logoText: { color: colors.primary, fontFamily: fonts.bold, fontSize: 24 },
+  profileBtn: { marginLeft: 'auto' },
+  profileIcon: { width: 30, height: 30 },
+  profilePhoto: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.pale },
 
   // 34-pt circles, 15 apart (the design), as one centred group.
   weekRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginTop: 20 },
