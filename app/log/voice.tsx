@@ -250,8 +250,7 @@ export default function LogVoice() {
                     </View>
                   ) : transcribeError === 'no-credits' ? (
                     <Text style={styles.errorHint}>
-                      Your OpenAI account has no credits yet — add a prepaid balance at
-                      platform.openai.com → Billing.
+                      Saved. The words will be written out a little later.
                     </Text>
                   ) : transcribeError === 'rate-limited' ? (
                     <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
@@ -277,7 +276,13 @@ export default function LogVoice() {
                     />
                   )}
 
-                  {/* Add a note — always available, even without transcription */}
+                  {!canTranscribe && (
+                  <Text style={styles.errorHint}>
+                    Saved as a recording. Turn on Recall’s AI in Profile to get the words.
+                  </Text>
+                )}
+
+                {/* Add a note — always available, even without transcription */}
                   {noteOpen ? (
                     <TextInput
                       style={styles.noteInput}

@@ -284,7 +284,7 @@ export default function LiveConversation() {
             </View>
           </Pressable>
           <Text style={styles.phase}>
-            {available ? PHASE_LABEL[phase] : 'Live voice isn’t set up yet'}
+            {available ? PHASE_LABEL[phase] : 'Recall’s AI is off. Turn it on in Profile → Recall’s AI.'}
           </Text>
           {/* Said once, at the start, because a conversation that ends
               without warning reads as a fault rather than a limit. */}

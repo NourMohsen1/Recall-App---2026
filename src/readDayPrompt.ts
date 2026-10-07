@@ -31,7 +31,7 @@ export async function askToReadDay(day: string, photoCount: number): Promise<num
   if (mode !== 'chosen') {
     const ok = await confirm(
       "Read this day's photos?",
-      `Recall will send ${photoCount === 1 ? "this day's photo" : `this day's ${photoCount} photos`} to ${PHOTO_READER.name}, an AI service based in ${PHOTO_READER.where}, to write its story. From now on it reads only the days you choose — you can change this in Profile.`,
+      `Recall will send ${photoCount === 1 ? "this day's photo" : `this day's ${photoCount} photos`} to ${PHOTO_READER.name}, an AI service, to write its story. From now on it reads only the days you choose — you can change this in Profile.`,
       'Read this day',
     );
     if (!ok) return 0;

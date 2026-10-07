@@ -155,6 +155,17 @@ tasks with `notes` details, the attachment, early reminders (evening before,
 photo analysis and face indexing never see them. Changing the Swift module
 needs a native rebuild.
 
+**Recall's AI permission** (`src/aiConsent.ts`, `app/ai-consent.tsx`, Oct
+2026). Apple requires asking before personal data goes to an AI company,
+naming the company. Asked at the end of setup (before the photo question)
+and once on Home for existing users; changeable in Profile. Enforced in one
+place: `backendUrl()` in `src/backend.ts` returns nothing for every path but
+`/auth/*` until the answer is "on" — and before it has been read, since the
+root layout loads it before anything mounts. Any new AI call is covered
+automatically as long as it gets its URL from `backendUrl()`. "Not now"
+keeps everything as logged; unpolished notes are picked up when it's turned
+on. Name the companies (OpenAI, DeepSeek), not their countries — Nour's call.
+
 **Onboarding** (`app/onboarding/quiz.tsx`) asks only what changes the app:
 name → profile, interests → On This Day (`quizAnswers[0]`), recap
 frequency → recap notifications, Positive Focus. No accounts: memories live
@@ -222,7 +233,7 @@ is on-device — Apple Vision + a small MobileCLIP model, results kept on the
 phone, day summaries written by the app itself from the facts (no on-device
 LLM). An optional switch on the Profile page sends photos to an external AI
 for richer summaries, with the provider chosen by the user and declared
-honestly (DeepSeek runs from China; OpenAI is the alternative). Not built
+honestly (OpenAI is the alternative). Not built
 yet — the restore point is tag `v0.9-before-photo-analysis`. Measure on
 Nour's iPhone before committing to a model; his 14 Pro Max can't run Apple
 Intelligence, which this plan doesn't need. Face recognition and

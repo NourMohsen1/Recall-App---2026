@@ -115,7 +115,7 @@ export default function PhotoReadingScreen() {
             <View style={styles.fact}>
               <MaterialCommunityIcons name="earth" size={16} color={t.factIcon} />
               <Text style={[styles.factText, { color: t.fact }]}>
-                Read by {PHOTO_READER.name} ({PHOTO_READER.where}), only to write each day's story
+                Read by {PHOTO_READER.name}, only to write each day's story
               </Text>
             </View>
             <View style={styles.fact}>

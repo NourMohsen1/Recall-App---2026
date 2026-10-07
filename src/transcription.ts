@@ -76,7 +76,7 @@ function readUploadErrorReason(body: string): 'no-credits' | 'rate-limited' | 'f
 }
 
 export function transcriptionAvailable(): boolean {
-  return !!apiKey();
+  return !!apiKey() && !!API_URL();
 }
 
 export async function transcribeAudio(

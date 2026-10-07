@@ -14,6 +14,7 @@ import {
   type RecapPrefs,
 } from '../../src/recapNotifications';
 import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/photoReading';
+import { AI_COMPANIES, getAiConsent, onAiConsentChanged, type AiConsent } from '../../src/aiConsent';
 import { getPositiveFocus, setPositiveFocus } from '../../src/positiveFocus';
 import Toggle from '../../src/components/Toggle';
 import { PERSON_PLACEHOLDER } from '../../src/images';
@@ -56,6 +57,8 @@ export default function Profile() {
   const [joined, setJoined] = useState<Date | null>(null);
   const [entries, setEntries] = useState(0);
   const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
+  const [aiConsent, setAiConsentState] = useState<AiConsent | null>(getAiConsent());
+  useEffect(() => onAiConsentChanged(() => setAiConsentState(getAiConsent())), []);
   const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ daily: true, weekly: true, monthly: false });
   const [positiveFocus, setPositiveFocusState] = useState(false);
   const [signedIn, setSignedIn] = useState(!!getAccount());
@@ -172,6 +175,20 @@ export default function Profile() {
             onPress={() => router.push('/import-photos' as Parameters<typeof router.push>[0])}
           >
             <Text style={styles.toggleLabel}>Import from Photos</Text>
+            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
+          </Pressable>
+          {/* Whether notes and voice may go to the AI — asked once, changeable
+              here. See src/aiConsent.ts. */}
+          <Pressable
+            style={[styles.toggleRow, styles.rowDivider]}
+            onPress={() => router.push({ pathname: '/ai-consent', params: { from: 'profile' } })}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.toggleLabel}>Recall’s AI</Text>
+              <Text style={styles.rowHint}>
+                {aiConsent === 'on' ? `On · ${AI_COMPANIES}` : 'Off · nothing is sent'}
+              </Text>
+            </View>
             <Ionicons name="chevron-forward" size={20} color="#8B9394" />
           </Pressable>
           {/* Whether photos may be read to write each day's story — the

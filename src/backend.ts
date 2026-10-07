@@ -22,8 +22,19 @@ function trimmed(value: string | undefined): string | undefined {
   return v && v.length > 10 ? v : undefined;
 }
 
+// The user's answer to "Recall's AI" (src/aiConsent.ts). Until they say
+// yes — and before the answer has even been read from storage — nothing
+// but signing in reaches the server: every AI request finds its address
+// here, so this one check covers all of them, including any added later.
+let aiAllowed = false;
+
+export function setAiAllowed(allowed: boolean): void {
+  aiAllowed = allowed;
+}
+
 /** e.g. https://recall-keys.nourmohsen-recall.workers.dev */
 export function backendUrl(path: string): string | undefined {
+  if (!aiAllowed && !path.startsWith('/auth/')) return undefined;
   const base = trimmed(process.env.EXPO_PUBLIC_RECALL_API_URL);
   return base ? `${base.replace(/\/+$/, '')}${path}` : undefined;
 }

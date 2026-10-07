@@ -66,10 +66,12 @@ function dayOffsetFromIso(iso: string): number {
 
 function errorText(reason: Exclude<AskResult, { ok: true }>['reason']) {
   if (reason === 'no-key') {
-    return 'Ask isn’t set up yet — add EXPO_PUBLIC_RECALL_API_URL and EXPO_PUBLIC_RECALL_APP_TOKEN to your .env file to turn this on.';
+    // The only way a user gets here: they said "Not now" to Recall's AI.
+    return 'Recall’s AI is off, so nothing is sent to answer this. Turn it on in Profile → Recall’s AI.';
   }
   if (reason === 'no-credits') {
-    return 'Your OpenAI account has no credits yet — add a prepaid balance at platform.openai.com → Billing.';
+    // Recall's own provider balance ran out — the user can't fix that.
+    return 'Ask is resting for a moment. Try again a little later.';
   }
   if (reason === 'rate-limited') {
     return 'Sending questions a bit too fast — give it a few seconds and try again.';
@@ -601,7 +603,7 @@ export default function Chat() {
             // Before the first question: only the brain, to be turned with a
             // finger, and the field to ask in. No words.
             <View style={styles.empty} pointerEvents="box-none">
-              {!available && <Text style={styles.voiceHint}>Ask isn’t set up yet</Text>}
+              {!available && <Text style={styles.voiceHint}>Recall’s AI is off. Turn it on in Profile → Recall’s AI.</Text>}
             </View>
           ) : (
             <ScrollView

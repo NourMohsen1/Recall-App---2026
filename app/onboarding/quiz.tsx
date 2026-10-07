@@ -190,8 +190,9 @@ export default function Quiz() {
     console.log(
       `[onboarding] done — ${picks.interests.length} interests, recaps: ${picks.recaps.join(', ') || 'none'}, positive focus: ${picks.focus[0] ?? 'off'}`,
     );
-    // The last question of setup: whether Recall may read past photos.
-    router.replace({ pathname: '/photo-reading', params: { from: 'onboarding' } });
+    // The last questions of setup: whether Recall may use AI on what is
+    // logged, then (if so) whether it may read past photos.
+    router.replace({ pathname: '/ai-consent', params: { from: 'onboarding' } });
   };
 
   return (

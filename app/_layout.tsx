@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -21,12 +21,13 @@ import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImport';
 import { syncRecapNotifications } from '../src/recapNotifications';
 import { loadAccount } from '../src/account';
+import { loadAiConsent } from '../src/aiConsent';
 import { startCrashReporting, wrapWithCrashReporting } from '../src/crashReporting';
 
 // Before anything else, so a crash during startup is reported too.
 startCrashReporting();
 
-function RootLayout() {
+function AppRoot() {
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,
@@ -126,6 +127,17 @@ function RootLayout() {
       </Stack>
     </GestureHandlerRootView>
   );
+}
+
+// The AI permission is read before anything else mounts: the background
+// jobs below start at once, and must already know whether they may reach
+// the AI (src/aiConsent.ts).
+function RootLayout() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    loadAiConsent().finally(() => setReady(true));
+  }, []);
+  return ready ? <AppRoot /> : null;
 }
 
 export default wrapWithCrashReporting(RootLayout);

@@ -16,7 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type PhotoReading = 'all' | 'chosen' | 'off';
 
 /** Who reads the photos, said plainly wherever the choice is made. */
-export const PHOTO_READER = { name: 'DeepSeek', where: 'China' } as const;
+export const PHOTO_READER = { name: 'DeepSeek' } as const;
 
 const MODE_KEY = 'photoReading';
 const CHOSEN_KEY = 'photoReadingChosenDays';
