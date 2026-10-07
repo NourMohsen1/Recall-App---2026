@@ -53,14 +53,15 @@ function dueIn(dueDate: string): string {
 }
 
 // The week strip spans the same width as the cards below (the page's 20 pt
-// sides), with a fixed small gap between days: the circles take the rest,
-// so a wider phone gets bigger days rather than wider gaps.
+// sides). Proportions from Nour's reference: a circle is about two-thirds
+// of its day's share of the width, so the gap between circles is a bit over
+// half a circle — 38 pt circles with 21 pt gaps on a 430 pt phone.
 const PAGE_SIDE = 20;
-const DAY_GAP = 10;
+const DAY_SHARE = 0.68;
 
 export default function Home() {
   const { width: screenW } = useWindowDimensions();
-  const daySize = Math.min(56, Math.floor((screenW - PAGE_SIDE * 2 - DAY_GAP * 6) / 7));
+  const daySize = Math.min(44, Math.round(((screenW - PAGE_SIDE * 2) / 7) * DAY_SHARE));
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
   const [yPlaces, setYPlaces] = useState<string[]>([]);
   const [nextTask, setNextTask] = useState<StoredTask | null>(null);
@@ -187,7 +188,7 @@ export default function Home() {
                     day.isToday && styles.dayCircleToday,
                   ]}
                 >
-                  <Text style={[styles.dayNum, { fontSize: Math.round(daySize * 0.4) }, day.isToday && styles.dayNumToday]}>
+                  <Text style={[styles.dayNum, { fontSize: Math.round(daySize * 0.42) }, day.isToday && styles.dayNumToday]}>
                     {day.date}
                   </Text>
                 </View>
@@ -319,9 +320,9 @@ const styles = StyleSheet.create({
   profilePhoto: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.pale },
 
   // 34-pt circles, 15 apart (the design), as one centred group.
-  weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 22 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
   dayCol: { alignItems: 'center' },
-  dayLetter: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.ink, marginBottom: 10 },
+  dayLetter: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.ink, marginBottom: 8 },
   dayCircle: {
     backgroundColor: colors.pale,
     alignItems: 'center',
@@ -331,9 +332,9 @@ const styles = StyleSheet.create({
   dayNum: { fontFamily: fonts.medium, fontSize: 15, color: colors.white },
   dayNumToday: { color: colors.white },
   // Green: logged that day. The same green for today as any other day.
-  logDot: { width: 8, height: 8, borderRadius: 4, marginTop: 9, backgroundColor: '#A9D3B6' },
+  logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: '#A9D3B6' },
   // Today's own marker, slightly larger, in the accent.
-  todayDot: { width: 10, height: 10, borderRadius: 5, marginTop: 8, backgroundColor: colors.accent },
+  todayDot: { width: 9, height: 9, borderRadius: 5, marginTop: 7, backgroundColor: colors.accent },
 
   chatRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   chatAvatar: {
