@@ -151,10 +151,11 @@ const earMat = new THREE.ShaderMaterial({
       float line = 1.0 - smoothstep(0.0, fwidth(vF)*1.6 + 0.012, abs(vF - 0.4));
       float ridge = smoothstep(0.6, 0.95, f);
       float band = pow(fract(vD*3.2 + uT*0.85), 9.0) + 0.6*pow(fract(vD*5.1 + uT*1.3 + 0.37), 14.0);
-      float flow = band*(line*1.6 + ridge*0.25)*(0.15 + 1.1*uAmp)*smoothstep(1.1, 0.25, vD);
+      // (speech brightens the ear ~40% less than the original — Nour: less glow while speaking)
+      float flow = band*(line*1.6 + ridge*0.25)*(0.15 + 0.65*uAmp)*smoothstep(1.1, 0.25, vD);
       col += mix(CY, MINT, 0.4)*flow*2.2;
       // canal glow
-      col += CY*exp(-vD*vD/0.012)*(0.25 + 1.2*uAmp);
+      col += CY*exp(-vD*vD/0.012)*(0.25 + 0.7*uAmp);
       // "saved" ripple spreading out over the whole ear
       float rp = exp(-pow((vD - uSaveR)/0.045, 2.0))*uSaveA;
       col += MINT*rp*(0.12 + 1.1*line + 0.25*ridge);
@@ -202,7 +203,7 @@ const rings = new THREE.Mesh(ringGeometry(), new THREE.ShaderMaterial({
   fragmentShader: GLSL_COMMON + `uniform float uVis; varying float vA; varying float vS; varying float vSide;
     void main(){
       float fade = smoothstep(1.0, 0.82, vS)*smoothstep(0.0, 0.1, vS);
-      vec3 col = mix(CY, MINT, 0.35)*(0.25 + 1.3*vA)*fade*(0.75 + 0.25*vSide);
+      vec3 col = mix(CY, MINT, 0.35)*(0.22 + 0.8*vA)*fade*(0.75 + 0.25*vSide);
       gl_FragColor = vec4(safe(col*uVis), 1.0);
     }`
 }));
@@ -231,7 +232,7 @@ const bars = new THREE.Mesh(barGeo, new THREE.ShaderMaterial({
       float y = abs(vUv.y - 0.5)*2.0, x = abs(vUv.x - 0.5)*2.0;
       float core = (1.0 - smoothstep(0.55, 1.0, x))*(1.0 - smoothstep(0.75, 1.0, y));
       float fade = smoothstep(0.96, 0.78, vS)*smoothstep(0.03, 0.12, vS);
-      vec3 col = mix(MINT, CY, y)*(0.35 + 0.9*vH)*core*fade;
+      vec3 col = mix(MINT, CY, y)*(0.3 + 0.6*vH)*core*fade;
       gl_FragColor = vec4(safe(col*uVis), 1.0);
     }`
 }));
@@ -448,7 +449,9 @@ function frame(ms){
   }
   ra.iS.needsUpdate = ra.iA.needsUpdate = true;
   // at rest (before the mic, or the keyboard) the funnel fades away
-  rings.material.uniforms.uVis.value = lerp(1, 0.55, mix)*live.activeS;
+  // typing shows only the letters flying in — no rings (Nour: distracting)
+  rings.material.uniforms.uVis.value = lerp(1, 0, mix)*live.activeS;
+  rings.visible = mix < 0.99;
 
   // waveform bars: the voice in flight toward the canal
   const bh = bars.geometry.attributes.iH, bs = bars.geometry.attributes.iS;
@@ -511,7 +514,7 @@ function frame(ms){
 
   tmp.copy(C).project(camera); bgU.uC.value.set(tmp.x*0.5 + 0.5 - 0.05, tmp.y*0.5 + 0.5);
   bgU.uAmp.value = ampS; bgU.uSave.value = saveA;
-  bloom.strength = 0.65 + 0.1*ampS + 0.25*flash;
+  bloom.strength = 0.6 + 0.04*ampS + 0.25*flash;
 
   composer.render();
 
