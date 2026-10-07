@@ -94,10 +94,13 @@ answers with a session it signed (`SESSION_SECRET`); the session rides in
 the same header as the app token (`<token>~<session>`, `backendToken()`),
 so no call site changed. The server stores nothing: an account is a hash of
 Apple's user id, pausable with the `BLOCKED_ACCOUNTS` variable. The session
-sits in the keychain, which survives reinstalling. Memories will sync
-through the user's own iCloud (next step), never our server. Before the App
-Store: "Delete account" must also revoke the Apple token, which needs a Sign
-in with Apple key from the developer portal (Nour's to create).
+sits in the keychain, which survives reinstalling. **No iCloud sync at
+launch** (Nour, Oct 2026): memories come back with the iPhone's own iCloud
+Backup; live sync between devices is for later. "Delete account" asks for
+Face ID once more and sends the fresh one-time code to `/auth/apple/revoke`,
+which exchanges it and revokes it at Apple (required by Apple). It needs the
+secrets `APPLE_SIGNIN_KEY` (the .p8 contents) and `APPLE_KEY_ID`; without
+them it answers 503 and nothing is deleted.
 
 **A new or changed model must be added to `ALLOWED_MODELS` in
 `server/src/index.ts` and redeployed**, or the server refuses it with a 400.

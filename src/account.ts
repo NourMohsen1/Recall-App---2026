@@ -175,13 +175,42 @@ export async function signOut(): Promise<void> {
   console.log('[account] signed out');
 }
 
-/** Required by Apple for any app with accounts. The server holds nothing
- *  to delete, so this ends the account on the phone; the memories on the
- *  phone are the user's and stay. Once iCloud sync exists this also
- *  removes the iCloud copy, and once Recall has its Apple sign-in key it
- *  also tells Apple to forget the link (token revocation). */
-export async function deleteAccount(): Promise<void> {
+export type DeleteResult = { ok: true } | { ok: false; canceled: boolean; message?: string };
+
+/** Required by Apple for any app with accounts. Apple asks for Face ID
+ *  once more — that gives a fresh one-time code — and our server uses it
+ *  to have Apple forget the link (token revocation, also required). The
+ *  server keeps nothing else to delete. The memories on the phone are the
+ *  user's and stay. Cancelling Face ID deletes nothing. */
+export async function deleteAccount(): Promise<DeleteResult> {
   const was = current?.account;
+  let credential: AppleAuthentication.AppleAuthenticationCredential;
+  try {
+    credential = await AppleAuthentication.signInAsync({ requestedScopes: [] });
+  } catch (e) {
+    const canceled = (e as { code?: string }).code === 'ERR_REQUEST_CANCELED';
+    if (!canceled) console.warn('[account] Apple confirmation failed:', e);
+    return { ok: false, canceled };
+  }
+  if (!credential.identityToken || !credential.authorizationCode) {
+    console.warn('[account] Apple returned no code to revoke with');
+    return { ok: false, canceled: false, message: 'Apple did not confirm. Try again.' };
+  }
+  try {
+    const res = await askServer('/auth/apple/revoke', {
+      identityToken: credential.identityToken,
+      authorizationCode: credential.authorizationCode,
+    });
+    if (!res.ok) {
+      const message = ((await res.json().catch(() => ({}))) as { error?: { message?: string } }).error?.message;
+      console.warn(`[account] server could not revoke: HTTP ${res.status} ${message ?? ''}`);
+      return { ok: false, canceled: false, message };
+    }
+  } catch (e) {
+    console.warn('[account] could not reach the server to delete the account:', e);
+    return { ok: false, canceled: false, message: 'No connection. Try again in a moment.' };
+  }
   await save(null);
-  console.log(`[account] deleted account ${was ?? '(none)'}`);
+  console.log(`[account] deleted account ${was ?? '(none)'}; Apple sign-in revoked`);
+  return { ok: true };
 }

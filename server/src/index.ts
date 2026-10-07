@@ -40,6 +40,10 @@ export type Env = {
   BLOCKED_ACCOUNTS?: string;
   /** Tavily web search, for On This Day (/search/news). */
   TAVILY_API_KEY?: string;
+  /** The Sign in with Apple key (.p8 contents) and its Key ID, both set
+   *  with `wrangler secret put`. Used only to revoke a deleted account. */
+  APPLE_SIGNIN_KEY?: string;
+  APPLE_KEY_ID?: string;
 };
 
 // ── Sign in with Apple ────────────────────────────────────────────────────
@@ -48,6 +52,8 @@ export type Env = {
 const APPLE_AUDIENCE = 'com.nourwalid.recall';
 const APPLE_ISSUER = 'https://appleid.apple.com';
 const APPLE_KEYS_URL = 'https://appleid.apple.com/auth/keys';
+
+const APPLE_TEAM_ID = 'JF22LNW5JZ';
 
 /** A year; the app renews it quietly when under half is left. */
 const SESSION_DAYS = 365;
@@ -146,6 +152,57 @@ async function verifySession(session: string, secret: string | undefined): Promi
   } catch {
     return null;
   }
+}
+
+// ── Deleting an account: telling Apple ───────────────────────────────────
+//
+// Apple requires an app with Sign in with Apple to revoke the user's
+// tokens when they delete their account. The server keeps no tokens, so
+// the app signs in once more (Face ID) and sends the fresh one-time code;
+// that is exchanged here for a refresh token and revoked at once.
+
+/** The signed "client secret" Apple asks for: a short JWT signed with
+ *  Recall's Sign in with Apple key (ES256). */
+async function appleClientSecret(env: Env): Promise<string> {
+  const pem = env.APPLE_SIGNIN_KEY!.replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  const der = Uint8Array.from(atob(pem), (c) => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('pkcs8', der, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['sign']);
+  const now = Math.floor(Date.now() / 1000);
+  const header = bytesB64url(enc.encode(JSON.stringify({ alg: 'ES256', kid: env.APPLE_KEY_ID!.trim() })));
+  const claims = bytesB64url(
+    enc.encode(JSON.stringify({ iss: APPLE_TEAM_ID, iat: now, exp: now + 300, aud: APPLE_ISSUER, sub: APPLE_AUDIENCE })),
+  );
+  const sig = await crypto.subtle.sign({ name: 'ECDSA', hash: 'SHA-256' }, key, enc.encode(`${header}.${claims}`));
+  return `${header}.${claims}.${bytesB64url(sig)}`;
+}
+
+/** Exchanges the one-time code and revokes what it gives. Returns an error
+ *  message, or null when Apple confirmed. */
+async function revokeAppleSignIn(code: string, env: Env): Promise<string | null> {
+  const secret = await appleClientSecret(env);
+  const form = (fields: Record<string, string>) => ({
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(fields).toString(),
+  });
+  const tokenRes = await fetch(
+    `${APPLE_ISSUER}/auth/token`,
+    form({ client_id: APPLE_AUDIENCE, client_secret: secret, code, grant_type: 'authorization_code' }),
+  );
+  if (!tokenRes.ok) return `token exchange HTTP ${tokenRes.status} ${await tokenRes.text()}`;
+  const tokens = (await tokenRes.json()) as { refresh_token?: string; access_token?: string };
+  const token = tokens.refresh_token ?? tokens.access_token;
+  if (!token) return 'Apple gave no token to revoke';
+  const revokeRes = await fetch(
+    `${APPLE_ISSUER}/auth/revoke`,
+    form({
+      client_id: APPLE_AUDIENCE,
+      client_secret: secret,
+      token,
+      token_type_hint: tokens.refresh_token ? 'refresh_token' : 'access_token',
+    }),
+  );
+  return revokeRes.ok ? null : `revoke HTTP ${revokeRes.status} ${await revokeRes.text()}`;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -249,6 +306,31 @@ export default {
       if (blocked.includes(id)) return deny(403, 'This account is paused.');
       console.log(`[auth] signed in ${id}`);
       return json({ account: id, ...(await issueSession(id, env.SESSION_SECRET)) });
+    }
+
+    // Deleting the account: the app signed in again for a fresh code; this
+    // checks it is the same person and has Apple forget the link.
+    if (pathname === '/auth/apple/revoke') {
+      if (!env.APPLE_SIGNIN_KEY || !env.APPLE_KEY_ID) return deny(503, 'Account deletion is not set up on this server.');
+      let body: { identityToken?: unknown; authorizationCode?: unknown };
+      try {
+        body = await request.json();
+      } catch {
+        return deny(400, 'Body is not valid JSON.');
+      }
+      if (typeof body.identityToken !== 'string' || typeof body.authorizationCode !== 'string') {
+        return deny(400, 'Missing identityToken or authorizationCode.');
+      }
+      const sub = await verifyAppleToken(body.identityToken);
+      if (!sub) return deny(401, 'Apple did not confirm this sign-in.');
+      const id = await accountId(sub);
+      const problem = await revokeAppleSignIn(body.authorizationCode, env).catch((e) => String(e));
+      if (problem) {
+        console.log(`[auth] revoke failed for ${id}: ${problem}`);
+        return deny(502, 'Apple did not confirm. Try again in a moment.');
+      }
+      console.log(`[auth] deleted account ${id}: Apple sign-in revoked`);
+      return json({ revoked: true });
     }
 
     // A fresh session for a valid one — the app's quiet renewal.

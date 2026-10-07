@@ -79,10 +79,20 @@ export default function Profile() {
         onPress: () =>
           Alert.alert(
             'Delete your account?',
-            'Your account is removed. The memories on this phone stay — they are yours.',
+            'Apple will ask you to confirm with Face ID. Your account and its link to Apple are removed. The memories on this phone stay — they are yours.',
             [
               { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: () => deleteAccount() },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                  const result = await deleteAccount();
+                  if (result.ok) Alert.alert('Account deleted', 'You can sign in again any time.');
+                  else if (!result.canceled) {
+                    Alert.alert('Couldn’t delete your account', result.message ?? 'Try again in a moment.');
+                  }
+                },
+              },
             ],
           ),
       },
