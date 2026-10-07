@@ -14,7 +14,7 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
@@ -394,6 +394,22 @@ export default function Timeline() {
     });
 
   const canvasGesture = Gesture.Simultaneous(pan, pinch);
+
+  // The People card's search lists its suggestions under the field: when it
+  // opens, the canvas slides so the card sits near the top, above the
+  // keyboard (as the day page scrolls).
+  const peopleCard = useRef<View>(null);
+  const liftPeople = () =>
+    setTimeout(() => {
+      peopleCard.current?.measureInWindow((_x, y) => {
+        const want = 130;
+        if (y <= want + 40) return;
+        const s = sc.value;
+        const offY = ((1 - s) * FULL_H) / 2;
+        const minTy = vh.value - FULL_H * s - offY;
+        ty.value = withTiming(Math.max(minTy, ty.value - (y - want)), { duration: 280 });
+      });
+    }, 250);
 
   const canvasStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: sc.value }],
@@ -976,6 +992,7 @@ export default function Timeline() {
                       instead). Only appears once someone has been tagged. */}
                   {showPeople && (
                     <View
+                      ref={peopleCard}
                       onLayout={measure('people')}
                       style={[
                         styles.card,
@@ -996,6 +1013,7 @@ export default function Timeline() {
                           suggested={guessed}
                           onConfirm={confirmGuess}
                           onDismiss={dismissGuess}
+                          onSearchOpen={liftPeople}
                         />
                       </View>
                     </View>
