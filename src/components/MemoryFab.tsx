@@ -16,11 +16,12 @@ import { colors, fonts } from '../theme';
 
 const FAB = 76;
 const BUBBLE = 58;
-// Where the bubbles sit, from the + button's centre (points).
+// Where the bubbles sit, from the + button's centre (points). Type is on
+// the right — the easiest slide for a right thumb — as the most used.
 const ACTIONS = [
-  { key: 'type', label: 'Type', icon: ICONS.keyboard, lit: ICONS.keyboard, iconSize: 30, dx: -74, dy: -46, href: '/log/text' },
+  { key: 'upload', label: 'Upload', icon: ICONS.upload, lit: ICONS.uploadArrow, iconSize: 40, dx: -74, dy: -46, href: '/log/photo' },
   { key: 'talk', label: 'Talk', icon: ICONS.voice, lit: ICONS.voice, iconSize: 32, dx: 0, dy: -86, href: '/log/voice' },
-  { key: 'upload', label: 'Upload', icon: ICONS.upload, lit: ICONS.uploadArrow, iconSize: 40, dx: 74, dy: -46, href: '/log/photo' },
+  { key: 'type', label: 'Type', icon: ICONS.keyboard, lit: ICONS.keyboard, iconSize: 30, dx: 74, dy: -46, href: '/log/text' },
 ] as const;
 /** How near a bubble's centre a finger counts as on it — a bit bigger than
  *  the bubble, so a thumb doesn't have to be exact. */
