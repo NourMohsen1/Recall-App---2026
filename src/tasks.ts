@@ -33,6 +33,7 @@ export type StoredTask = {
   // planTaskReminders: an hour before a time, the morning of a date.
   reminder?: ReminderChoice;
   done: boolean;
+  doneAt?: string; // ISO — when it was ticked off; files an undated task under that week
   createdAt: string; // ISO
   source: 'manual' | 'memory';
   sourceText?: string; // the sentence the task was extracted from
@@ -167,7 +168,11 @@ export async function toggleTask(id: string): Promise<void> {
   const target = existing.find((t) => t.id === id);
   if (!target) return;
 
-  const updated: StoredTask = { ...target, done: !target.done };
+  const updated: StoredTask = {
+    ...target,
+    done: !target.done,
+    doneAt: target.done ? undefined : new Date().toISOString(),
+  };
   // No point reminding about something already finished; scheduleAll sets
   // nothing for a done task.
   await cancelAll(target);

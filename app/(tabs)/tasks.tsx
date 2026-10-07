@@ -71,7 +71,16 @@ type Section = { key: string; title: string; range?: string; past: boolean; task
 
 // The design groups tasks by week: what is coming, this week, and what has
 // passed. Newest date first inside each week, like the design. Undated tasks
-// sit together under "Anytime", after this week.
+// sit together under "Anytime", after this week — until they're done: a
+// finished undated task moves to the week it was finished in (tasks done
+// before that was recorded use the day they were made), and "Anytime"
+// disappears once nothing open is left in it.
+function placeDay(t: StoredTask): string | undefined {
+  if (t.dueDate) return t.dueDate;
+  if (!t.done) return undefined;
+  return keyOf(new Date(t.doneAt ?? t.createdAt));
+}
+
 function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
   const thisWeek = startOfWeek(now);
   const nextWeek = addDays(thisWeek, 7);
@@ -93,7 +102,7 @@ function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
   ];
   const at = (k: string) => sections.find((s) => s.key === k)!;
   for (const t of tasks) {
-    const d = t.dueDate;
+    const d = placeDay(t);
     if (!d) at('anytime').tasks.push(t);
     else if (d >= bounds.weekAfter) at('later').tasks.push(t);
     else if (d >= bounds.nextWeek) at('next').tasks.push(t);
@@ -101,12 +110,12 @@ function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
     else if (d >= bounds.lastWeek) at('last').tasks.push(t);
     else at('earlier').tasks.push(t);
   }
-  const when = (t: StoredTask) => `${t.dueDate ?? ''} ${taskClock(t) ?? '00:00'}`;
+  const when = (t: StoredTask) => `${placeDay(t) ?? ''} ${taskClock(t) ?? '00:00'}`;
   for (const s of sections) {
     s.tasks.sort((a, b) => when(b).localeCompare(when(a)));
     // Earlier covers everything before last week: its range is what is in it.
     if (s.key === 'earlier' && s.tasks.length > 0) {
-      const days = s.tasks.map((t) => t.dueDate!).sort();
+      const days = s.tasks.map((t) => placeDay(t)!).sort();
       const [y1, m1, d1] = days[0].split('-').map(Number);
       const [y2, m2, d2] = days[days.length - 1].split('-').map(Number);
       s.range = rangeLabel(new Date(y1, m1 - 1, d1), new Date(y2, m2 - 1, d2));
