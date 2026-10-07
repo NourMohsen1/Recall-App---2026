@@ -1,93 +1,235 @@
 import { useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
-import { ICONS, MISC } from '../images';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
+import { ICONS } from '../images';
 import { colors, fonts } from '../theme';
 
-// The three pop-out actions, positioned relative to the FAB center.
-// Keyboard fans lower-left (type a memory), Brain straight up (speak a
-// memory to Recall), Upload lower-right (attach photos/videos).
+// The + in the middle of the bar: the three ways to log a memory.
+//
+// Two ways to use it:
+// - Tap: the three bubbles fan out; tap one.
+// - Hold: they spring out under your thumb (with a knock). Slide onto one —
+//   it lights up (colours reversed, a tick, its name above it) — and let
+//   go to pick it. Let go anywhere else and nothing happens.
+
+const FAB = 76;
+const BUBBLE = 58;
+// Where the bubbles sit, from the + button's centre (points).
 const ACTIONS = [
-  { key: 'keyboard', icon: ICONS.keyboard, image: false, dx: -96, dy: -70, href: '/log/text' as const },
-  { key: 'brain', icon: MISC.brain3d, image: true, dx: 0, dy: -128, href: '/log/voice' as const },
-  { key: 'upload', icon: ICONS.upload, image: false, dx: 96, dy: -70, href: '/log/photo' as const },
-];
+  { key: 'type', label: 'Type', icon: ICONS.keyboard, lit: ICONS.keyboard, iconSize: 30, dx: -74, dy: -46, href: '/log/text' },
+  { key: 'talk', label: 'Talk', icon: ICONS.voice, lit: ICONS.voice, iconSize: 32, dx: 0, dy: -86, href: '/log/voice' },
+  { key: 'upload', label: 'Upload', icon: ICONS.upload, lit: ICONS.uploadArrow, iconSize: 40, dx: 74, dy: -46, href: '/log/photo' },
+] as const;
+/** How near a bubble's centre a finger counts as on it — a bit bigger than
+ *  the bubble, so a thumb doesn't have to be exact. */
+const HIT = BUBBLE / 2 + 16;
+
+const tick = (style: Haptics.ImpactFeedbackStyle) => Haptics.impactAsync(style).catch(() => {});
 
 export default function MemoryFab() {
   const router = useRouter();
-  // The FAB is visible on every tab, so the logging screen it opens needs to
-  // know which tab to return to when it's done — plain back() lands on Home
-  // regardless of where you actually were (see day/[offset]/index.tsx).
+  // The logging screen needs to know which tab to return to (see useReturnTo).
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
-  const anim = useRef(new Animated.Value(0)).current;
+  const [lit, setLit] = useState<number | null>(null);
+  const openAnim = useRef(new Animated.Value(0)).current;
+  const litAnims = useRef(ACTIONS.map(() => new Animated.Value(0))).current;
+  const fabRef = useRef<View>(null);
+  const centre = useRef({ x: 0, y: 0 });
+  const litRef = useRef<number | null>(null);
 
-  const animateTo = (to: number, cb?: () => void) => {
-    Animated.timing(anim, {
-      toValue: to,
-      duration: 220,
-      easing: to ? Easing.out(Easing.back(1.4)) : Easing.in(Easing.quad),
-      useNativeDriver: true,
-    }).start(cb);
+  const show = (to: 0 | 1, cb?: () => void) => {
+    if (to) {
+      Animated.spring(openAnim, { toValue: 1, friction: 6, tension: 90, useNativeDriver: true }).start(cb);
+    } else {
+      Animated.timing(openAnim, { toValue: 0, duration: 180, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(cb);
+    }
   };
 
-  const toggle = () => {
-    const next = !open;
-    setOpen(next);
-    animateTo(next ? 1 : 0);
+  const light = (i: number | null) => {
+    if (litRef.current === i) return;
+    if (litRef.current !== null) {
+      Animated.timing(litAnims[litRef.current], { toValue: 0, duration: 140, useNativeDriver: false }).start();
+    }
+    if (i !== null) {
+      Animated.spring(litAnims[i], { toValue: 1, friction: 5, tension: 160, useNativeDriver: false }).start();
+      Haptics.selectionAsync().catch(() => {});
+    }
+    litRef.current = i;
+    setLit(i);
   };
 
-  const pick = (href: any) => {
+  const openUp = (strong: boolean) => {
+    setOpen(true);
+    show(1);
+    tick(strong ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const close = () => {
+    light(null);
     setOpen(false);
-    animateTo(0, () => router.push({ pathname: href, params: { from: pathname } }));
+    show(0);
   };
 
-  const backdropOpacity = anim.interpolate({ inputRange: [0, 1], outputRange: [0, 1] });
+  const pick = (i: number, how: 'tap' | 'hold') => {
+    const a = ACTIONS[i];
+    console.log(`[fab] ${a.key} picked by ${how}`);
+    light(i);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    // A beat of the lit bubble, then away.
+    setTimeout(() => {
+      setOpen(false);
+      show(0, () => {
+        light(null);
+        router.push({ pathname: a.href, params: { from: pathname } });
+      });
+    }, 120);
+  };
+
+  /** Which bubble is under the finger (window coordinates), if any. */
+  const bubbleAt = (x: number, y: number): number | null => {
+    let best: number | null = null;
+    let bestD = HIT;
+    ACTIONS.forEach((a, i) => {
+      const d = Math.hypot(x - (centre.current.x + a.dx), y - (centre.current.y + a.dy));
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  };
+
+  const measure = () =>
+    fabRef.current?.measureInWindow((x, y, w, h) => {
+      centre.current = { x: x + w / 2, y: y + h / 2 };
+    });
+
+  // Hold, slide, release.
+  const hold = Gesture.Pan()
+    .runOnJS(true)
+    .activateAfterLongPress(220)
+    .onBegin(measure)
+    .onStart(() => openUp(true))
+    .onUpdate((e) => {
+      const i = bubbleAt(e.absoluteX, e.absoluteY);
+      if (i !== litRef.current && i !== null) console.log(`[fab] over ${ACTIONS[i].key}`);
+      light(i);
+    })
+    .onEnd(() => {
+      const i = litRef.current;
+      if (i !== null) pick(i, 'hold');
+      else {
+        console.log('[fab] let go away from the bubbles');
+        tick(Haptics.ImpactFeedbackStyle.Light);
+        close();
+      }
+    });
+
+  // A plain tap opens and closes the fan.
+  const tap = Gesture.Tap()
+    .runOnJS(true)
+    .maxDuration(220)
+    .onEnd((_e, ok) => {
+      if (!ok) return;
+      if (open) close();
+      else openUp(false);
+    });
+
+  const gesture = Gesture.Exclusive(hold, tap);
+  const turn = openAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
 
   return (
     <>
-      {/* Tap-away backdrop */}
+      {/* Dim the screen while choosing; a tap on it closes. */}
       {open && (
-        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity }]}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={toggle} />
+        <Animated.View style={[styles.backdrop, { opacity: openAnim }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={close} accessibilityLabel="Close" />
         </Animated.View>
       )}
 
-      {/* Fan-out action buttons */}
-      {ACTIONS.map((a) => {
-        const translateX = anim.interpolate({ inputRange: [0, 1], outputRange: [0, a.dx] });
-        const translateY = anim.interpolate({ inputRange: [0, 1], outputRange: [0, a.dy] });
-        const scale = anim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
+      {ACTIONS.map((a, i) => {
+        const translateX = openAnim.interpolate({ inputRange: [0, 1], outputRange: [0, a.dx] });
+        const translateY = openAnim.interpolate({ inputRange: [0, 1], outputRange: [0, a.dy] });
+        const scale = openAnim.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] });
+        const hv = litAnims[i];
         return (
           <Animated.View
             key={a.key}
-            pointerEvents={open ? 'auto' : 'none'}
-            style={[
-              styles.action,
-              { opacity: anim, transform: [{ translateX }, { translateY }, { scale }] },
-            ]}
+            pointerEvents={open ? 'box-none' : 'none'}
+            style={[styles.slot, { opacity: openAnim, transform: [{ translateX }, { translateY }, { scale }] }]}
           >
-            <Pressable style={styles.actionBtn} onPress={() => pick(a.href)}>
-              <Image
-                source={a.icon}
-                style={a.image ? styles.actionBrain : styles.actionIcon}
-                tintColor={a.image ? undefined : colors.white}
-                resizeMode="contain"
-              />
+            {/* Its name, only while lit */}
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.label,
+                {
+                  opacity: hv,
+                  transform: [{ translateY: hv.interpolate({ inputRange: [0, 1], outputRange: [6, 0] }) }],
+                },
+              ]}
+            >
+              <View style={styles.labelPill}>
+                <Text style={styles.labelText} numberOfLines={1}>
+                  {a.label}
+                </Text>
+              </View>
+            </Animated.View>
+
+            <Pressable onPress={() => pick(i, 'tap')} accessibilityRole="button" accessibilityLabel={a.label}>
+              {/* Lit: colours reversed and a little bigger */}
+              <Animated.View
+                style={[
+                  styles.bubble,
+                  {
+                    backgroundColor: hv.interpolate({ inputRange: [0, 1], outputRange: [colors.soft, colors.primary] }),
+                    transform: [{ scale: hv.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }) }],
+                  },
+                ]}
+              >
+                <Animated.Image
+                  source={a.icon}
+                  style={[styles.glyph, { width: a.iconSize, height: a.iconSize, opacity: Animated.subtract(1, hv) }]}
+                  tintColor={colors.primary}
+                  resizeMode="contain"
+                />
+                <Animated.Image
+                  source={a.lit}
+                  style={[styles.glyph, { width: a.iconSize, height: a.iconSize, opacity: hv }]}
+                  tintColor={colors.soft}
+                  resizeMode="contain"
+                />
+              </Animated.View>
             </Pressable>
           </Animated.View>
         );
       })}
 
-      {/* Main + button */}
-      <Pressable style={styles.fab} onPress={toggle}>
-        <Text style={styles.fabPlus}>+</Text>
-      </Pressable>
+      <GestureDetector gesture={gesture}>
+        <View
+          ref={fabRef}
+          style={styles.fab}
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel={open ? 'Close' : 'Log a memory'}
+          accessibilityHint="Hold and slide to choose"
+          onLayout={measure}
+        >
+          {/* A thin + that turns into × while open */}
+          <Animated.View style={[styles.plus, { transform: [{ rotate: turn }] }]}>
+            <View style={styles.plusH} />
+            <View style={styles.plusV} />
+          </Animated.View>
+        </View>
+      </GestureDetector>
     </>
   );
 }
 
-const FAB_BOTTOM = 64;
+const FAB_BOTTOM = 60;
 
 const styles = StyleSheet.create({
   // See the note in app/log/voice.tsx — neither absoluteFill nor
@@ -105,9 +247,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: FAB_BOTTOM,
     alignSelf: 'center',
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: FAB,
+    height: FAB,
+    borderRadius: FAB / 2,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -117,35 +259,40 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
-  fabPlus: {
-    color: colors.white,
-    fontSize: 40,
-    lineHeight: 44,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    includeFontPadding: false,
-    fontFamily: fonts.regular,
-  },
-  action: {
+  plus: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
+  plusH: { position: 'absolute', width: 30, height: 2.5, borderRadius: 1.25, backgroundColor: colors.white },
+  plusV: { position: 'absolute', width: 2.5, height: 30, borderRadius: 1.25, backgroundColor: colors.white },
+  // Each bubble starts at the + button's centre and springs out from there.
+  slot: {
     position: 'absolute',
-    bottom: FAB_BOTTOM + 6,
+    bottom: FAB_BOTTOM + (FAB - BUBBLE) / 2,
     alignSelf: 'center',
+    width: BUBBLE,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  actionBtn: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
-    backgroundColor: colors.primary,
+  bubble: {
+    width: BUBBLE,
+    height: BUBBLE,
+    borderRadius: BUBBLE / 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(8,17,18,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
     shadowColor: colors.ink,
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
   },
-  actionIcon: { width: 30, height: 30 },
-  actionBrain: { width: 46, height: 46 },
+  glyph: { position: 'absolute' },
+  // Wider than the bubble, centred over it, so a name never wraps.
+  label: {
+    position: 'absolute',
+    bottom: BUBBLE + 10,
+    left: (BUBBLE - 100) / 2,
+    width: 100,
+    alignItems: 'center',
+  },
+  labelPill: { backgroundColor: colors.ink, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 10 },
+  labelText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.white },
 });

@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
 import { StatusBar } from 'expo-status-bar';
 import { DEFAULT_STATUS_BAR } from '../src/statusBar';
@@ -107,7 +108,8 @@ function RootLayout() {
   }
 
   return (
-    <>
+    // Gestures anywhere in the app — the + button's hold-and-drag needs it.
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style={DEFAULT_STATUS_BAR} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
@@ -119,7 +121,7 @@ function RootLayout() {
             plain push, and every other screen is fine. */}
         <Stack.Screen name="live" options={{ animation: 'slide_from_bottom' }} />
       </Stack>
-    </>
+    </GestureHandlerRootView>
   );
 }
 

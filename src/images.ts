@@ -20,6 +20,10 @@ export const ICONS = {
   ask: require('../assets/icons/ask.png'),
   keyboard: require('../assets/icons/keyboard.png'),
   upload: require('../assets/icons/upload.png'),
+  // The arrow alone: the upload icon when its bubble is lit (the bubble is
+  // then the disc).
+  uploadArrow: require('../assets/icons/upload-arrow.png'),
+  voice: require('../assets/icons/voice.png'),
 };
 
 export const PERSON_PLACEHOLDER = require('../assets/people/placeholder.png');
