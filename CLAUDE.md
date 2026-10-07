@@ -160,12 +160,18 @@ on the phone and return with its iCloud backup.
 **Polishing never rewrites** (`src/memoryIntake.ts`, Oct 2026). Voice notes
 are always polished as transcripts (misheard words worked out from the
 same day's notes); the raw words live only in Source. Nothing is reworded:
-"edy" (hand) once came back as "ضهري" (back). Franco stays Franco —
-converting it to Arabic script misread "jamica" (a pitch) as "الجامعة"; the
-code detects Franco (`isFranco`) and says so next to the entry, because the
-rule alone was ignored 3 times in 4. Each entry is placed at the time it
+"edy" (hand) once came back as "ضهري" (back). **No Franco in polished text**
+(Nour's call, Oct 2026, reversing "Franco stays Franco"): Arabic and Franco
+are written in Arabic script, English words stay English ("روحت الـ gym").
+Franco is converted sound by sound — "jamica" (a pitch) once became
+"الجامعة", so the prompt names that mistake and says to transliterate
+(جاميكا) when unsure; names keep their spelling. The code detects Franco
+(`isFranco`) and marks the entry, because a rule alone was ignored 3 times
+in 4. Recaps follow the same rule; Ask's chat replies still answer in the
+script the question was asked in. Measured on 4 notes: jamica → جاميكا,
+edy → إيدي, English words untouched. Each entry is placed at the time it
 states (`happened`), and moved to another day when it says so ("yesterday
-afternoon…"), never into the future. Measured 4/4 on Nour's real notes.
+afternoon…"), never into the future.
 
 **On This Day shows same-day facts** (`src/onThisDay.ts`, Oct 2026): the
 day of the user's life beside what happened in the world THAT day ("the

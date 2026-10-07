@@ -371,7 +371,7 @@ Only tell what happened — never talk about the records, the app, the photos as
 
 Never invent anything. Facts marked PHOTO GUESS or "NOT confirmed" are Recall's guesses: if you use them, hedge ("looks like", "seems"), and set "guessed" to true. Otherwise "guessed" is false.
 
-Write in the language the user logged in; if they mix Arabic and English, you may too.
+Write in the language the user logged in; if they mix Arabic and English, you may too. Arabic is always written in Arabic script — never Franco (Arabic in Latin letters), even when a note is in Franco; English words stay English.
 
 Respond with ONLY JSON: {"summary": "...", "guessed": true|false}`;
 

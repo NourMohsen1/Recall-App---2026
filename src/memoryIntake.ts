@@ -7,7 +7,7 @@ import {
   isSirKind,
   type SirKind,
 } from './dayMarkers';
-import { dateKey, getLoggedMemories, localFile, splitMemory, updateMemory, type LoggedMemory } from './memoryLog';
+import { dateKey, getLoggedMemories, localFile, splitMemory, unsplitMemory, updateMemory, type LoggedMemory } from './memoryLog';
 import { addPersonMention, getKnownPeopleForPrompt } from './peopleTags';
 import {
   isPlaceKind,
@@ -57,9 +57,9 @@ Respond with ONLY a JSON object in this exact shape:
   "recurring": [{"kind": "...", "label": "...", "every": "year"|"month", "date": "MM-DD" | "today" | null, "day_of_month": 1-31 | null, "person": "..." | null}]
 }
 
-"polished" — the memory itself, cleaned and reorganized: fix rambling and fillers, keep EVERY event and detail, first person, past tense where natural, in the SAME language(s) the user used (Arabic stays Arabic, mixed stays mixed). Reminders/to-dos MUST be removed entirely from the polished text — they live in "tasks" instead. Example: "…grabbed coffee with Lina, oh and remind me to book the flight friday" → polished ends at "…grabbed coffee with Lina." and the flight goes into tasks. Never invent details. A clean TYPED entry may come back as-is.
+"polished" — the memory itself, cleaned and reorganized: fix rambling and fillers, keep EVERY event and detail, first person, past tense where natural, in the SAME language(s) the user used (Arabic stays Arabic, mixed stays mixed) — and any Arabic is written in ARABIC SCRIPT, including Arabic the user typed in Franco (Latin letters and numbers); see SCRIPT below. Reminders/to-dos MUST be removed entirely from the polished text — they live in "tasks" instead. Example: "…grabbed coffee with Lina, oh and remind me to book the flight friday" → polished ends at "…grabbed coffee with Lina." and the flight goes into tasks. Never invent details. A clean TYPED entry may come back as-is — unless it is in Franco, which is always written in Arabic script.
 
-POLISH, DON'T REWRITE. Change as little as needed: fix spelling, fillers and repetition, add punctuation — never reword what happened. Every detail keeps its exact meaning: body parts (edy/إيدي = hand, dahry/ضهري = back, regl/رجلي = leg — never swap one for another), people, places, numbers, times, who did what and who won. Keep the user's own SCRIPT: an entry marked FRANCO ENTRY is written back in Franco, in Latin letters — converting it to Arabic script misreads words (measured: "jamica", a football pitch, became "الجامعة", the university). Never translate: Arabic stays Arabic, English stays English, mixed stays mixed. If you are not sure what a word means, keep the user's word exactly as written.
+POLISH, DON'T REWRITE. Change as little as needed: fix spelling, fillers and repetition, add punctuation — never reword what happened. Every detail keeps its exact meaning: body parts (edy/إيدي = hand, dahry/ضهري = back, regl/رجلي = leg — never swap one for another), people, places, numbers, times, who did what and who won. SCRIPT: "polished" (and every "moments" text) never contains Franco. Arabic — spoken, typed in Arabic, or typed in Franco — is written in Arabic script; English words the user said or typed stay English, in Latin letters, exactly as now ("رحت الـ gym مع عمر"). Convert Franco SOUND BY SOUND, never by guessing a similar-looking Arabic word: "jamica" (the name of a football pitch) is "جاميكا", never "الجامعة" (the university) — that exact mistake happened. Names of people, places, shops and brands keep their own spelling: Arabic names in Arabic script, English or foreign names as the user wrote them. Never translate: Arabic stays Arabic, English stays English, mixed stays mixed. If you are not sure what a Franco word means, transliterate its sounds into Arabic letters rather than replacing it with a different word.
 
 "moments" — when the entry tells about SEVERAL separate parts of the day ("in the morning I went to the café… then the doctor… at night football"), split "polished" into those parts, in the order they happened: each "text" is one part, polished by the same rules (same language and script, nothing reworded, nothing left out — together they say everything "polished" says), and each "time" is when that part started, by the same rules as "happened.time" below — use "then"/"after that" to keep later parts later. Return an empty list when the entry is about one moment, or when the parts have no order in the day. Never more than 8.
 
@@ -69,7 +69,7 @@ POLISH, DON'T REWRITE. Change as little as needed: fix spelling, fillers and rep
   3. no time words at all: the time the activity itself usually happens — breakfast 08:00, lunch 13:00, dinner 20:00, class or work in the day, a party or a movie out at night;
   4. nothing to go on: null (the app keeps it where it is — midday for a day it was added to later). Never a future date or time — plans are tasks. When "happened.date" moves the entry to another day, "polished" must read right ON that day: drop the word that pointed there ("Yesterday afternoon I met Dave" → "In the afternoon I met Dave").
 
-SPOKEN ENTRY — when the entry is marked SPOKEN ENTRY, it is a raw speech-to-text transcript, never something to show as it is. Speech recognition mishears words, especially names, places and English words inside Arabic speech ("إيميل من غير إس" is an email from the IRS; "المشرفين" may be "the refund"). Work out what the person most likely said from the rest of the entry and the SAME-DAY CONTEXT, and write that. Then ALWAYS rewrite it as a short, clean written memory: complete sentences, no fillers or thinking aloud ("يعني", "تمام، مش مشكلة", "um", "like"), no repetition. Keep the language the person spoke (Arabic stays Arabic, mixed stays mixed). Where a word or part truly can't be worked out, leave it out rather than guess.
+SPOKEN ENTRY — when the entry is marked SPOKEN ENTRY, it is a raw speech-to-text transcript, never something to show as it is. Speech recognition mishears words, especially names, places and English words inside Arabic speech ("إيميل من غير إس" is an email from the IRS; "المشرفين" may be "the refund"). Work out what the person most likely said from the rest of the entry and the SAME-DAY CONTEXT, and write that. Then ALWAYS rewrite it as a short, clean written memory: complete sentences, no fillers or thinking aloud ("يعني", "تمام، مش مشكلة", "um", "like"), no repetition. Keep the language the person spoke (Arabic stays Arabic, mixed stays mixed), with Arabic in Arabic script and English words in English — never Franco. Where a word or part truly can't be worked out, leave it out rather than guess.
 
 "tasks" — only genuine future to-dos: "remind me to…", "I have to…", "X asked me to…". Things that already happened are never tasks. title is a short imperative phrase in the user's own words with lead-ins stripped: "remind me to give Jeff the brief" → "Give Jeff the brief". Keep the entry's language. date resolves relative words ("tomorrow", weekday names) against TODAY given below; null when no day was mentioned. period only when the user said a day-part word. time only for an explicit clock time (24h).
 
@@ -326,7 +326,7 @@ function entryDayLine(entryDay: string | undefined, now: Date): string {
 function entryFor(text: string, options: { spoken?: boolean; sameDay?: string[] }): string {
   if (!options.spoken) {
     return isFranco(text)
-      ? `FRANCO ENTRY — write "polished" in Franco-Arabic, Latin letters, like the user wrote it. Do NOT convert it to Arabic script.\n\n${text}`
+      ? `FRANCO ENTRY — Arabic typed in Latin letters. Write "polished" in Arabic script, converting each word by its sounds (English words stay English; names keep their spelling — see SCRIPT).\n\n${text}`
       : text;
   }
   const context = (options.sameDay ?? []).filter(Boolean).slice(0, 6);
@@ -579,7 +579,10 @@ function sameDayText(all: LoggedMemory[], memoryId: string, dayKey: string): str
 // polished once more under these rules: the text and its time only — their
 // tasks, people and places were filed the first time and are not again.
 // v3 (Oct 2026): a log about the whole day is split into its moments.
-const POLISH_VERSION = 3;
+// v4 (Oct 2026, Nour): no Franco in polished text — Franco and Arabic are
+// written in Arabic script, English words stay English. Every entry still
+// showing Franco is re-polished, however old.
+const POLISH_VERSION = 4;
 const RECHECK_TYPED_DAYS = 7;
 
 async function repolishUnderNewRules(limit = 4): Promise<boolean> {
@@ -592,7 +595,9 @@ async function repolishUnderNewRules(limit = 4): Promise<boolean> {
         !m.partOf &&
         (m.polishVersion ?? 0) < POLISH_VERSION &&
         !!(m.rawText ?? m.text)?.trim() &&
-        (m.kind === 'voice' || (m.kind === 'text' && new Date(m.createdAt).getTime() > weekAgo)) &&
+        (m.kind === 'voice' ||
+          isFranco(m.text ?? '') ||
+          (m.kind === 'text' && new Date(m.createdAt).getTime() > weekAgo)) &&
         !inFlight.has(m.id) &&
         Date.now() - (lastAttemptAt.get(m.id) ?? 0) > RETRY_COOLDOWN_MS,
     )
@@ -619,6 +624,9 @@ async function repolishUnderNewRules(limit = 4): Promise<boolean> {
     });
     if (result.moments && !m.placedByUser) {
       await splitMemory(m.id, momentTimes(result.moments, moved?.day ?? day, moved?.takenAt ?? m.takenAt));
+    } else if (m.split && !m.placedByUser) {
+      // Its old moments carry the old wording (Franco, say) — show it whole.
+      await unsplitMemory(m.id);
     }
     console.log(
       `[intake] re-polished ${m.kind} ${m.id}: ${polished && polished !== raw.trim() ? 'rewritten' : 'unchanged'}${moved ? `, now ${moved.day} ${moved.takenAt.slice(11, 16)}` : ''}`,

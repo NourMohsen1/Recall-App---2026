@@ -238,6 +238,18 @@ export async function splitMemory(
   console.log(`[intake] split ${parentId} into ${children.length} moments`);
 }
 
+/** Undoes a split: the moments go and the note shows whole again — for a
+ *  note re-polished into a single moment, whose old moments would
+ *  otherwise keep showing the old wording. */
+export async function unsplitMemory(parentId: string): Promise<void> {
+  const all = await getLoggedMemories();
+  const next = all
+    .filter((m) => m.partOf !== parentId)
+    .map((m) => (m.id === parentId ? { ...m, split: undefined } : m));
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  console.log(`[intake] ${parentId} is one moment again`);
+}
+
 // What the user reads on a card for one logged memory.
 //
 // How a memory was captured is an input method, not content: a voice note
