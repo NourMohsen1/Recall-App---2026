@@ -14,19 +14,30 @@ import {
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../src/components/AnalyzingBanner';
 import MixSheet from '../src/components/MixSheet';
 import PersonAvatar from '../src/components/PersonAvatar';
 import PhotoImage from '../src/components/PhotoImage';
 import ScreenHeader from '../src/components/ScreenHeader';
+import TopicArrangeRow from '../src/components/TopicArrangeRow';
 import { learnFollows, likeSubject, muteSubject, unmuteSubject } from '../src/follows';
 import { getAllAssumedMemories } from '../src/assumedMemory';
 import { getAllGuesses, type GuessesByDay } from '../src/guessedPeople';
 import { useMemoryPolish } from '../src/memoryIntake';
 import { LoggedMemory, dateKey, getMemoriesByDay, memoryDisplayText } from '../src/memoryLog';
 import { MonthBucket, buildMonthBuckets, buildPastYears, buildYearMonths } from '../src/monthBuckets';
-import { Topic, TopicItem, getDayFeed, getInterestTopics, getTopicEvents, topicIcon } from '../src/onThisDay';
+import {
+  Topic,
+  TopicItem,
+  getDayFeed,
+  getInterestTopics,
+  getTopicEvents,
+  setInterestTopics,
+  topicIcon,
+} from '../src/onThisDay';
 import { getAllDayPeople, getAllPersonMeta } from '../src/peopleTags';
 import { getAllPhotoSources } from '../src/photoMeta';
 import { getAllDayPlaces, type DayPlace } from '../src/places';
@@ -212,6 +223,12 @@ function NewsImage({ uri, topicKey }: { uri?: string; topicKey: string }) {
       <MaterialCommunityIcons name={topicIcon(topicKey) as any} size={38} color={colors.teal} />
     </View>
   );
+}
+
+/** Holding a topic's card starts arranging the topics. */
+function HoldToArrange({ onHold, children }: { onHold: () => void; children: React.ReactNode }) {
+  const hold = useMemo(() => Gesture.LongPress().minDuration(380).runOnJS(true).onStart(onHold), [onHold]);
+  return <GestureDetector gesture={hold}>{children}</GestureDetector>;
 }
 
 function NewsCard({
@@ -442,6 +459,18 @@ function OnThisDay() {
   // `?mix=1` opens straight onto Your mix (from Profile, or a link).
   const params = useLocalSearchParams<{ mix?: string }>();
   const [mixOpen, setMixOpen] = useState(params.mix === '1');
+  // Arranging: every day shrinks to tiles and the topics can be slid into
+  // a new order — the same order on every day.
+  const [arranging, setArranging] = useState(false);
+  const startArrange = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    setArranging(true);
+  }, []);
+  const reorderTopics = (keys: string[]) => {
+    setTopics((now) => keys.map((k) => now.find((t) => t.key === k)!).filter(Boolean));
+    setInterestTopics(keys as Topic['key'][]);
+    console.log(`[otd] topics now ${keys.join(', ')}`);
+  };
   useEffect(() => {
     if (params.mix === '1') setMixOpen(true);
   }, [params.mix]);
@@ -593,6 +622,11 @@ function OnThisDay() {
             <Text style={styles.dayNum}>{String(date.getDate()).padStart(2, '0')}</Text>
           </View>
         </View>
+        {arranging ? (
+          <View style={{ paddingHorizontal: SIDE }}>
+            <TopicArrangeRow topics={topics} width={screenW - SIDE * 2} gap={8} onReorder={reorderTopics} />
+          </View>
+        ) : (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -611,17 +645,21 @@ function OnThisDay() {
             guess={photoGuesses[key]}
           />
           {topics.map((t) => (
-            <NewsCard
-              key={t.key}
-              width={cardW}
-              topic={t}
-              item={feed?.find((i) => i.topic === t.key)}
-              loading={!feed && loadingFeeds}
-              onMore={() => setMore({ topic: t, date })}
-              onMix={() => setMixOpen(true)}
-            />
+            <HoldToArrange key={t.key} onHold={startArrange}>
+              <View>
+                <NewsCard
+                  width={cardW}
+                  topic={t}
+                  item={feed?.find((i) => i.topic === t.key)}
+                  loading={!feed && loadingFeeds}
+                  onMore={() => setMore({ topic: t, date })}
+                  onMix={() => setMixOpen(true)}
+                />
+              </View>
+            </HoldToArrange>
           ))}
         </ScrollView>
+        )}
       </View>
     );
   };
@@ -732,6 +770,15 @@ function OnThisDay() {
         })}
       </ScrollView>
 
+      {arranging && (
+        <View style={styles.arrangeBar} pointerEvents="box-none">
+          <Text style={styles.arrangeHint}>Slide a topic — it moves on every day</Text>
+          <Pressable style={styles.arrangeDone} onPress={() => setArranging(false)}>
+            <Text style={styles.arrangeDoneText}>Done</Text>
+          </Pressable>
+        </View>
+      )}
+
       <MixSheet
         visible={mixOpen}
         onClose={(changed) => {
@@ -748,6 +795,20 @@ function OnThisDay() {
 }
 
 const styles = StyleSheet.create({
+  // Above the + button and the bar.
+  arrangeBar: { position: 'absolute', left: 0, right: 0, bottom: 176, alignItems: 'center', gap: 10 },
+  arrangeHint: {
+    fontFamily: fonts.medium,
+    fontSize: 13,
+    color: colors.white,
+    backgroundColor: 'rgba(8,17,18,0.75)',
+    borderRadius: 999,
+    overflow: 'hidden',
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+  },
+  arrangeDone: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 42 },
+  arrangeDoneText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.ink },
   safe: { flex: 1, backgroundColor: colors.white },
   page: { flex: 1, backgroundColor: colors.pale },
 
