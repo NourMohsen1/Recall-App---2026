@@ -329,7 +329,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   dayCircleToday: { backgroundColor: colors.primary },
-  dayNum: { fontFamily: fonts.medium, fontSize: 15, color: colors.white },
+  // Dark on the pale circles so the dates read easily; today stays white on teal.
+  dayNum: { fontFamily: fonts.medium, fontSize: 15, color: colors.primary },
   dayNumToday: { color: colors.white },
   // Green: logged that day. The same green for today as any other day.
   logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: '#A9D3B6' },
