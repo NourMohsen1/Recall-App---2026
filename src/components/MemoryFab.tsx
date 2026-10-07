@@ -8,11 +8,11 @@ import { colors, fonts } from '../theme';
 
 // The + in the middle of the bar: the three ways to log a memory.
 //
-// Two ways to use it:
-// - Tap: the three bubbles fan out; tap one.
-// - Hold: they spring out under your thumb (with a knock). Slide onto one —
-//   it lights up (colours reversed, a tick, its name above it) — and let
-//   go to pick it. Let go anywhere else and nothing happens.
+// The bubbles spring out the moment the + is touched (with a knock):
+// - slide onto one — it lights up (colours reversed, a tick, its name
+//   above it) — and let go to pick it; let go anywhere else and nothing
+//   happens;
+// - or just tap the +, and tap a bubble.
 
 const FAB = 76;
 const BUBBLE = 58;
@@ -61,10 +61,10 @@ export default function MemoryFab() {
     setLit(i);
   };
 
-  const openUp = (strong: boolean) => {
+  const openUp = () => {
     setOpen(true);
     show(1);
-    tick(strong ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    tick(Haptics.ImpactFeedbackStyle.Medium);
   };
 
   const close = () => {
@@ -107,38 +107,37 @@ export default function MemoryFab() {
       centre.current = { x: x + w / 2, y: y + h / 2 };
     });
 
-  // Hold, slide, release.
-  const hold = Gesture.Pan()
+  // One gesture for both: the bubbles come out the instant the + is
+  // touched. Slide onto one and let go to pick it. A quick tap that didn't
+  // land on a bubble leaves them open to tap (or, if they were already
+  // open, closes them); a longer press let go elsewhere cancels.
+  const touch = useRef({ at: 0, wasOpen: false, moved: false });
+  const gesture = Gesture.Pan()
     .runOnJS(true)
-    .activateAfterLongPress(220)
-    .onBegin(measure)
-    .onStart(() => openUp(true))
+    .minDistance(0)
+    .onBegin(() => {
+      measure();
+      touch.current = { at: Date.now(), wasOpen: open, moved: false };
+      if (!open) openUp();
+    })
     .onUpdate((e) => {
+      if (Math.hypot(e.translationX, e.translationY) > 10) touch.current.moved = true;
       const i = bubbleAt(e.absoluteX, e.absoluteY);
       if (i !== litRef.current && i !== null) console.log(`[fab] over ${ACTIONS[i].key}`);
       light(i);
     })
-    .onEnd(() => {
+    .onFinalize(() => {
       const i = litRef.current;
+      const quickTap = !touch.current.moved && Date.now() - touch.current.at < 300;
       if (i !== null) pick(i, 'hold');
-      else {
+      else if (quickTap && !touch.current.wasOpen) {
+        // A tap: stay open for the bubbles to be tapped.
+      } else {
         console.log('[fab] let go away from the bubbles');
         tick(Haptics.ImpactFeedbackStyle.Light);
         close();
       }
     });
-
-  // A plain tap opens and closes the fan.
-  const tap = Gesture.Tap()
-    .runOnJS(true)
-    .maxDuration(220)
-    .onEnd((_e, ok) => {
-      if (!ok) return;
-      if (open) close();
-      else openUp(false);
-    });
-
-  const gesture = Gesture.Exclusive(hold, tap);
   const turn = openAnim.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
 
   return (
