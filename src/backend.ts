@@ -13,9 +13,13 @@
 // six named models, and can be changed in seconds without touching the
 // provider accounts. A leaked provider key has no such limits.
 //
-// THIS TOKEN IS STILL IN THE BUNDLE. It is not a secret from a determined
-// tester, and pretending otherwise would be the same mistake in a new
-// place. It is a throttle and a revocation switch, not a lock.
+// And since Oct 2026 the App Store build carries no token at all. Each
+// install proves itself to the server with Apple's App Attest and gets its
+// own pass (src/install.ts); a pass works only for that phone, for a week,
+// and is renewed only by the phone's Secure Enclave. The old shared token
+// survives for development builds alone — DEV_TOKEN below is compiled out
+// of release bundles (checked: the token's value is not in the App Store
+// bundle).
 
 function trimmed(value: string | undefined): string | undefined {
   const v = value?.trim();
@@ -34,14 +38,28 @@ export function setAiAllowed(allowed: boolean): void {
 
 /** e.g. https://recall-keys.nourmohsen-recall.workers.dev */
 export function backendUrl(path: string): string | undefined {
-  if (!aiAllowed && !path.startsWith('/auth/')) return undefined;
+  // Signing in and getting an install pass send nothing about the user.
+  if (!aiAllowed && !path.startsWith('/auth/') && !path.startsWith('/attest/')) return undefined;
   const base = trimmed(process.env.EXPO_PUBLIC_RECALL_API_URL);
   return base ? `${base.replace(/\/+$/, '')}${path}` : undefined;
 }
 
-/** The shared token alone — what every copy of the app carries. */
+/** Development builds only: `__DEV__` is false in a release build, so the
+ *  minifier drops this branch and the value never enters the bundle. */
+const DEV_TOKEN = __DEV__ ? trimmed(process.env.EXPO_PUBLIC_RECALL_APP_TOKEN) : undefined;
+
+// This install's pass from the server (src/install.ts), once it has one.
+let installPass: string | undefined;
+
+export function setInstallPass(next: string | undefined): void {
+  installPass = next;
+}
+
+/** What identifies this copy of the app: its App Attest pass, or — in a
+ *  development build without one (the simulator can't attest) — the
+ *  development token. */
 export function appToken(): string | undefined {
-  return trimmed(process.env.EXPO_PUBLIC_RECALL_APP_TOKEN);
+  return installPass ?? DEV_TOKEN;
 }
 
 // Signed in with Apple (src/account.ts), the account's session rides along

@@ -22,6 +22,7 @@ import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImpo
 import { syncRecapNotifications } from '../src/recapNotifications';
 import { loadAccount } from '../src/account';
 import { loadAiConsent } from '../src/aiConsent';
+import { startInstallPass } from '../src/install';
 import { startCrashReporting, wrapWithCrashReporting } from '../src/crashReporting';
 
 // Before anything else, so a crash during startup is reported too.
@@ -137,6 +138,9 @@ function RootLayout() {
   useEffect(() => {
     loadAiConsent().finally(() => setReady(true));
   }, []);
+  // This install's pass to the server (App Attest) — at launch and on
+  // every return to the app.
+  useEffect(() => startInstallPass(), []);
   return ready ? <AppRoot /> : null;
 }
 

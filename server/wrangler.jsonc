@@ -3,7 +3,13 @@
   "name": "recall-keys",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-24",
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  // Speed limits: AI requests per install, and attempts to get a pass per
+  // address. Generous for a person, useless for a script.
+  "ratelimits": [
+    { "name": "AI_LIMITER", "namespace_id": "1001", "simple": { "limit": 120, "period": 60 } },
+    { "name": "ATTEST_LIMITER", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }
+  ]
   // No secrets here, deliberately. This file is committed; the provider
   // keys are set with `wrangler secret put` and live only in Cloudflare.
 }

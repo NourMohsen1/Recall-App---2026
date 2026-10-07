@@ -10,14 +10,15 @@
 // providers. The provider keys live only in Cloudflare's encrypted secret
 // store and never reach a phone.
 //
-// WHAT THIS DOES NOT FIX, stated plainly because it would be easy to
-// believe otherwise: the app still has to identify itself somehow, and that
-// credential is in the bundle too. A determined tester can extract
-// RECALL_APP_TOKEN and call this server directly. The difference is what
-// that buys them — this token only reaches these four endpoints, only with
-// the models listed below, and it can be changed in ten seconds without
-// rebuilding the app or touching the provider accounts. A leaked provider
-// key has none of those limits.
+// WHO MAY ASK (Oct 2026). The App Store build carries no secret at all.
+// Each install proves itself with Apple's App Attest (src/appAttest.ts):
+// a key in the phone's Secure Enclave, vouched for by Apple as the genuine
+// Recall from Nour's team on a real iPhone. In return it gets an install
+// pass this server signs — good for a week, renewed only by that same
+// key signing a fresh challenge, so a pass copied off a phone dies with
+// it. Every AI request needs a valid pass, and each install has its own
+// speed limit (AI_LIMITER). RECALL_APP_TOKEN still works, for development
+// builds only: the release bundle never contains it (src/backend.ts).
 //
 // ACCOUNTS. A user who signs in with Apple also carries a session this
 // server signed (see /auth/apple below), so each request can be tied to one
@@ -26,6 +27,9 @@
 // a hash of Apple's user id, and the session proves it by its signature.
 // Memories never come here; they live on the phone and in the user's own
 // iCloud. People who tap "Not now" still use the shared token alone.
+
+import { verifyAssertion, verifyAttestation } from './appAttest';
+import { PRIVACY, SUPPORT } from './pages';
 
 export type Env = {
   /** Secrets, set with `wrangler secret put` — never in the repo. */
@@ -44,6 +48,9 @@ export type Env = {
    *  with `wrangler secret put`. Used only to revoke a deleted account. */
   APPLE_SIGNIN_KEY?: string;
   APPLE_KEY_ID?: string;
+  /** Per-install and per-address speed limits (wrangler.jsonc). */
+  AI_LIMITER?: RateLimit;
+  ATTEST_LIMITER?: RateLimit;
 };
 
 // ── Sign in with Apple ────────────────────────────────────────────────────
@@ -261,24 +268,145 @@ function tokenMatches(given: string, expected: string): boolean {
   return diff === 0;
 }
 
+// ── Install passes (App Attest) ──────────────────────────────────────────
+
+/** Team ID + bundle ID: what Apple's attestation must be issued for. */
+const APP_ID = `${APPLE_TEAM_ID}.${APPLE_AUDIENCE}`;
+/** A pass lasts a week; the app renews it when under half is left. */
+const PASS_DAYS = 7;
+/** An expired pass can still be renewed for this long (the phone was off,
+ *  say); after that the install attests again. */
+const RENEW_GRACE_DAYS = 60;
+const CHALLENGE_MINUTES = 5;
+
+type Pass = { i: string; k: string; c: number; e: number };
+
+/** Signs with SESSION_SECRET, kept apart from sessions by its prefix. */
+async function signed(prefix: string, payload: string, secret: string): Promise<string> {
+  const sig = await crypto.subtle.sign('HMAC', await hmacKey(secret), enc.encode(`${prefix}.${payload}`));
+  return `${prefix}.${payload}.${bytesB64url(sig)}`;
+}
+
+async function unsigned(prefix: string, token: string, secret: string): Promise<string | null> {
+  const parts = token.split('.');
+  if (parts.length !== 3 || parts[0] !== prefix) return null;
+  try {
+    const ok = await crypto.subtle.verify('HMAC', await hmacKey(secret), b64urlBytes(parts[2]), enc.encode(`${prefix}.${parts[1]}`));
+    return ok ? parts[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function issuePass(pass: Omit<Pass, 'e'>, secret: string): Promise<{ pass: string; expiresAt: number }> {
+  const expiresAt = Date.now() + PASS_DAYS * 86400_000;
+  const payload = bytesB64url(enc.encode(JSON.stringify({ ...pass, e: expiresAt })));
+  return { pass: await signed('p1', payload, secret), expiresAt };
+}
+
+/** The pass, if this server signed it (expired or not — callers decide). */
+async function readPass(token: string, secret: string | undefined): Promise<Pass | null> {
+  if (!secret) return null;
+  const payload = await unsigned('p1', token, secret);
+  if (!payload) return null;
+  try {
+    return jsonPart<Pass>(payload);
+  } catch {
+    return null;
+  }
+}
+
+async function newChallenge(secret: string): Promise<string> {
+  const nonce = bytesB64url(crypto.getRandomValues(new Uint8Array(18)));
+  return signed('c1', `${nonce}-${Date.now()}`, secret);
+}
+
+async function challengeFresh(challenge: unknown, secret: string): Promise<boolean> {
+  if (typeof challenge !== 'string') return false;
+  const payload = await unsigned('c1', challenge, secret);
+  const at = payload ? Number(payload.split('-').pop()) : NaN;
+  return Number.isFinite(at) && Date.now() - at < CHALLENGE_MINUTES * 60_000;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // The two public pages the App Store links to.
+    if (request.method === 'GET') {
+      const page = { '/privacy': PRIVACY, '/support': SUPPORT }[new URL(request.url).pathname];
+      return page
+        ? new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+        : new Response('Not found', { status: 404 });
+    }
     if (request.method !== 'POST') return deny(405, 'Only POST is accepted.');
 
-    // "<app token>" or, once signed in, "<app token>~<session>" — the
-    // session rides in the same header so no call site in the app changes.
+    const size = Number(request.headers.get('content-length') ?? '0');
+    if (size > MAX_BODY) return deny(413, 'Request too large.');
+    const { pathname } = new URL(request.url);
+
+    // Getting a pass: these need no credential — App Attest is the
+    // credential — but each address may only try so often.
+    if (pathname.startsWith('/attest/')) {
+      if (!env.SESSION_SECRET) return deny(503, 'Not set up.');
+      const ip = request.headers.get('cf-connecting-ip') ?? 'unknown';
+      if (env.ATTEST_LIMITER && !(await env.ATTEST_LIMITER.limit({ key: ip })).success) {
+        return deny(429, 'Too many attempts. Try again in a minute.');
+      }
+      if (pathname === '/attest/challenge') return json({ challenge: await newChallenge(env.SESSION_SECRET) });
+      let body: { keyId?: unknown; attestation?: unknown; assertion?: unknown; challenge?: unknown; pass?: unknown };
+      try {
+        body = await request.json();
+      } catch {
+        return deny(400, 'Body is not valid JSON.');
+      }
+      if (!(await challengeFresh(body.challenge, env.SESSION_SECRET))) return deny(400, 'Challenge expired. Ask for a new one.');
+      const challenge = body.challenge as string;
+
+      // First time: Apple vouches for the install's key.
+      if (pathname === '/attest/register') {
+        if (typeof body.keyId !== 'string' || typeof body.attestation !== 'string') return deny(400, 'Missing keyId or attestation.');
+        const result = await verifyAttestation(body.attestation, body.keyId, challenge, APP_ID).catch((e) => String(e));
+        if (typeof result === 'string') {
+          console.log(`[attest] refused an install: ${result}`);
+          return deny(403, 'This copy of Recall could not be verified.');
+        }
+        const install = bytesB64url(await crypto.subtle.digest('SHA-256', enc.encode(body.keyId))).slice(0, 16);
+        console.log(`[attest] new install ${install}`);
+        return json(await issuePass({ i: install, k: bytesB64url(result.publicKey), c: 0 }, env.SESSION_SECRET));
+      }
+
+      // Afterwards: the same key signs a fresh challenge.
+      if (pathname === '/attest/renew') {
+        if (typeof body.pass !== 'string' || typeof body.assertion !== 'string') return deny(400, 'Missing pass or assertion.');
+        const old = await readPass(body.pass, env.SESSION_SECRET);
+        if (!old || old.e + RENEW_GRACE_DAYS * 86400_000 < Date.now()) return deny(401, 'Attest again.');
+        const counter = await verifyAssertion(body.assertion, challenge, b64urlBytes(old.k), old.c, APP_ID).catch((e) => String(e));
+        if (typeof counter === 'string') {
+          console.log(`[attest] refused a renewal for ${old.i}: ${counter}`);
+          return deny(401, 'Attest again.');
+        }
+        return json(await issuePass({ i: old.i, k: old.k, c: counter }, env.SESSION_SECRET));
+      }
+      return deny(404, 'Unknown endpoint.');
+    }
+
+    // Everything else: "<pass or dev token>" or, once signed in,
+    // "<pass or dev token>~<session>".
     const presented = (request.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
     const cut = presented.lastIndexOf('~');
     const appToken = cut === -1 ? presented : presented.slice(0, cut);
     const session = cut === -1 ? '' : presented.slice(cut + 1);
-    if (!env.RECALL_APP_TOKEN || !tokenMatches(appToken, env.RECALL_APP_TOKEN)) {
-      return deny(401, 'Not a Recall client.');
+    let install: string | null = null;
+    if (env.RECALL_APP_TOKEN && tokenMatches(appToken, env.RECALL_APP_TOKEN)) {
+      install = 'dev';
+    } else {
+      const pass = await readPass(appToken, env.SESSION_SECRET);
+      if (pass && pass.e > Date.now()) install = pass.i;
     }
-
-    const size = Number(request.headers.get('content-length') ?? '0');
-    if (size > MAX_BODY) return deny(413, 'Request too large.');
-
-    const { pathname } = new URL(request.url);
+    if (!install) return deny(401, 'Not a verified Recall app.');
+    if (env.AI_LIMITER && !(await env.AI_LIMITER.limit({ key: install })).success) {
+      console.log(`[limit] ${install} hit the speed limit on ${pathname}`);
+      return deny(429, 'Slow down a little — try again in a minute.');
+    }
 
     // A session that no longer checks out (expired, or the secret changed)
     // is served as if signed out rather than refused: the app renews it at
@@ -287,7 +415,7 @@ export default {
     if (session && !account) console.log(`[auth] stale session on ${pathname}`);
     const blocked = (env.BLOCKED_ACCOUNTS ?? '').split(',').map((x) => x.trim());
     if (account && blocked.includes(account)) return deny(403, 'This account is paused.');
-    console.log(`[${account ?? 'signed-out'}] ${pathname}`);
+    console.log(`[${account ?? 'signed-out'} · ${install}] ${pathname}`);
 
     // Sign in with Apple: the app sends the identity token Apple gave it;
     // this checks Apple signed it for Recall and answers with a session.
