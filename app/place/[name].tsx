@@ -16,6 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import ActionMenuSheet, { type MenuAction } from '../../src/components/ActionMenuSheet';
+import CalendarSheet from '../../src/components/CalendarSheet';
 import PersonAvatar from '../../src/components/PersonAvatar';
 import PhotoImage from '../../src/components/PhotoImage';
 import { PlaceCover } from '../../src/components/PlaceTile';
@@ -33,7 +34,9 @@ import {
   offsetOfDay,
   onPlacesChanged,
   relativeDay,
+  recordNamedPlaceForDay,
   removePlace,
+  removeVisit,
   renamePlace,
   setPlaceCover,
   setPlaceKind,
@@ -70,6 +73,8 @@ function PlaceProfile() {
   const [chips, setChips] = useState<string[]>([]);
   const [dayLines, setDayLines] = useState<Record<string, string>>({});
   const [menu, setMenu] = useState<'more' | 'photo' | 'kind' | null>(null);
+  const [addingVisit, setAddingVisit] = useState(false);
+  const [visitMenu, setVisitMenu] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [allVisits, setAllVisits] = useState(false);
@@ -399,15 +404,32 @@ function PlaceProfile() {
           </>
         )}
 
-        {visits.length > 0 && (
+        {(visits.length > 0 || place.named) && (
           <Text style={styles.sectionTitle}>
-            {place.days.length === 1 ? 'Your visit' : `Your visits · ${place.days.length}`}
+            {visits.length === 0
+              ? 'Your visits'
+              : place.days.length === 1
+                ? 'Your visit'
+                : `Your visits · ${place.days.length}`}
           </Text>
+        )}
+        {/* A day Recall didn't place here — an old memory, say — added by
+            hand. Only for a named place: an unnamed spot is just a street. */}
+        {place.named && (
+          <Pressable style={styles.visit} onPress={() => setAddingVisit(true)}>
+            <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
+            <Text style={[styles.visitDay, { flex: 1, color: colors.teal }]}>Add a day you were here</Text>
+          </Pressable>
         )}
         {shownVisits.map((day) => {
           const line = place.moments[day] ?? dayLines[day];
           return (
-            <Pressable key={day} style={styles.visit} onPress={() => openDay(day)}>
+            <Pressable
+              key={day}
+              style={styles.visit}
+              onPress={() => openDay(day)}
+              onLongPress={() => setVisitMenu(day)}
+            >
               <View style={styles.visitDot} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.visitDay}>{cap(relativeDay(day).replace(/^on /, ''))}</Text>
@@ -431,6 +453,47 @@ function PlaceProfile() {
       </ScrollView>
 
       <ActionMenuSheet visible={menu === 'more'} title={place.label} actions={moreActions} onClose={() => setMenu(null)} />
+      <ActionMenuSheet
+        visible={!!visitMenu}
+        title={visitMenu ? cap(relativeDay(visitMenu).replace(/^on /, '')) : undefined}
+        actions={[
+          {
+            key: 'open',
+            icon: 'calendar-outline',
+            label: 'Open this day',
+            onPress: () => {
+              const d = visitMenu;
+              setVisitMenu(null);
+              if (d) openDay(d);
+            },
+          },
+          {
+            key: 'remove',
+            icon: 'map-marker-remove-outline',
+            label: "I wasn't here that day",
+            hint: 'A day your photos were taken here stays',
+            onPress: async () => {
+              const d = visitMenu;
+              setVisitMenu(null);
+              if (d && !(await removeVisit(place.id, d))) {
+                Alert.alert('Your photos say you were', 'Photos from that day were taken here, so the visit stays.');
+              }
+            },
+          },
+        ]}
+        onClose={() => setVisitMenu(null)}
+      />
+      <CalendarSheet
+        visible={addingVisit}
+        title="When were you here?"
+        past
+        onPick={async (day) => {
+          if (!day) return;
+          await recordNamedPlaceForDay(day, { name: place.label });
+          console.log(`[places] ${place.label} added to ${day} by hand`);
+        }}
+        onClose={() => setAddingVisit(false)}
+      />
       <ActionMenuSheet
         visible={menu === 'photo'}
         title="Photo for this place"

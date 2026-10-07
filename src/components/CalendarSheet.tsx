@@ -3,9 +3,10 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
 
-// Picking a task's day: the three answers people give most (today,
-// tomorrow, next week) one tap away, and the month underneath for anything
-// else. Choosing a day closes the sheet — there is nothing else to confirm.
+// Picking a day: the answers people give most one tap away (a task's
+// today / tomorrow / next week; a visit's today / yesterday), and the month
+// underneath for anything else. Choosing a day closes the sheet — there is
+// nothing else to confirm.
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -39,8 +40,14 @@ export default function CalendarSheet({
   value,
   onPick,
   onClose,
+  title = 'Due date',
+  past = false,
 }: {
   visible: boolean;
+  title?: string;
+  /** For something that already happened (a visit): future days can't be
+   *  picked, and the quick picks look back. */
+  past?: boolean;
   /** YYYY-MM-DD, or none. */
   value?: string;
   /** A day was chosen, or `undefined` for Clear. */
@@ -59,11 +66,16 @@ export default function CalendarSheet({
 
   // "Next week" is the Monday after this one, as calendars mean it.
   const nextMonday = addDays(today, ((8 - today.getDay()) % 7) || 7);
-  const quick = [
-    { key: keyOf(today), label: 'Today', icon: 'calendar-today' as const },
-    { key: keyOf(addDays(today, 1)), label: 'Tomorrow', icon: 'calendar-arrow-right' as const },
-    { key: keyOf(nextMonday), label: 'Next week', icon: 'calendar-week' as const },
-  ];
+  const quick = past
+    ? [
+        { key: keyOf(today), label: 'Today', icon: 'calendar-today' as const },
+        { key: keyOf(addDays(today, -1)), label: 'Yesterday', icon: 'calendar-arrow-left' as const },
+      ]
+    : [
+        { key: keyOf(today), label: 'Today', icon: 'calendar-today' as const },
+        { key: keyOf(addDays(today, 1)), label: 'Tomorrow', icon: 'calendar-arrow-right' as const },
+        { key: keyOf(nextMonday), label: 'Next week', icon: 'calendar-week' as const },
+      ];
 
   const pick = (key: string) => {
     onPick(key);
@@ -82,8 +94,8 @@ export default function CalendarSheet({
         <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
           <View style={styles.grabber} />
           <View style={styles.head}>
-            <Text style={styles.title}>Due date</Text>
-            {value && (
+            <Text style={styles.title}>{title}</Text>
+            {value && !past && (
               <Pressable
                 style={styles.clearBtn}
                 hitSlop={8}
@@ -142,14 +154,15 @@ export default function CalendarSheet({
                 const inMonth = d.getMonth() === month;
                 const selected = key === value;
                 const isToday = key === todayKey;
-                const past = key < todayKey;
+                const before = key < todayKey;
+                const blocked = past && key > todayKey;
                 return (
-                  <Pressable key={key} style={styles.dayCell} onPress={() => pick(key)}>
+                  <Pressable key={key} style={styles.dayCell} onPress={() => pick(key)} disabled={blocked}>
                     <View style={[styles.dayDot, selected && styles.dayDotOn, !selected && isToday && styles.dayDotToday]}>
                       <Text
                         style={[
                           styles.dayText,
-                          (!inMonth || past) && styles.dayTextFaint,
+                          (!inMonth || (past ? blocked : before)) && styles.dayTextFaint,
                           isToday && styles.dayTextToday,
                           selected && styles.dayTextOn,
                         ]}

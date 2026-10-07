@@ -94,8 +94,12 @@ function Places() {
       }))
       .filter((x) => x.days.length > 0 || x.place.addedByUser)
       .filter((x) => kind === 'all' || x.place.kind === kind);
+    // A place added by hand with no visits yet comes first, so what was
+    // just added is in sight; once a day names it, it takes its place.
+    const fresh = (x: (typeof list)[number]) => (x.days.length === 0 && x.place.addedByUser ? 1 : 0);
     list.sort(
       (a, b) =>
+        fresh(b) - fresh(a) ||
         b.days.length - a.days.length ||
         (b.days[b.days.length - 1] ?? '').localeCompare(a.days[a.days.length - 1] ?? ''),
     );

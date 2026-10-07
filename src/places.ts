@@ -1141,6 +1141,24 @@ export function setPlaceKind(id: string, kind: PlaceKind): Promise<void> {
   });
 }
 
+/** "I wasn't here that day": takes the place off a day it was put on by
+ *  hand or from a log. A visit the day's photos prove — taken there — is
+ *  not a day entry and stays. Returns whether anything was removed. */
+export function removeVisit(placeId: string, dayKey: string): Promise<boolean> {
+  return locked(async () => {
+    const days = await readDays();
+    const list = days[dayKey] ?? [];
+    const keep = list.filter((e) => !(e.placeId === placeId && e.latitude == null));
+    if (keep.length === list.length) return false;
+    if (keep.length) days[dayKey] = keep;
+    else delete days[dayKey];
+    await writeDays(days);
+    changed();
+    console.log(`[places] removed a visit on ${dayKey}`);
+    return true;
+  });
+}
+
 /** A place added by mistake. Only one nothing is filed under — no day, no
  *  photo — can go; anything else is corrected by merging, so a visit is
  *  never lost. Returns whether it was removed. */
