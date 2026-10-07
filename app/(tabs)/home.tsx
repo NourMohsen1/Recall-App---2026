@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -52,7 +52,15 @@ function dueIn(dueDate: string): string {
   return days <= 0 ? 'Today' : days === 1 ? 'In 1 Day' : `In ${days} Days`;
 }
 
+// The week strip spans the same width as the cards below (the page's 20 pt
+// sides), with a fixed small gap between days: the circles take the rest,
+// so a wider phone gets bigger days rather than wider gaps.
+const PAGE_SIDE = 20;
+const DAY_GAP = 10;
+
 export default function Home() {
+  const { width: screenW } = useWindowDimensions();
+  const daySize = Math.min(56, Math.floor((screenW - PAGE_SIDE * 2 - DAY_GAP * 6) / 7));
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
   const [yPlaces, setYPlaces] = useState<string[]>([]);
   const [nextTask, setNextTask] = useState<StoredTask | null>(null);
@@ -166,14 +174,22 @@ export default function Home() {
             // Opens the Timeline on that day.
             <Pressable
               key={i}
-              style={styles.dayCol}
+              style={[styles.dayCol, { width: daySize }]}
               onPress={() =>
                 router.navigate({ pathname: '/timeline', params: { offset: String(day.offset), at: String(Date.now()) } })
               }
             >
                 <Text style={styles.dayLetter}>{day.letter}</Text>
-                <View style={[styles.dayCircle, day.isToday && styles.dayCircleToday]}>
-                  <Text style={[styles.dayNum, day.isToday && styles.dayNumToday]}>{day.date}</Text>
+                <View
+                  style={[
+                    styles.dayCircle,
+                    { width: daySize, height: daySize, borderRadius: daySize / 2 },
+                    day.isToday && styles.dayCircleToday,
+                  ]}
+                >
+                  <Text style={[styles.dayNum, { fontSize: Math.round(daySize * 0.4) }, day.isToday && styles.dayNumToday]}>
+                    {day.date}
+                  </Text>
                 </View>
                 {/* Today always has its dot, in the accent; other days only
                     when the user logged that day, in green. */}
@@ -294,7 +310,7 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.white },
-  scroll: { paddingHorizontal: 20 },
+  scroll: { paddingHorizontal: PAGE_SIDE },
   header: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4 },
   headerSymbol: { width: 34, height: 34 },
   logoText: { color: colors.primary, fontFamily: fonts.bold, fontSize: 24 },
@@ -303,13 +319,10 @@ const styles = StyleSheet.create({
   profilePhoto: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.pale },
 
   // 34-pt circles, 15 apart (the design), as one centred group.
-  weekRow: { flexDirection: 'row', justifyContent: 'center', gap: 15, marginTop: 20 },
-  dayCol: { alignItems: 'center', width: 34 },
-  dayLetter: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.ink, marginBottom: 8 },
+  weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 22 },
+  dayCol: { alignItems: 'center' },
+  dayLetter: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.ink, marginBottom: 10 },
   dayCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
     backgroundColor: colors.pale,
     alignItems: 'center',
     justifyContent: 'center',
@@ -318,9 +331,9 @@ const styles = StyleSheet.create({
   dayNum: { fontFamily: fonts.medium, fontSize: 15, color: colors.white },
   dayNumToday: { color: colors.white },
   // Green: logged that day. The same green for today as any other day.
-  logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: '#A9D3B6' },
+  logDot: { width: 8, height: 8, borderRadius: 4, marginTop: 9, backgroundColor: '#A9D3B6' },
   // Today's own marker, slightly larger, in the accent.
-  todayDot: { width: 9, height: 9, borderRadius: 5, marginTop: 7, backgroundColor: colors.accent },
+  todayDot: { width: 10, height: 10, borderRadius: 5, marginTop: 8, backgroundColor: colors.accent },
 
   chatRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   chatAvatar: {
