@@ -47,7 +47,7 @@ export default function Welcome() {
   return (
     <OnboardingBackground>
       {/* Soft blurred brain behind the copy, like the mockup */}
-      <Image source={MISC.brain3d} style={styles.brainBg} blurRadius={12} resizeMode="contain" />
+      <Image source={MISC.brainGlow} style={styles.brainBg} blurRadius={12} resizeMode="contain" />
       <SafeAreaView style={styles.safe}>
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Text style={styles.title}>Your life,{'\n'}remembered.</Text>

@@ -120,6 +120,9 @@ function RootLayout() {
             took the way out with it. Every other screen in this app is a
             plain push, and every other screen is fine. */}
         <Stack.Screen name="live" options={{ animation: 'slide_from_bottom' }} />
+        {/* Ask's brain turns with a finger, so going back is the left-edge
+            swipe only — iOS 26+ otherwise takes a swipe anywhere as "back". */}
+        <Stack.Screen name="chat" options={{ fullScreenGestureEnabled: false }} />
       </Stack>
     </GestureHandlerRootView>
   );

@@ -26,6 +26,7 @@ import {
 } from 'expo-audio';
 import { AskResult, ChatTurn, Reference, Source, askAvailable, askMemory } from '../src/askAI';
 import { holdBackgroundAnalysis } from '../src/assumedMemory';
+import BrainAnimation from '../src/components/BrainAnimation';
 import ChatSidebar from '../src/components/ChatSidebar';
 import {
   deleteSession,
@@ -205,40 +206,6 @@ function TypingDots() {
   );
 }
 
-// Gentle floating loop for the empty-state brain, so the screen feels alive
-// before the first question.
-function FloatingBrain() {
-  const float = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(float, {
-          toValue: 1,
-          duration: 2200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(float, {
-          toValue: 0,
-          duration: 2200,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, []);
-  return (
-    <Animated.View
-      style={{
-        transform: [{ translateY: float.interpolate({ inputRange: [0, 1], outputRange: [0, -14] }) }],
-      }}
-    >
-      <Image source={MISC.brain3d} style={{ width: 280, height: 280 }} resizeMode="contain" />
-    </Animated.View>
-  );
-}
 
 // Mini live waveform inside the input bar while the user speaks their
 // question — decorative (expo-audio has no cross-platform metering), but it
@@ -603,14 +570,16 @@ export default function Chat() {
         locations={[0, 0.4, 0.75, 1]}
         style={StyleSheet.absoluteFill}
       />
-      <SafeAreaView style={styles.fill} edges={['top']}>
+      {/* Until the first question, the brain is the screen. */}
+      {messages.length === 0 && <BrainAnimation playing={false} interactive style={StyleSheet.absoluteFill} />}
+      <SafeAreaView style={styles.fill} edges={['top']} pointerEvents="box-none">
         <View style={styles.header}>
           {/* Pushed from Home's chat pill — explicit target for the same
               reason noted in day/[offset]/index.tsx. */}
           <Pressable onPress={() => router.dismissTo('/home')} hitSlop={12} style={styles.back}>
             <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
-          <Text style={styles.headerTitle}>Ask</Text>
+          {messages.length > 0 && <Text style={styles.headerTitle}>Ask</Text>}
           <View style={styles.headerRight}>
             {messages.length > 0 && (
               <Pressable onPress={startNewChat} hitSlop={10}>
@@ -626,37 +595,13 @@ export default function Chat() {
         <KeyboardAvoidingView
           style={styles.fill}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          pointerEvents="box-none"
         >
           {messages.length === 0 ? (
-            <View style={styles.empty}>
-              <FloatingBrain />
-              <View style={styles.promptRow}>
-                <View style={styles.promptLine} />
-                <Text style={styles.promptText}>
-                  {available ? 'What do you want to remember?' : 'Ask isn’t set up yet'}
-                </Text>
-                <View style={styles.promptLine} />
-              </View>
-              {available ? (
-                <View style={styles.suggestWrap}>
-                  {[
-                    'What did I do yesterday?',
-                    'Who did I meet this week?',
-                    'Where was I last Friday?',
-                  ].map((q) => (
-                    <Pressable key={q} style={styles.suggestChip} onPress={() => ask(q)}>
-                      <Text style={styles.suggestChipText}>{q}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : (
-                <Text style={styles.voiceHint}>
-                  Add your OpenAI key to .env to turn this on.
-                </Text>
-              )}
-              {available && canSpeak && (
-                <Text style={styles.voiceHint}>or tap the mic and just ask — it answers out loud</Text>
-              )}
+            // Before the first question: only the brain, to be turned with a
+            // finger, and the field to ask in. No words.
+            <View style={styles.empty} pointerEvents="box-none">
+              {!available && <Text style={styles.voiceHint}>Ask isn’t set up yet</Text>}
             </View>
           ) : (
             <ScrollView
@@ -669,7 +614,7 @@ export default function Chat() {
                   <MessageAppear key={i}>
                     <View style={styles.aiRow}>
                       <Image
-                        source={MISC.brain3d}
+                        source={MISC.brain}
                         style={{ width: 48, height: 48 }}
                         resizeMode="contain"
                       />
@@ -748,7 +693,7 @@ export default function Chat() {
               {thinking && (
                 <MessageAppear>
                   <View style={styles.aiRow}>
-                    <Image source={MISC.brain3d} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                    <Image source={MISC.brain} style={{ width: 48, height: 48 }} resizeMode="contain" />
                     <View style={styles.aiBubble}>
                       <ThinkingStatus />
                     </View>
@@ -838,7 +783,7 @@ export default function Chat() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  header: { paddingVertical: 16, alignItems: 'center' },
+  header: { paddingVertical: 16, alignItems: 'center', minHeight: 64 },
   back: { position: 'absolute', left: 20, top: 18 },
   headerRight: { position: 'absolute', right: 20, top: 14, flexDirection: 'row', alignItems: 'center', gap: 16 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 24, color: colors.white },
@@ -865,38 +810,6 @@ const styles = StyleSheet.create({
   sourceRowKind: { fontFamily: fonts.regular, color: 'rgba(255,255,255,0.55)' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
-  promptRow: {
-    alignSelf: 'stretch',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginTop: 28,
-    paddingHorizontal: 32,
-  },
-  promptLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.25)' },
-  promptText: {
-    fontFamily: fonts.medium,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.85)',
-    letterSpacing: 0.4,
-  },
-  suggestWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 10,
-    marginTop: 20,
-    paddingHorizontal: 28,
-  },
-  suggestChip: {
-    borderWidth: 1,
-    borderColor: 'rgba(99,188,198,0.55)',
-    backgroundColor: 'rgba(99,188,198,0.12)',
-    borderRadius: 999,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-  },
-  suggestChipText: { fontFamily: fonts.regular, fontSize: 13, color: colors.white },
   voiceHint: {
     fontFamily: fonts.regular,
     fontSize: 12,
@@ -1019,6 +932,8 @@ const styles = StyleSheet.create({
     marginBottom: 110,
     paddingVertical: 8,
     paddingHorizontal: 14,
+    // Solid, so the words stay readable over the brain behind it.
+    backgroundColor: '#04191B',
   },
   inputBarRec: {
     borderColor: colors.accent,

@@ -517,6 +517,34 @@ window.recallSetPlaying = (on) => {
   if (on){ journey = true; }
   else if (journey){ journey = false; restUntil = -1; holdAt = Math.ceil(time / LOOP - 1e-6) * LOOP; }
 };
+// Recall's Ask screen: the brain on its own, calm, to be touched. Drag
+// turns it (with a little momentum that settles); a tap sends a soft pulse
+// through it; untouched it drifts round very slowly. No journey here.
+let interactive = false, spinY = 0, spinX = 0, velY = 0, velX = 0, dragging = false, px = 0, py = 0, pulse = 0;
+window.recallSetInteractive = (on) => { interactive = !!on; stage.style.touchAction = on ? 'none' : ''; };
+stage.addEventListener('pointerdown', (e) => {
+  if (!interactive) return;
+  dragging = true; px = e.clientX; py = e.clientY; velY = velX = 0; pulse = 1;
+});
+addEventListener('pointermove', (e) => {
+  if (!interactive || !dragging) return;
+  const dx = e.clientX - px, dy = e.clientY - py; px = e.clientX; py = e.clientY;
+  velY = dx*0.008; velX = dy*0.004;
+  spinY += velY; spinX = clamp(spinX + velX, -0.45, 0.45);
+});
+addEventListener('pointerup', () => { dragging = false; });
+addEventListener('pointercancel', () => { dragging = false; });
+if (location.hash.includes('ask')) window.recallSetInteractive(true);
+// For making still images of the brain (the app's icons): step the scene to
+// a moment and turn, draw it, hand back a PNG. Works in a hidden page too.
+window.recallStill = (seconds = 3, turn = 0) => {
+  spinY = turn; velY = velX = 0; pulse = 0;
+  let ms = last || performance.now();
+  for (let i = 0; i < seconds*60; i++){ ms += 1000/60; frame(ms); }
+  spinY = turn;
+  frame(ms + 1000/60);
+  return glc.toDataURL('image/png');
+};
 const hm = location.hash.match(/t=([\d.]+)/); let freezeAt = null;
 
 if (hm){ freezeAt = parseFloat(hm[1]); time = Math.max(0, freezeAt - 0.1); tN = time; }
@@ -549,12 +577,19 @@ function frame(ms){
 
   // brain: turns from a side view to face you, gentle float
   const idle = 1 - st.dd;
-  brainSolid.rotation.set(0.08 + Math.sin(t*.3)*0.04*idle, st.yaw + Math.sin(t*.27)*0.05*idle, 0);
+  if (interactive && !dragging){
+    // momentum dies away; it then drifts on very slowly by itself, and tips
+    // back level
+    velY *= Math.exp(-dt*2.2); velX *= Math.exp(-dt*3);
+    spinY += velY + dt*0.09; spinX += velX; spinX *= Math.exp(-dt*0.8);
+  }
+  pulse *= Math.exp(-dt*1.6);
+  brainSolid.rotation.set(0.08 + spinX + Math.sin(t*.3)*0.04*idle, st.yaw + spinY + Math.sin(t*.27)*0.05*idle, 0);
   brainSolid.position.y = Math.sin(t*.8)*0.025*idle;
   brainHolo.rotation.copy(brainSolid.rotation); brainHolo.position.copy(brainSolid.position);
   neuronGroup.rotation.copy(brainSolid.rotation); neuronGroup.position.copy(brainSolid.position);
   U.uTime.value = t; U.uTN.value = tN; U.uDis.value = st.dis; U.uAct.value = 1 - 0.8*smooth(clamp(st.dis*1.6, 0, 1));
-  U.uHolo.value = st.holo*(1 - st.bg); U.uGold.value = st.gold; U.uGoldZ.value = st.goldZ; U.uGlow.value = st.glow;
+  U.uHolo.value = st.holo*(1 - st.bg); U.uGold.value = st.gold; U.uGoldZ.value = st.goldZ; U.uGlow.value = st.glow + 0.9*pulse;
   brainSolid.visible = st.dis < 0.999;
   brainHolo.visible = U.uHolo.value > 0.002;
 

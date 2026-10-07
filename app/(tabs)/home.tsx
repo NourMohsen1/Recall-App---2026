@@ -186,7 +186,7 @@ export default function Home() {
         <Link href="/chat" asChild>
           <Pressable style={styles.chatRow}>
             <View style={styles.chatAvatar}>
-              <Image source={MISC.brain3d} style={styles.chatAvatarImg} resizeMode="cover" />
+              <Image source={MISC.brain} style={styles.chatAvatarImg} resizeMode="cover" />
             </View>
             <View style={styles.chatPill}>
               <Text style={styles.chatPillText}>Hey, its your memory, How can i help ?</Text>
@@ -327,13 +327,11 @@ const styles = StyleSheet.create({
     borderColor: '#7FB8BF',
     alignItems: 'center',
     justifyContent: 'center',
-    // White, like the design — the brain sits on the page, not on black.
-    backgroundColor: colors.white,
+    // The new brain is drawn on its own dark ground, like Ask and live voice.
+    backgroundColor: '#021416',
     overflow: 'hidden',
   },
-  // The artwork has wide empty margins; scaled up so the brain fills the
-  // circle as in the design.
-  chatAvatarImg: { width: 66, height: 66 },
+  chatAvatarImg: { width: 54, height: 54 },
   chatPill: {
     flex: 1,
     backgroundColor: colors.primary,

@@ -17,7 +17,17 @@ import { WebView } from 'react-native-webview';
 
 const PAGE = require('../../assets/animations/brain.html');
 
-export default function BrainAnimation({ playing, style }: { playing: boolean; style?: StyleProp<ViewStyle> }) {
+export default function BrainAnimation({
+  playing,
+  interactive = false,
+  style,
+}: {
+  playing: boolean;
+  /** Ask's empty screen: the brain can be turned with a finger, and a tap
+   *  sends a pulse through it. */
+  interactive?: boolean;
+  style?: StyleProp<ViewStyle>;
+}) {
   const [uri, setUri] = useState<string | null>(null);
   const web = useRef<WebView>(null);
   const shown = useRef(new Animated.Value(0)).current;
@@ -41,8 +51,13 @@ export default function BrainAnimation({ playing, style }: { playing: boolean; s
     web.current?.injectJavaScript(`window.recallSetPlaying && window.recallSetPlaying(${playing}); true;`);
   }, [playing, ready]);
 
+  useEffect(() => {
+    if (!ready) return;
+    web.current?.injectJavaScript(`window.recallSetInteractive && window.recallSetInteractive(${interactive}); true;`);
+  }, [interactive, ready]);
+
   return (
-    <View style={[styles.wrap, style]} pointerEvents="none">
+    <View style={[styles.wrap, style]} pointerEvents={interactive ? 'auto' : 'none'}>
       {uri && (
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: shown }]}>
           <WebView

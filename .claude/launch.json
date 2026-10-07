@@ -24,6 +24,18 @@
         "tools/ear-animation"
       ],
       "port": 8090
+    },
+    {
+      "name": "brain-animation",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8091",
+        "--directory",
+        "assets/animations"
+      ],
+      "port": 8091
     }
   ]
 }

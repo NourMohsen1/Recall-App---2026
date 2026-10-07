@@ -6,7 +6,10 @@ export const BRAND = {
 };
 
 export const MISC = {
-  brain3d: require('../assets/misc/brain-3d.png'),
+  // The live-voice brain (assets/animations/brain.html), drawn as a still:
+  // a dark round icon, and a transparent glow for dark backgrounds.
+  brain: require('../assets/misc/brain-new.png'),
+  brainGlow: require('../assets/misc/brain-glow.png'),
   network: require('../assets/misc/network.png'),
   glasses: require('../assets/misc/glasses.png'),
   airpods: require('../assets/misc/airpods.png'),
