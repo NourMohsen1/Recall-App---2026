@@ -334,7 +334,10 @@ async function loadEar(){
 let W, H, DPR, qDPR = Math.min(window.devicePixelRatio || 1, 1.75), drops = 0, portrait = false;
 // How high the ear sits in the tall layout: the preview leaves room for its
 // caption below; in the app the space is the ear's alone.
-const EAR_Y = () => APP ? 0.12 : 0.3;
+const EAR_Y = () => APP ? 0.06 : 0.3;
+// …and across: in the app nearer the middle (the rings, when they come,
+// still have the left side to arrive from).
+const EAR_X = () => APP ? 0.14 : 0.3;
 const EAR_BASE = new THREE.Vector3(0.62, 0.02, 0), FUN_DIR = new THREE.Vector3(-1, 0.06, 0.62).normalize();
 function applySize(){
   DPR = qDPR;
@@ -351,9 +354,9 @@ function layout(){
   // so the scene's width always fits, and the ear sits a little up.
   camera.aspect = W/H; portrait = W/H < 1.1;
   camera.setViewOffset(W, H, 0, H*0.07, W, H);
-  camera.position.z = portrait ? 4.6/Math.max(W/H, 0.45)*(APP ? 0.82 : 0.62) : 4.6;
+  camera.position.z = portrait ? 4.6/Math.max(W/H, 0.45)*(APP ? 0.68 : 0.62) : 4.6;
   camera.updateProjectionMatrix();
-  earGroup.position.copy(EAR_BASE); earGroup.scale.setScalar(portrait ? 0.62 : 0.82); if (portrait) earGroup.position.set(0.3, EAR_Y(), 0);
+  earGroup.position.copy(EAR_BASE); earGroup.scale.setScalar(portrait ? 0.62 : 0.82); if (portrait) earGroup.position.set(EAR_X(), EAR_Y(), 0);
   bgU.uAsp.value = W/H;
   applySize();
 }

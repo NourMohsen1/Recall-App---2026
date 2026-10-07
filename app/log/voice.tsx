@@ -11,7 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   RecordingPresets,
@@ -83,6 +83,10 @@ export default function LogVoice() {
   // A manually-typed note the user can attach regardless of whether
   // transcription is on, off, or got something wrong.
   const [noteOpen, setNoteOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  // The dropdown is placed from the top of the screen, so it needs the
+  // status-bar height to land just under the pill.
+  const insets = useSafeAreaInsets();
   const [note, setNote] = useState('');
 
   const player = useAudioPlayer(recordedUri ?? undefined);
@@ -204,21 +208,13 @@ export default function LogVoice() {
             <Ionicons name="close" size={26} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle}>Talk to Recall</Text>
-        </View>
-
-        {/* Language selector — English, Arabic, or auto-detect (mixed) */}
-        <View style={styles.langRow}>
-          {LANGUAGES.map((l) => (
-            <Pressable
-              key={l.key}
-              onPress={() => switchLanguage(l.key)}
-              style={[styles.langChip, language === l.key && styles.langChipActive]}
-            >
-              <Text style={[styles.langText, language === l.key && styles.langTextActive]}>
-                {l.label}
-              </Text>
-            </Pressable>
-          ))}
+          {/* Language — Auto (mixed), Arabic or English — one small pill in
+              the corner, so the ear has the screen. */}
+          <Pressable style={styles.langPill} onPress={() => setLangOpen((v) => !v)} hitSlop={8}>
+            <Ionicons name="language" size={15} color={colors.white} />
+            <Text style={styles.langPillText}>{LANGUAGES.find((l) => l.key === language)?.label}</Text>
+            <Ionicons name={langOpen ? 'chevron-up' : 'chevron-down'} size={13} color="rgba(255,255,255,0.7)" />
+          </Pressable>
         </View>
 
         {/* The ear listens in the space between the language chips and the
@@ -237,12 +233,7 @@ export default function LogVoice() {
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {phase !== 'review' && (
-                <Text style={styles.prompt}>
-                  {phase === 'idle' && 'Tap the mic and tell me what happened.'}
-                  {phase === 'recording' && 'I’m listening…'}
-                </Text>
-              )}
+              {phase === 'recording' && <Text style={styles.prompt}>I’m listening…</Text>}
 
               {phase === 'recording' && (
                 <Text style={styles.timer}>{formatTime(recorderState.durationMillis)}</Text>
@@ -334,6 +325,27 @@ export default function LogVoice() {
             </View>
           </KeyboardAvoidingView>
         </View>
+
+        {langOpen && (
+          <>
+            <Pressable style={styles.langScrim} onPress={() => setLangOpen(false)} />
+            <View style={[styles.langMenu, { top: insets.top + 56 }]}>
+              {LANGUAGES.map((l) => (
+                <Pressable
+                  key={l.key}
+                  style={styles.langOption}
+                  onPress={() => {
+                    setLangOpen(false);
+                    switchLanguage(l.key);
+                  }}
+                >
+                  <Text style={styles.langOptionText}>{l.label}</Text>
+                  {language === l.key && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+                </Pressable>
+              ))}
+            </View>
+          </>
+        )}
       </SafeAreaView>
     </View>
   );
@@ -358,17 +370,38 @@ const styles = StyleSheet.create({
   back: { position: 'absolute', left: 20, top: 18 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },
 
-  langRow: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginTop: 4 },
-  langChip: {
+  langPill: {
+    position: 'absolute',
+    right: 16,
+    top: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.35)',
-    paddingVertical: 7,
-    paddingHorizontal: 18,
+    borderColor: 'rgba(255,255,255,0.3)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
-  langChipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  langText: { fontFamily: fonts.medium, fontSize: 13, color: colors.white },
-  langTextActive: { color: colors.ink },
+  langPillText: { fontFamily: fonts.medium, fontSize: 13, color: colors.white },
+  // The three choices, dropped down under the pill.
+  langScrim: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  langMenu: {
+    position: 'absolute',
+    right: 16,
+    minWidth: 150,
+    backgroundColor: '#0C2427',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(99,188,198,0.25)',
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  langOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, paddingVertical: 10, paddingHorizontal: 16 },
+  langOptionText: { fontFamily: fonts.medium, fontSize: 15, color: colors.white },
 
   center: {
     flexGrow: 1,
@@ -379,7 +412,7 @@ const styles = StyleSheet.create({
   },
   // The ear fills the screen behind everything; the words sit low, under it.
   // Leaves the bottom ~240 pt to the prompt, timer and mic.
-  earLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 240 },
+  earLayer: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 200 },
   belowEar: { justifyContent: 'flex-end', paddingBottom: 28 },
 
   prompt: {
