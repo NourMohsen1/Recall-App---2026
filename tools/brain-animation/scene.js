@@ -537,11 +537,10 @@ addEventListener('pointercancel', () => { dragging = false; });
 if (location.hash.includes('ask')) window.recallSetInteractive(true);
 // For making still images of the brain (the app's icons): step the scene to
 // a moment and turn, draw it, hand back a PNG. Works in a hidden page too.
-window.recallStill = (seconds = 3, turn = 0) => {
-  spinY = turn; velY = velX = 0; pulse = 0;
+window.recallStill = (seconds = 3, turn = 0, tilt = 0) => {
+  spinY = turn; spinX = tilt; velY = velX = 0; pulse = 0;
   let ms = last || performance.now();
-  for (let i = 0; i < seconds*60; i++){ ms += 1000/60; frame(ms); }
-  spinY = turn;
+  for (let i = 0; i < seconds*60; i++){ ms += 1000/60; frame(ms); spinY = turn; spinX = tilt; }
   frame(ms + 1000/60);
   return glc.toDataURL('image/png');
 };

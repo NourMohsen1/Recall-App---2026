@@ -209,6 +209,16 @@ function TypingDots() {
 }
 
 
+/** Recall's side of the conversation: the brain, ringed like on Home so
+ *  it stands out from the dark screen. */
+function BrainAvatar() {
+  return (
+    <View style={styles.brainAvatar}>
+      <Image source={MISC.brain} style={styles.brainAvatarImg} />
+    </View>
+  );
+}
+
 // Mini live waveform inside the input bar while the user speaks their
 // question — decorative (expo-audio has no cross-platform metering), but it
 // makes "I'm being heard" unmistakable.
@@ -615,11 +625,7 @@ export default function Chat() {
                 m.role === 'ai' ? (
                   <MessageAppear key={i}>
                     <View style={styles.aiRow}>
-                      <Image
-                        source={MISC.brain}
-                        style={{ width: 48, height: 48 }}
-                        resizeMode="contain"
-                      />
+                      <BrainAvatar />
                       <View
                         style={[
                           styles.aiBubble,
@@ -695,7 +701,7 @@ export default function Chat() {
               {thinking && (
                 <MessageAppear>
                   <View style={styles.aiRow}>
-                    <Image source={MISC.brain} style={{ width: 48, height: 48 }} resizeMode="contain" />
+                    <BrainAvatar />
                     <View style={styles.aiBubble}>
                       <ThinkingStatus />
                     </View>
@@ -785,6 +791,16 @@ export default function Chat() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  brainAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: '#7FB8BF',
+    overflow: 'hidden',
+    backgroundColor: '#021416',
+  },
+  brainAvatarImg: { width: '100%', height: '100%' },
   header: { paddingVertical: 16, alignItems: 'center', minHeight: 64 },
   back: { position: 'absolute', left: 20, top: 18 },
   headerRight: { position: 'absolute', right: 20, top: 14, flexDirection: 'row', alignItems: 'center', gap: 16 },
