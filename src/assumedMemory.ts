@@ -7,6 +7,7 @@ import { chatCompletion, textProviders, visionAvailable, visionProviders } from 
 import { resolvePhotoUri } from './photoUri';
 import { getPhotoReading, mayReadDay } from './photoReading';
 import { onlyCheckedPhotos } from './photoGuard';
+import { whoIsInPhotos, type WhoLabel } from './myFace';
 
 // "Assumed Memory" — when a day has photos but the app can only guess what
 // actually happened, this reconstructs a plausible, clearly-speculative
@@ -44,7 +45,9 @@ export function dayLoggedText(memories: LoggedMemory[]): string {
 //   1 — original ("warm narrative", heavy hedging)
 //   2 — direct, concrete tone; no mood/filler words
 //   3 — screenshots/saved images no longer treated as events of that day
-export const PROMPT_VERSION = 3;
+//   4 — told which photos the user is in (myFace.ts), so a friend in the
+//       frame is never "you"; landmarks named; search tags ("anchors")
+export const PROMPT_VERSION = 4;
 
 export type AssumedMemory = {
   summary: string;
@@ -57,11 +60,20 @@ export type AssumedMemory = {
   // Which prompt wrote this summary. Absent on records from before
   // versioning existed, which correctly reads as stale.
   promptVersion?: number;
+  /** Search tags for everything in that day's photos — "pyramids",
+   *  "الأهرامات", "museum", "camel". The story is 2-4 sentences and leaves
+   *  most of a day out; these are how Ask finds the rest (memorySearch.ts). */
+  anchors?: string[];
 };
 
 // A cached record is only reusable if it was built from the same photos AND
 // by the current prompt.
 function isFresh(cached: AssumedMemory | null | undefined, signature: string): boolean {
+  // One exception, deliberate and once: a story written before version 4
+  // may call a friend in the frame "you", and has no search tags, so Ask
+  // can't find what's in it. Those are rewritten by the paced background
+  // pass, which stands aside while Ask is open.
+  if (cached && (cached.promptVersion ?? 0) < 4) return false;
   // Deliberately does NOT require the current PROMPT_VERSION.
   //
   // It used to, which meant every prompt tweak silently invalidated every
@@ -147,13 +159,25 @@ function clockLabel(ms: number): string {
 // went into an analysis. If a day's photo set changes (more imported later)
 // or the user edits/adds their own written memory, the signature changes
 // too and the cache naturally regenerates instead of going stale forever.
-function signatureOf(photos: TimedPhoto[], loggedText?: string): string {
+//
+// Who is in each photo is part of it: once the phone learns the user's face,
+// or reads faces in a photo for the first time, a story that was told
+// without knowing who is who is written again. Photos with nobody in them
+// add nothing, so days without faces never change.
+function signatureOf(photos: TimedPhoto[], loggedText?: string, who?: Map<string, WhoLabel>): string {
   const photoPart = photos
-    .map((p) => (p.source ? p.uri + '#' + p.source : p.uri))
+    .map((p) => (p.source ? p.uri + '#' + p.source : p.uri) + (who?.get(p.uri) ? '@' + who.get(p.uri) : ''))
     .sort()
     .join('|');
   return loggedText ? `${photoPart}::${loggedText}` : photoPart;
 }
+
+const WHO_TEXT: Record<WhoLabel, string> = {
+  you: ' — the user IS in this photo',
+  maybe: ' — has a face that may or may not be the user: call nobody in it "you"',
+  others: ' — has people in it, NONE of them the user',
+  people: ' — has people in it; whether the user is one of them is not known',
+};
 
 function dedupeAndCap(photos: TimedPhoto[]): TimedPhoto[] {
   const sorted = [...photos].sort((a, b) => a.takenAt - b.takenAt);
@@ -191,12 +215,21 @@ Some images are labelled (SCREENSHOT, or saved from WhatsApp/Instagram/etc). Tho
 - Mention one only if it's worth remembering, and say what it actually was: "you saved your flight details for the 12th", not "you flew".
 - If a day has ONLY screenshots and saved images, then nothing is known about what the person actually did that day. Say that plainly and briefly — do not invent a day around the screenshots.
 
+WHO IS "YOU" — read this carefully:
+The person holding the phone took most of these photos, so they are usually BEHIND the camera, not in the frame. Some photos are labelled after the phone checked them against the user's own face:
+- "the user IS in this photo" — they are one of the people in it. Only here may a person in the frame be "you".
+- "NONE of them the user", "not known", or "may or may not be the user" — the people in it are someone else. NEVER describe them as "you": not what they wear, where they sit, or what they do. "You photographed a friend in a car" or "you were out with friends", never "you were in a car" because someone else was.
+- No label: nobody was found in it, or it wasn't checked. Describe what the user saw.
+
 ACCURACY:
 - Only what's actually visible. Never invent names, relationships, or specific places you can't see evidence of (turnstiles = "the subway", not a named station).
+- A world-famous landmark that is clearly visible IS evidence, even in the background: name it ("the pyramids", "the Eiffel Tower"), never "stone structures". When it's a notable part of the day, put it in the summary.
 - If the photos are unclear or show very little, say so briefly rather than inventing a day.
 - Never guess anything sensitive, medical, or negative about a person.
 
-Respond with ONLY a JSON object: {"summary": "..."}`;
+SEARCH TAGS — "anchors": 6 to 20 short tags for everything someone might later search this day for, including what the summary leaves out: landmarks and famous sites (named when clearly recognisable, even in the background), kinds of place (museum, beach, mall, stadium, desert), objects, food, vehicles, animals, activities, events, readable signs or shop names, and the main things in the user's own words for the day. Lowercase English, plus the Arabic word for the main ones ("pyramids", "الأهرامات", "museum", "متحف"). Never people's names, never anything sensitive.
+
+Respond with ONLY a JSON object: {"summary": "...", "anchors": ["...", "..."]}`;
 
 const LOGGED_TEXT_ADDENDUM = `
 
@@ -229,7 +262,11 @@ async function toDataUri(uri: string): Promise<string | null> {
   }
 }
 
-async function generate(photos: TimedPhoto[], loggedText?: string): Promise<string | null> {
+async function generate(
+  photos: TimedPhoto[],
+  loggedText?: string,
+  who?: Map<string, WhoLabel>,
+): Promise<{ summary: string; anchors: string[] } | null> {
   const providers = visionProviders();
   if (providers.length === 0) return null;
 
@@ -246,7 +283,10 @@ async function generate(photos: TimedPhoto[], loggedText?: string): Promise<stri
         ? ' — SCREENSHOT, saved this day, not taken this day'
         : ` — saved from ${p.source} this day, not taken this day`
       : '';
-    content.push({ type: 'text', text: `Photo at ${clockLabel(p.takenAt)}${kind}:` });
+    // Who is in it, as the phone worked it out (myFace.ts) — words only,
+    // never the face.
+    const whoText = !p.source && who?.get(p.uri) ? WHO_TEXT[who.get(p.uri)!] : '';
+    content.push({ type: 'text', text: `Photo at ${clockLabel(p.takenAt)}${kind}${whoText}:` });
     // 'low' detail costs a flat ~85 tokens per image regardless of size,
     // vs. hundreds-to-1000+ at the default 'auto'/high-detail tiling. Since
     // every image is already downscaled to RESIZE_WIDTH before this point,
@@ -275,8 +315,13 @@ async function generate(photos: TimedPhoto[], loggedText?: string): Promise<stri
   if (!result.ok) return null;
 
   try {
-    const parsed = JSON.parse(result.content) as { summary?: string };
-    return parsed.summary?.trim() || null;
+    const parsed = JSON.parse(result.content) as { summary?: string; anchors?: unknown };
+    const summary = parsed.summary?.trim();
+    if (!summary) return null;
+    const anchors = Array.isArray(parsed.anchors)
+      ? [...new Set(parsed.anchors.filter((a): a is string => typeof a === 'string').map((a) => a.trim().toLowerCase()).filter(Boolean))].slice(0, 24)
+      : [];
+    return { summary, anchors };
   } catch {
     return null;
   }
@@ -334,7 +379,13 @@ export async function getAssumedMemory(
 ): Promise<AssumedMemory | null> {
   if (!assumedMemoryAvailable() || photos.length === 0) return null;
 
-  const signature = signatureOf(photos, loggedText);
+  // Who is in each photo, worked out on the phone. A failure here only
+  // means the story is told without it — never a reason not to tell it.
+  const who = await whoIsInPhotos(photos.map((p) => p.uri)).catch((e) => {
+    console.warn('[me] could not check who is in the photos:', e);
+    return new Map<string, WhoLabel>();
+  });
+  const signature = signatureOf(photos, loggedText, who);
   const cached = await readCache(dayKey);
   if (isFresh(cached, signature)) return cached;
 
@@ -348,18 +399,25 @@ export async function getAssumedMemory(
   const safe = await onlyCheckedPhotos(photos);
   if (safe.length === 0) return null;
 
-  const summary = await generate(safe, loggedText);
-  if (!summary) return null;
+  const written = await generate(safe, loggedText, who);
+  // A failed rewrite keeps the story already there rather than blanking it.
+  if (!written) return cached;
 
   // Deliberately does NOT carry over the old record's translations — the
   // summary just changed, so a translation of the previous wording would be
   // wrong. They're re-fetched on demand the next time Translate is tapped.
   const record: AssumedMemory = {
-    summary,
+    summary: written.summary,
+    anchors: written.anchors,
     generatedAt: new Date().toISOString(),
     signature,
     promptVersion: PROMPT_VERSION,
   };
+  const labelled = [...who.values()];
+  console.log(
+    `[story] ${dayKey}: ${written.anchors.length} tags` +
+      (labelled.length ? `; photos with people: ${labelled.length} (you in ${labelled.filter((l) => l === 'you').length})` : ''),
+  );
   await writeCache(dayKey, record);
   return record;
 }
@@ -439,7 +497,7 @@ export function holdBackgroundAnalysis(): () => void {
   };
 }
 
-function liveRequestInFlight(): boolean {
+export function liveRequestInFlight(): boolean {
   return holds > 0 || Date.now() < priorityUntil;
 }
 
@@ -500,6 +558,10 @@ export async function backfillAssumedMemories(onProgress?: (done: number, total:
     // Work out up front which days actually need an API call, so the
     // progress count reflects real remaining work rather than counting
     // hundreds of already-done days.
+    // Who is in every photo, in one read — the signature includes it.
+    const allUris = all.flatMap((m) => (m.kind === 'photo' ? (m.photoUris ?? []) : []));
+    const who = await whoIsInPhotos(allUris).catch(() => new Map<string, WhoLabel>());
+
     const pending: { day: string; photos: TimedPhoto[]; loggedText?: string }[] = [];
     for (const [day, memories] of byDay) {
       const uris = memories.flatMap((m) => (m.kind === 'photo' ? (m.photoUris ?? []) : []));
@@ -510,7 +572,7 @@ export async function backfillAssumedMemories(onProgress?: (done: number, total:
       const loggedText = dayLoggedText(memories) || undefined;
       // Same freshness check getAssumedMemory does internally — done here
       // against the already-loaded cache so we never touch storage per day.
-      if (isFresh(cached[day], signatureOf(photos, loggedText))) continue;
+      if (isFresh(cached[day], signatureOf(photos, loggedText, who))) continue;
       pending.push({ day, photos, loggedText });
     }
     pending.sort((a, b) => b.day.localeCompare(a.day)); // newest first
@@ -615,7 +677,8 @@ export async function analyzeDaysNow(
       .map((u) => ({ uri: u, takenAt: allTimestamps[u], source: allSources[u] }));
     if (photos.length === 0) continue;
     const loggedText = dayLoggedText(memories) || undefined;
-    if (isFresh(await readCache(day), signatureOf(photos, loggedText))) continue;
+    const who = await whoIsInPhotos(photos.map((p) => p.uri)).catch(() => new Map<string, WhoLabel>());
+    if (isFresh(await readCache(day), signatureOf(photos, loggedText, who))) continue;
     todo.push({ day, photos, loggedText });
   }
   if (todo.length === 0) return 0;

@@ -14,6 +14,7 @@ import { LoggedMemory, dateKey, getMemoriesByDay, isManualLog, localFile, memory
 import { getAllDayPlaces } from '../../src/places';
 import { getTasks, taskClock, type StoredTask } from '../../src/tasks';
 import { getUserProfile } from '../../src/userProfile';
+import MyPhotoCard from '../../src/components/MyPhotoCard';
 import { getAiConsent } from '../../src/aiConsent';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
@@ -214,6 +215,9 @@ export default function Home() {
             </View>
           </Pressable>
         </Link>
+
+        {/* Once, until the app knows the user's face (src/myFace.ts). */}
+        <MyPhotoCard />
 
         {analyzing && <AnalyzingBanner />}
 

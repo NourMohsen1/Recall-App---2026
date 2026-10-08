@@ -18,6 +18,7 @@ import PhotoImage from '../src/components/PhotoImage';
 import { WEEKDAYS } from '../src/data';
 import { LoggedMemory, dateKey, getMemoriesByDay, persistFile } from '../src/memoryLog';
 import { UserProfile, getUserProfile, setUserProfile } from '../src/userProfile';
+import { adoptMyPhoto } from '../src/myFace';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
@@ -93,6 +94,14 @@ function MyProfile() {
     // is temporary and the OS will clear it.
     const permanent = await persistFile(result.assets[0].uri, 'me');
     setProfile(await setUserProfile({ photoUri: permanent }));
+    // Their face, learned on the phone, so photo stories know which person
+    // is them. A photo without a clear face still works as a picture.
+    if ((await adoptMyPhoto(permanent)) === 'no-face') {
+      Alert.alert(
+        'Couldn’t see your face',
+        'This works as your picture, but Recall can’t tell which person in your photos is you. A clear photo of your face fixes that.',
+      );
+    }
   };
 
   const saveIdentity = async (name: string, bio: string) => {

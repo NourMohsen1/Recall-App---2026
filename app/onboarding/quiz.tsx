@@ -11,6 +11,8 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MISC } from '../../src/images';
@@ -22,12 +24,16 @@ import { TOPIC_LABELS, saveCustomTopics } from '../../src/onThisDay';
 import { setPositiveFocus } from '../../src/positiveFocus';
 import { setRecapNotification, type RecapCadence } from '../../src/recapNotifications';
 import { getUserProfile, setUserProfile } from '../../src/userProfile';
+import { localFile, persistFile } from '../../src/memoryLog';
+import { adoptMyPhoto, knowsMyFace, learnMyFaceIfMissing } from '../../src/myFace';
 import { colors, fonts } from '../../src/theme';
 
 // The setup questions. Each one changes something real in the app — no
 // question is asked for its own sake:
 //
 //   name       → the user's profile; the AI knows whose life it is
+//   photo      → their face, learned on the phone (src/myFace.ts), so a
+//                friend in their photos is never described as "you"
 //   interests  → On This Day's topics (src/onThisDay.ts reads quizAnswers[0]);
 //                "Other" lets the user type one, checked for sexual content
 //                first (src/contentSafety.ts)
@@ -38,6 +44,7 @@ type ChoiceId = 'interests' | 'recaps' | 'focus';
 type Option = { label: string; value: string };
 type Step =
   | { kind: 'name'; question: string; hint: string }
+  | { kind: 'photo'; question: string; hint: string }
   | {
       kind: 'choice';
       id: ChoiceId;
@@ -51,6 +58,11 @@ type Step =
 
 const STEPS: Step[] = [
   { kind: 'name', question: 'What should I call you?', hint: 'So Recall knows whose memories these are.' },
+  {
+    kind: 'photo',
+    question: 'And a photo of you',
+    hint: 'So Recall knows which one is you in your photos. Your face stays on your phone.',
+  },
   {
     kind: 'choice',
     id: 'interests',
@@ -105,11 +117,44 @@ export default function Quiz() {
   const [otherText, setOtherText] = useState('');
   const [checking, setChecking] = useState(false);
   const [otherProblem, setOtherProblem] = useState<string | null>(null);
+  // The photo step: the picture, and whether a face was found in it.
+  const [photo, setPhoto] = useState<string | undefined>();
+  const [face, setFace] = useState<'checking' | 'learned' | 'no-face' | null>(null);
 
   // Someone going through setup again keeps the name they gave.
   useEffect(() => {
-    getUserProfile().then((p) => p.name && setName(p.name));
+    getUserProfile().then((p) => {
+      if (p.name) setName(p.name);
+      if (!p.photoUri) return;
+      setPhoto(p.photoUri);
+      // A photo already on file says whether it shows a face, so a picture
+      // of a lobby doesn't pass as "you".
+      setFace('checking');
+      learnMyFaceIfMissing()
+        .then(() => knowsMyFace())
+        .then((known) => setFace(known ? 'learned' : 'no-face'))
+        .catch(() => setFace(null));
+    });
   }, []);
+
+  const choosePhoto = async (from: 'camera' | 'library') => {
+    const perm =
+      from === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.8 };
+    const result =
+      from === 'camera'
+        ? await ImagePicker.launchCameraAsync({ ...options, cameraType: ImagePicker.CameraType.front })
+        : await ImagePicker.launchImageLibraryAsync(options);
+    if (result.canceled || !result.assets[0]) return;
+    const permanent = await persistFile(result.assets[0].uri, 'me');
+    setPhoto(permanent);
+    setFace('checking');
+    await setUserProfile({ photoUri: permanent });
+    setFace(await adoptMyPhoto(permanent));
+  };
 
   const current = STEPS[step] as Step | undefined;
   const isClosing = step === STEPS.length;
@@ -151,7 +196,11 @@ export default function Quiz() {
   };
 
   // A yes-or-no has to be answered; everything else can be left empty.
-  const canGoOn = !current || current.kind === 'name' || current.multi || picks[current.id].length > 0;
+  const canGoOn =
+    !current ||
+    current.kind === 'name' ||
+    (current.kind === 'photo' && face !== 'checking') ||
+    (current.kind === 'choice' && (current.multi || picks[current.id].length > 0));
 
   // Each answer takes effect as it is given, so the notification permission
   // is asked right after the user chose to get recaps — when it makes sense.
@@ -230,7 +279,38 @@ export default function Quiz() {
               <Text style={styles.question}>{current.question}</Text>
               <Text style={styles.hint}>{current.hint}</Text>
 
-              {current.kind === 'name' ? (
+              {current.kind === 'photo' ? (
+                <View style={styles.photoStep}>
+                  <Pressable onPress={() => choosePhoto('camera')} style={styles.photoRing}>
+                    {photo ? (
+                      <Image source={{ uri: localFile(photo) }} style={styles.photo} />
+                    ) : (
+                      <View style={[styles.photo, styles.photoEmpty]}>
+                        <Ionicons name="camera-outline" size={40} color={colors.white} />
+                      </View>
+                    )}
+                  </Pressable>
+                  <Text style={[styles.photoStatus, face === 'no-face' && styles.photoProblem]}>
+                    {face === 'checking'
+                      ? 'Looking for your face…'
+                      : face === 'learned'
+                        ? 'Got it — that’s you.'
+                        : face === 'no-face'
+                          ? 'Couldn’t see a clear face. Try another photo.'
+                          : ' '}
+                  </Text>
+                  <View style={styles.photoButtons}>
+                    <Pressable onPress={() => choosePhoto('camera')} style={[styles.chip, styles.photoButton]}>
+                      <Ionicons name="camera-outline" size={18} color={colors.white} />
+                      <Text style={styles.chipText}>Take a selfie</Text>
+                    </Pressable>
+                    <Pressable onPress={() => choosePhoto('library')} style={[styles.chip, styles.photoButton]}>
+                      <Ionicons name="images-outline" size={18} color={colors.white} />
+                      <Text style={styles.chipText}>Choose a photo</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : current.kind === 'name' ? (
                 <TextInput
                   value={name}
                   onChangeText={setName}
@@ -299,7 +379,9 @@ export default function Quiz() {
               )}
 
               <PillButton
-                label={current.kind === 'name' && !name.trim() ? 'Skip' : 'Next'}
+                label={
+                  (current.kind === 'name' && !name.trim()) || (current.kind === 'photo' && !photo) ? 'Skip' : 'Next'
+                }
                 style={[{ alignSelf: 'flex-start', minWidth: 240, marginTop: 48 }, !canGoOn && { opacity: 0.4 }]}
                 onPress={canGoOn ? next : undefined}
               />
@@ -355,6 +437,14 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1.5,
     borderBottomColor: 'rgba(255,255,255,0.6)',
   },
+  photoStep: { alignItems: 'center', marginTop: 36 },
+  photoRing: { padding: 4, borderRadius: 84, borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)' },
+  photo: { width: 152, height: 152, borderRadius: 76 },
+  photoEmpty: { backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' },
+  photoStatus: { color: colors.white, fontFamily: fonts.medium, fontSize: 14, marginTop: 16, minHeight: 20, textAlign: 'center' },
+  photoProblem: { color: colors.accent },
+  photoButtons: { flexDirection: 'row', gap: 12, marginTop: 22 },
+  photoButton: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',

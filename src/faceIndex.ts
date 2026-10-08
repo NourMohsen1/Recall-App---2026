@@ -208,6 +208,31 @@ export async function forgetPhotos(uris: string[]): Promise<void> {
   });
 }
 
+/** The fingerprints of every face in these photos. A photo that has been
+ *  read and holds nobody maps to an empty list; one not read yet is absent
+ *  — "no faces" and "not looked at yet" are different answers. */
+export async function getFacesInPhotos(uris: string[]): Promise<Map<string, Float32Array[]>> {
+  const out = new Map<string, Float32Array[]>();
+  if (uris.length === 0) return out;
+  const handle = await db();
+  // In slices: SQLite caps how many values one query can carry.
+  for (let i = 0; i < uris.length; i += 400) {
+    const slice = uris.slice(i, i + 400);
+    const marks = slice.map(() => '?').join(',');
+    const read = await handle.getAllAsync<{ photo_uri: string }>(
+      `SELECT photo_uri FROM read_photos WHERE photo_uri IN (${marks})`,
+      ...slice,
+    );
+    for (const r of read) out.set(r.photo_uri, []);
+    const rows = await handle.getAllAsync<{ photo_uri: string; embedding: string }>(
+      `SELECT photo_uri, embedding FROM faces WHERE photo_uri IN (${marks})`,
+      ...slice,
+    );
+    for (const r of rows) out.get(r.photo_uri)?.push(unpackEmbedding(r.embedding));
+  }
+  return out;
+}
+
 /** How many faces each read photo has. A photo not read yet is absent.
  *  Places use this to pick a cover: the building, not the selfie. */
 export async function getPhotoFaceCounts(): Promise<Map<string, number>> {

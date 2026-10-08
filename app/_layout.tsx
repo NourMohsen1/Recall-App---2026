@@ -14,6 +14,7 @@ import {
 } from '@expo-google-fonts/poppins';
 import { startPhotoAnalysis } from '../src/photoAnalysisQueue';
 import { installFaceEmbedder } from '../src/faceEmbedderTflite';
+import { learnMyFaceIfMissing } from '../src/myFace';
 import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
 import { refreshTaskReminders } from '../src/tasks';
@@ -100,6 +101,10 @@ function AppRoot() {
 
   useEffect(() => {
     installFaceEmbedder()
+      // The user's own face first (src/myFace.ts): a profile photo set
+      // before this existed is learned quietly, so the photo stories stop
+      // calling other people "you".
+      .then(() => learnMyFaceIfMissing())
       .then(() => startBackgroundIndexing())
       .catch((e) => console.warn('[faces] not available:', e));
   }, []);
