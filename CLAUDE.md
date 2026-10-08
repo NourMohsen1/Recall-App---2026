@@ -123,6 +123,32 @@ stored in SQLite (`src/faceIndex.ts`); indexed in the background
 (`src/faceIndexing.ts`). Only photos imported into Recall are indexed, not the
 whole camera roll.
 
+**The user's own face** (`src/myFace.ts`, Oct 2026). Setup asks for a
+photo of the user right after their name (selfie or library, checked on
+the spot); Home asks once if it's missing; a profile photo set earlier is
+learned at launch. It is a fingerprint like a person's, stored as `__me__`
+(never in People). Each photo sent for a day story carries a label worked
+out on the phone — "the user IS in this photo" / "people, NONE of them the
+user" / "not known" — and the prompt never calls a person in the frame
+"you" otherwise ("you photographed a friend in a car", not "you were in a
+car"). Labels are part of the story's signature, so learning the face
+rewrites the days with faces in them, and only those. The face never
+leaves the phone; only the label words do.
+
+**How Ask finds a day** (`src/memorySearch.ts`, Oct 2026) — one search for
+Ask and live voice. Every day has search tags: photo stories return
+`anchors` (everything visible, landmarks named even in the background, in
+English and Arabic; `PROMPT_VERSION` 4 rewrites older stories once, paced,
+standing aside for Ask) and notes get tags from `src/dayTags.ts` (text
+only, 10 days a call, again only when a day's words change). The planner
+gives search words in English AND Arabic script, because notes are kept in
+Arabic and an English word never matches Arabic text. Words are folded
+(Arabic letter forms, ال/بال prefixes, plurals) and weighted by rarity and
+field. The best days always reach the answer with what they matched, and
+the answer never dead-ends: it offers the closest day and asks "is this
+it?". `[ask] looking for / found` logs both halves. Measured on a 300-day
+test phone: museum/pyramids/beach questions 0/4 → 6/6 with the right day.
+
 **Places** (`src/places.ts`) are private by design — Nour chose this over
 Google Places. Every photo keeps its own GPS on the device; photos within
 70 m are one place; the cover is the user's best photo from there (no faces

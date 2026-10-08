@@ -1,4 +1,5 @@
 import { backfillAssumedMemories } from './assumedMemory';
+import { backfillDayTags } from './dayTags';
 import { startBackgroundFaceScan } from './faceMatching';
 
 // Owns WHEN the photo analysis runs, so no screen has to.
@@ -28,10 +29,18 @@ export function startPhotoAnalysis(): void {
   backfillAssumedMemories()
     .then(() => startBackgroundFaceScan())
     .catch(() => {});
+  // Notes' search tags (src/dayTags.ts) — text only, a few calls, and not
+  // worth waiting behind a long photo pass.
+  backfillDayTags().catch((e) => console.warn('[tags] failed:', e));
 }
 
 // Called right after a photo sync brings in new days. Bypasses the
 // once-per-launch guard, since there's genuinely new work to do.
 export function runPhotoAnalysisNow(): void {
   backfillAssumedMemories().catch(() => {});
+}
+
+/** After notes were written up: their search tags, so Ask can find them. */
+export function runDayTagsNow(): void {
+  backfillDayTags().catch((e) => console.warn('[tags] failed:', e));
 }

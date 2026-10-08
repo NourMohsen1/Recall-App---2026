@@ -1,6 +1,8 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { PLACES, WEEKDAYS } from './data';
 import { getAllDayMarkers, getRecurringMarkers, occursOn } from './dayMarkers';
+import { getAllDayTags } from './dayTags';
+import { searchDays, type SearchDoc, type SearchHit } from './memorySearch';
 import { getLoggedMemories, shownMemories } from './memoryLog';
 import { getAllGuesses } from './guessedPeople';
 import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
@@ -95,6 +97,10 @@ type DayRecord = {
   /** Smart Icon Reminders on that day — "medicine: أخدت الدوا". Written
    *  from what the user logged or added themselves, so these are facts. */
   markers: string[];
+  /** Search tags: everything in that day's photos (assumedMemory.ts) and
+   *  notes (dayTags.ts), in English and Arabic — what the day can be found
+   *  by when the story and the notes don't use the question's words. */
+  tags: string[];
   // How many real photos that day holds. Kept separately from `assumed` so
   // the model can tell "nothing happened" apart from "there are 14 photos
   // the app hasn't read yet" — two very different answers.
@@ -112,6 +118,7 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
       guessed: [],
       places: [],
       markers: [],
+      tags: [],
       photoCount: 0,
     };
     days.set(key, fresh);
@@ -134,7 +141,13 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
 
   const assumed = await getAllAssumedMemories();
   for (const [key, record] of Object.entries(assumed)) {
-    get(key).assumed = record.summary;
+    const rec = get(key);
+    rec.assumed = record.summary;
+    rec.tags.push(...(record.anchors ?? []));
+  }
+  for (const [key, tags] of Object.entries(await getAllDayTags())) {
+    const rec = get(key);
+    rec.tags.push(...tags.filter((t) => !rec.tags.includes(t)));
   }
 
   for (const person of await getPeopleSummaries()) {
@@ -230,8 +243,8 @@ async function placesBlock(): Promise<string> {
 
 // Everything about one day, written out in full and clearly delimited so
 // the model can't blur it into a neighbouring day.
-function fullDayBlock(key: string, rec: DayRecord): string {
-  const lines = [`=== ${dayLabel(key)} ===`];
+function fullDayBlock(key: string, rec: DayRecord, matched?: string[]): string {
+  const lines = [`=== ${dayLabel(key)} ===${matched?.length ? ` (found by: ${matched.join(', ')})` : ''}`];
   if (rec.logged.length > 0) {
     lines.push(`What the user logged themselves: ${rec.logged.join(' | ')}`);
   }
@@ -252,6 +265,9 @@ function fullDayBlock(key: string, rec: DayRecord): string {
   }
   if (rec.places.length > 0) lines.push(`Places that day: ${rec.places.join(', ')}`);
   if (rec.markers.length > 0) lines.push(`Marked that day: ${rec.markers.join(', ')}`);
+  if (rec.tags.length > 0) {
+    lines.push(`Also in that day's photos and notes (search tags): ${rec.tags.slice(0, 24).join(', ')}`);
+  }
   if (lines.length === 1) lines.push('Nothing at all recorded for this day — no photos, no notes.');
   return lines.join('\n');
 }
@@ -270,8 +286,9 @@ function indexLine(key: string, rec: DayRecord): string {
     ...rec.places,
     ...rec.people,
     ...rec.guessed.map((n) => `${n}?`),
+    ...rec.tags.slice(0, 5),
   ].join(', ');
-  const text = [gist.slice(0, 70), extras.slice(0, 60)].filter(Boolean).join(' — ');
+  const text = [gist.slice(0, 70), extras.slice(0, 90)].filter(Boolean).join(' — ');
   return `- ${key}: ${text || '(nothing)'}`;
 }
 
@@ -292,27 +309,36 @@ function monthRollup(month: string, records: [string, DayRecord][]): string {
   return `- ${month} (${monthLabel(month)}): ${bits.join('; ')}`;
 }
 
-function scoreDay(rec: DayRecord, keywords: string[]): number {
-  if (keywords.length === 0) return 0;
-  const haystack = [
-    ...rec.logged,
-    rec.assumed ?? '',
-    ...rec.people,
-    ...rec.places,
-    // "medicine: أخدت الدوا" — both the kind and the user's own words are
-    // searchable, so "when did I last take my medicine?" finds a day marked
-    // by hand, where the icon is the only trace.
-    ...rec.markers,
-  ]
-    .join(' ')
-    .toLowerCase();
-  let score = 0;
-  for (const kw of keywords) {
-    const term = kw.trim().toLowerCase();
-    if (term.length < 3) continue;
-    if (haystack.includes(term)) score += 1;
-  }
-  return score;
+// One day as the search sees it (memorySearch.ts). The user's own words,
+// places and people count most; tags nearly as much; the photo story — a
+// guess, and wordy — least.
+function searchDoc(key: string, rec: DayRecord): SearchDoc {
+  return {
+    key,
+    fields: [
+      { text: rec.logged.join(' \n '), weight: 3 },
+      { text: rec.places.join(' \n '), weight: 3 },
+      { text: rec.people.join(' \n '), weight: 3 },
+      { text: rec.tags.join(' \n '), weight: 2.5 },
+      { text: rec.markers.join(' \n '), weight: 2 },
+      { text: rec.assumed ?? '', weight: 1.5 },
+    ],
+  };
+}
+
+function searchIndex(days: Map<string, DayRecord>, keywords: string[], limit: number): SearchHit[] {
+  return searchDays(
+    [...days.entries()].map(([k, r]) => searchDoc(k, r)),
+    keywords,
+    limit,
+  );
+}
+
+/** The days a plan's search words find, best first — for the log line
+ *  that says what Ask looked for and what it found. */
+export async function searchForPlan(plan: QueryPlan): Promise<SearchHit[]> {
+  if (plan.keywords.length === 0) return [];
+  return searchIndex(await buildDayIndex(), plan.keywords, MAX_KEYWORD_DAYS);
 }
 
 // Every day the plan points at directly — named dates plus their immediate
@@ -452,15 +478,17 @@ export async function buildMemoryContext(
   }
   const rangeIndexed = rangeAll.filter((k) => !rangeFull.has(k));
 
-  // 3 — Days whose content matches the question's keywords.
+  // 3 — Days the search finds for the question's words: the best few,
+  // even when the match is partial — the closest real day is worth
+  // offering when nothing matches exactly.
   const keywordKeys: string[] = [];
+  const matchedBy = new Map<string, string[]>();
   if ((plan?.keywords?.length ?? 0) > 0) {
-    const scored = [...days.entries()]
-      .map(([key, rec]) => ({ key, score: scoreDay(rec, plan!.keywords) }))
-      .filter((s) => s.score > 0 && !focusKeys.has(s.key) && !rangeFull.has(s.key))
-      .sort((a, b) => b.score - a.score || b.key.localeCompare(a.key))
-      .slice(0, MAX_KEYWORD_DAYS);
-    for (const s of scored) keywordKeys.push(s.key);
+    for (const hit of searchIndex(days, plan!.keywords, MAX_KEYWORD_DAYS + focusKeys.size + rangeFull.size)) {
+      matchedBy.set(hit.key, hit.matched);
+      if (focusKeys.has(hit.key) || rangeFull.has(hit.key)) continue;
+      if (keywordKeys.length < MAX_KEYWORD_DAYS) keywordKeys.push(hit.key);
+    }
   }
 
   const askedAbout = focusOrder.filter((k) => days.has(k));
@@ -470,7 +498,7 @@ export async function buildMemoryContext(
   if (primary.length > 0) {
     sections.push(
       `THE DAY(S) THE USER IS ASKING ABOUT — answer from these first:\n\n${primary
-        .map((k) => fullDayBlock(k, days.get(k)!))
+        .map((k) => fullDayBlock(k, days.get(k)!, matchedBy.get(k)))
         .join('\n\n')}`,
     );
   } else if ((plan?.dates?.length ?? 0) > 0 || rangeAll.length > 0) {
@@ -490,9 +518,13 @@ export async function buildMemoryContext(
 
   if (keywordKeys.length > 0) {
     sections.push(
-      `OTHER DAYS THAT MATCH WHAT THEY ASKED:\n\n${keywordKeys
-        .map((k) => fullDayBlock(k, days.get(k)!))
+      `DAYS THE SEARCH FOUND FOR WHAT THEY ASKED — best match first; "found by" lists which of the question's words that day has. The first one is usually the answer; if it only partly fits, offer it as the closest:\n\n${keywordKeys
+        .map((k) => fullDayBlock(k, days.get(k)!, matchedBy.get(k)))
         .join('\n\n')}`,
+    );
+  } else if ((plan?.keywords?.length ?? 0) > 0 && primary.length === 0) {
+    sections.push(
+      `The search found no day with any of these words: ${plan!.keywords.join(', ')}. Look through the index below for the day closest in meaning, offer it, and ask if that's the one.`,
     );
   }
 

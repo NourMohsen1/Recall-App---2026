@@ -1,5 +1,5 @@
 import { Provider, textProviders } from './aiProviders';
-import { QueryPlan, buildMemoryContext, focusDaysOf } from './askContext';
+import { QueryPlan, buildMemoryContext, focusDaysOf, searchForPlan } from './askContext';
 import { analyzeDaysNow, pauseBackgroundAnalysis, prioritizeDays } from './assumedMemory';
 import { WEEKDAYS } from './data';
 import {
@@ -130,7 +130,7 @@ Return JSON: {"dates": ["YYYY-MM-DD", ...], "ranges": [{"start": "YYYY-MM-DD", "
 
 "ranges" — any stretch of days the question covers ("last week", "that weekend", "over the summer"). Use this instead of listing 30 dates.
 
-"keywords" — 3 to 8 short search terms for the things, places, activities and people the question is about. ALWAYS IN ENGLISH, no matter what language the question is in. The user often writes Arabic in Latin letters (franco-Arabic): "farah" = wedding, "al3a" = castle, "makan" = place, "shaklo" = looks like, "emta" = when, "mata3am" = restaurant, "sha8l" = work, "bahr" = sea/beach. Translate the meaning, then give English search terms plus obvious synonyms (wedding → wedding, bride, groom, ceremony). For a real-world event, add keywords for what would VISIBLY be in that day's photos — Ramadan → iftar, suhoor, family dinner, mosque; a football match → football, TV, cafe, screen, jersey. Skip filler words like "when", "did", "I".
+"keywords" — 6 to 16 short search terms for the things, places, activities and people the question is about. The journal is written in English AND in Arabic script, so give each important term BOTH ways: English, and Arabic in Arabic script ("museum", "متحف", "المتحف"; "pyramids", "الأهرامات", "giza", "الجيزة"). The user often writes Arabic in Latin letters (franco-Arabic): "farah" = wedding, "al3a" = castle, "makan" = place, "shaklo" = looks like, "emta" = when, "mata3am" = restaurant, "sha8l" = work, "bahr" = sea/beach. Translate the meaning, then give the terms plus obvious synonyms and the specific names something goes by (wedding → wedding, bride, فرح; the new museum → grand egyptian museum, gem, المتحف المصري الكبير). Names of people and places exactly as the user wrote them. For a real-world event, add keywords for what would VISIBLY be in that day's photos — Ramadan → iftar, suhoor, family dinner, mosque; a football match → football, TV, cafe, screen, jersey. Skip filler words like "when", "did", "I".
 
 "events" — real-world events the question refers to (a holiday, a football match, a tournament, an election, a big news day) that you ALREADY KNOW the date of, confidently. Give the real dates. Do NOT include an event whose date you're guessing at.
 
@@ -181,7 +181,7 @@ async function planQuery(question: string, resolved: ResolvedEvent[]): Promise<P
     };
     return {
       dates: (parsed.dates ?? []).filter((d) => ISO.test(d)).slice(0, 14),
-      keywords: (parsed.keywords ?? []).filter((k) => typeof k === 'string' && k.trim()).slice(0, 8),
+      keywords: (parsed.keywords ?? []).filter((k) => typeof k === 'string' && k.trim()).slice(0, 16),
       ranges: (parsed.ranges ?? [])
         .filter((r): r is { start: string; end: string } => !!r?.start && !!r?.end && ISO.test(r.start) && ISO.test(r.end))
         .slice(0, 3),
@@ -230,9 +230,12 @@ WHERE ANSWERS COME FROM — the log has two kinds of day content:
 - "What the user logged themselves" — their own words. Solid fact.
 - "From their photos (AI photo analysis)" — a guess reconstructed from that day's photos. The user never said it. Don't dress it up as something they told you, but don't clutter every sentence with hedges either — the app labels the source for them. One light "looks like" is plenty, and only when it matters.
 
-BEING USEFUL:
+BEING USEFUL — never a dead end:
 - If you know it, answer it. If you're unsure which of a few days they mean, say which ones and ask — briefly.
-- If nothing in the log matches, say so plainly in one line and offer the nearest real thing from the log. Never invent something to fill the gap, and never lecture them about what they should log.
+- The search has already found the days closest to the question (DAYS THE SEARCH FOUND). Use them. A day that matches only part of the question is still worth offering: say what it has and ask if it's the one — "The closest I have is Thursday 12 March: you were at the Grand Egyptian Museum, and your photos show the pyramids. Is that the day?" — and give tap replies like "Yes, that's it" / "No, another day".
+- Never answer with only "I don't know", "nothing is recorded" or "I'm not sure". Say in a few words what's missing, then give the nearest real thing from the log with its date. Only when the log truly has nothing near it at all, say so in one line and ask one question that would help find it.
+- Look at everything in a day — the user's words, the photo story, the places, and the search tags (what's in that day's photos and notes). Something in the background of a photo is in the tags even when the story doesn't mention it.
+- Never invent something to fill a gap, and never lecture them about what they should log.
 - One question at a time, and only when it actually helps.
 
 ALWAYS report which days you used, in "sources" — every day whose content shaped your answer, with the right "kind" for each ("logged" if you used their own words for that day, "photoAnalysis" if you used the photo guess). Empty only when the answer used no specific day at all.
@@ -278,6 +281,18 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
     // credit, or genuinely not findable. The answer has to own that rather
     // than quietly answering about some other day.
     const plan: QueryPlan = { ...draft, events, unresolved: web.unresolved };
+
+    // What it looked for and what it found, said every time — the only way
+    // to tell "the search missed the day" from "the answer ignored it".
+    const found = await searchForPlan(plan).catch(() => []);
+    console.log(
+      `[ask] looking for: ${plan.keywords.join(', ') || '—'}` +
+        (plan.dates.length ? ` · dates ${plan.dates.join(', ')}` : '') +
+        (events.length ? ` · events ${events.map((e) => `${e.name} ${e.start}`).join(', ')}` : ''),
+    );
+    console.log(
+      `[ask] found: ${found.slice(0, 5).map((h) => `${h.key} (${h.score}: ${h.matched.slice(0, 4).join(', ')})`).join(' | ') || 'no day matched'}`,
+    );
 
     // Read the photos for the days this question actually landed on, if
     // nobody has read them yet. Order is priority order — only a couple

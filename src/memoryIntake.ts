@@ -769,6 +769,9 @@ export function useMemoryPolish(onChanged: () => void): boolean {
           return transcribed || polished;
         })
         .then((changed) => {
+          // New or rewritten notes get their search tags (src/dayTags.ts).
+          // Loaded late to keep the import graph one-way.
+          if (changed) import('./photoAnalysisQueue').then((q) => q.runDayTagsNow()).catch(() => {});
           if (!live) return;
           clearTimeout(showDelay);
           setAnalyzing(false);

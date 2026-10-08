@@ -10,6 +10,8 @@ import {
   resolvePersonName,
 } from './peopleTags';
 import { getTasks } from './tasks';
+import { getAllDayTags } from './dayTags';
+import { searchDays } from './memorySearch';
 import { getUserProfile, identityForPrompt, memoryCount } from './userProfile';
 
 // What a live conversation is allowed to look up.
@@ -79,14 +81,17 @@ type DayFacts = {
   assumed?: string;
   people: string[];
   places: string[];
+  /** What's in that day's photos and notes, in English and Arabic. */
+  tags: string[];
 };
 
 async function collectDays(): Promise<Map<string, DayFacts>> {
-  const [byDay, assumed, places, summaries] = await Promise.all([
+  const [byDay, assumed, places, summaries, noteTags] = await Promise.all([
     getMemoriesByDay(),
     getAllAssumedMemories(),
     getAllDayPlaces(),
     getPeopleSummaries(),
+    getAllDayTags(),
   ]);
 
   const peopleByDay = new Map<string, string[]>();
@@ -113,32 +118,10 @@ async function collectDays(): Promise<Map<string, DayFacts>> {
       assumed: assumed[key]?.summary,
       people: peopleByDay.get(key) ?? [],
       places: (places[key] ?? []).map((p) => p.label),
+      tags: [...new Set([...(assumed[key]?.anchors ?? []), ...(noteTags[key] ?? [])])],
     });
   }
   return out;
-}
-
-// Everything on a day as one searchable string.
-function dayText(d: DayFacts): string {
-  return [...d.logged, d.assumed ?? '', ...d.people, ...d.places].join(' ');
-}
-
-// Deliberately simple, and deliberately not word-boundary based: the user
-// writes and speaks Arabic as well as English, and Arabic does not tokenise
-// the way a naive word splitter expects. Substring matching is cruder and
-// works for both.
-function scoreAgainst(text: string, query: string): number {
-  const haystack = text.toLowerCase();
-  const needle = query.trim().toLowerCase();
-  if (!needle) return 0;
-  let score = 0;
-  // A hit on the whole phrase is worth far more than the words scattered.
-  if (haystack.includes(needle)) score += 10;
-  for (const word of needle.split(/\s+/)) {
-    if (word.length < 3) continue;
-    if (haystack.includes(word)) score += 1;
-  }
-  return score;
 }
 
 export type ToolResult = Record<string, unknown>;
@@ -147,31 +130,48 @@ export type ToolResult = Record<string, unknown>;
 // The tools themselves
 // ---------------------------------------------------------------------------
 
+// The same search Ask uses (memorySearch.ts). The query may list several
+// terms separated by commas — the model is asked for English and Arabic.
 async function searchMemories(args: { query?: string; limit?: number }): Promise<ToolResult> {
   const query = String(args.query ?? '').trim();
   if (!query) return { error: 'No search text given.' };
   const days = await collectDays();
-  const scored = [...days.values()]
-    .map((d) => ({ d, score: scoreAgainst(dayText(d), query) }))
-    .filter((s) => s.score > 0)
-    .sort((a, b) => b.score - a.score || b.d.date.localeCompare(a.d.date))
-    .slice(0, Math.min(args.limit ?? 5, 10));
+  const terms = [query, ...query.split(/[,،;|]/).map((t) => t.trim())].filter(Boolean);
+  const hits = searchDays(
+    [...days.values()].map((d) => ({
+      key: d.date,
+      fields: [
+        { text: d.logged.join(' \n '), weight: 3 },
+        { text: d.places.join(' \n '), weight: 3 },
+        { text: d.people.join(' \n '), weight: 3 },
+        { text: d.tags.join(' \n '), weight: 2.5 },
+        { text: d.assumed ?? '', weight: 1.5 },
+      ],
+    })),
+    terms,
+    Math.min(args.limit ?? 5, 10),
+  );
+  console.log(`[live] search "${query}": ${hits.map((h) => `${h.key} (${h.score})`).join(', ') || 'nothing'}`);
+  const scored = hits.map((h) => ({ d: days.get(h.key)!, matched: h.matched }));
 
   if (scored.length === 0) {
     return {
       found: 0,
       // Said explicitly, because "I found nothing" and "I didn't look" are
       // different answers and the model must not blur them into a guess.
-      note: `Nothing in the user's memories mentions "${query}". Say so plainly rather than guessing.`,
+      note: `Nothing in the user's memories mentions "${query}". Try once more with other words for it (a synonym, the Arabic word), or recent_days; if that finds nothing either, say so briefly and ask one question that would help find it.`,
     };
   }
   return {
     found: scored.length,
-    days: scored.map(({ d }) => ({
+    note: 'Best match first. A day that matches only part of the question is still worth offering as the closest — say so and ask if it is the one.',
+    days: scored.map(({ d, matched }) => ({
       date: d.date,
       when: d.when,
+      found_by: matched,
       logged: d.logged,
       photos_suggest: d.assumed,
+      in_photos_and_notes: d.tags.slice(0, 20),
       people: d.people,
       places: d.places,
     })),
@@ -219,6 +219,7 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
     day_name: longDate(d.date),
     logged: d.logged,
     photos_suggest: d.assumed,
+    in_photos_and_notes: d.tags.length ? d.tags.slice(0, 20) : undefined,
     people: d.people,
     // Faces matched in that day's photos that the user has not confirmed.
     // Kept in their own field with their own instruction: spoken aloud, a
@@ -411,7 +412,11 @@ export const REALTIME_TOOLS = [
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'What to look for. A word, a name, a place.' },
+        query: {
+          type: 'string',
+          description:
+            'What to look for, as a few comma-separated terms in English AND Arabic script, with synonyms — e.g. "museum, متحف, grand egyptian museum, المتحف المصري الكبير". Names exactly as the user said them.',
+        },
         limit: { type: 'number', description: 'How many days to return. Default 5.' },
       },
       required: ['query'],
