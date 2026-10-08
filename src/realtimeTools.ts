@@ -275,6 +275,7 @@ async function findPerson(args: { name?: string }): Promise<ToolResult> {
     found: true,
     name: person.name,
     how_you_know_them: meta?.descriptor,
+    also_called: meta?.aliases?.length ? meta.aliases : undefined,
     dates_that_repeat: dates.length ? dates : undefined,
     last_seen: person.lastSeenDay
       ? { date: person.lastSeenDay, when: spokenWhen(person.lastSeenDay) }
@@ -311,6 +312,7 @@ async function listPeople(): Promise<ToolResult> {
       .map((p) => ({
         name: p.name,
         how_you_know_them: meta[p.name]?.descriptor,
+        also_called: meta[p.name]?.aliases?.length ? meta[p.name].aliases : undefined,
         last_seen: p.lastSeenDay ? spokenWhen(p.lastSeenDay) : 'never tagged on a day',
         days_together: p.days.length,
       })),

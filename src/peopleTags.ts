@@ -32,8 +32,10 @@ export async function getAllTaggedPeople(): Promise<string[]> {
 }
 
 export async function addPersonForDay(dayKey: string, name: string): Promise<void> {
-  const trimmed = name.trim();
-  if (!trimmed) return;
+  // "Kitch" typed by hand lands on Omar Khaled, like a logged mention does.
+  const typed = name.trim();
+  if (!typed) return;
+  const trimmed = (await resolvePersonName(typed)) ?? typed;
   const byDay = await readJSON<Record<string, string[]>>(DAY_PEOPLE_KEY, {});
   const existing = byDay[dayKey] ?? [];
   if (existing.some((n) => n.toLowerCase() === trimmed.toLowerCase())) return;
@@ -394,6 +396,44 @@ export async function setPersonDescriptor(
   await AsyncStorage.setItem(PERSON_META_KEY, JSON.stringify(all));
 }
 
+// Nicknames — "Kitch" for Omar Khaled, "Boda" for Abdelrahman. Stored with
+// the other names a person has (aliases), so a log saying "Kitch" files
+// under Omar Khaled, searches find him, and the AI knows who is meant.
+
+export type NicknameResult = { ok: true } | { ok: false; isPerson: string } | { ok: false; taken: string };
+
+/** Adds a nickname. If it is already someone's own name, that is the same
+ *  person under two profiles — the caller offers to join them. */
+export async function addNickname(name: string, nickname: string): Promise<NicknameResult> {
+  const nick = nickname.trim();
+  if (!nick || nick.toLowerCase() === name.toLowerCase()) return { ok: true };
+  const known = await getAllTaggedPeople();
+  const all = await getAllPersonMeta();
+  const asPerson = [...new Set([...known, ...Object.keys(all)])].find(
+    (n) => n !== name && n.toLowerCase() === nick.toLowerCase(),
+  );
+  if (asPerson) return { ok: false, isPerson: asPerson };
+  const owner = Object.entries(all).find(
+    ([n, m]) => n !== name && m.aliases?.some((a) => a.toLowerCase() === nick.toLowerCase()),
+  );
+  if (owner) return { ok: false, taken: owner[0] };
+  const meta: PersonMeta = all[name] ?? { verified: true, mentions: [] };
+  meta.aliases = [...new Set([...(meta.aliases ?? []), nick])];
+  all[name] = meta;
+  await AsyncStorage.setItem(PERSON_META_KEY, JSON.stringify(all));
+  console.log(`[people] nickname added to ${name}`);
+  return { ok: true };
+}
+
+export async function removeNickname(name: string, nickname: string): Promise<void> {
+  const all = await getAllPersonMeta();
+  const meta = all[name];
+  if (!meta?.aliases) return;
+  meta.aliases = meta.aliases.filter((a) => a !== nickname);
+  all[name] = meta;
+  await AsyncStorage.setItem(PERSON_META_KEY, JSON.stringify(all));
+}
+
 // Records that two people are NOT the same, so the app stops offering the
 // merge. "Ahmed" and "Ahmad" really can be two different friends.
 const NOT_DUPLICATES_KEY = 'notDuplicatePeople';
@@ -460,7 +500,7 @@ export async function getKnownPeopleForPrompt(): Promise<string> {
       // Alias spellings go into the prompt too, so the model returns the
       // canonical name when the user writes one of the other versions.
       const aliases = meta[n]?.aliases?.length
-        ? ` — also written: ${meta[n].aliases!.join(', ')}`
+        ? ` — also called: ${meta[n].aliases!.join(', ')} (the same person; always return "${n}")`
         : '';
       return `- ${n}${who}${aliases}`;
     })

@@ -66,12 +66,14 @@ export default function PeopleEditor({
 
   // Everyone the user knows — tagged on a day or added on People — with
   // their faces and who they are, for suggestions as they type.
-  const [known, setKnown] = useState<{ name: string; photo?: string; descriptor?: string }[]>([]);
+  const [known, setKnown] = useState<{ name: string; photo?: string; descriptor?: string; aliases?: string[] }[]>([]);
   useEffect(() => {
     if (!adding) return;
     Promise.all([getAllTaggedPeople(), getAllPersonMeta()]).then(([tagged, meta]) => {
       const names = [...new Set([...suggestions, ...tagged, ...Object.keys(meta)])];
-      setKnown(names.map((n) => ({ name: n, photo: meta[n]?.photoUri, descriptor: meta[n]?.descriptor })));
+      setKnown(
+        names.map((n) => ({ name: n, photo: meta[n]?.photoUri, descriptor: meta[n]?.descriptor, aliases: meta[n]?.aliases })),
+      );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adding]);
@@ -89,7 +91,7 @@ export default function PeopleEditor({
             ? 0
             : n.split(/\s+/).some((w) => w.startsWith(q))
               ? 1
-              : n.includes(q)
+              : n.includes(q) || (k.aliases ?? []).some((a) => fold(a).startsWith(q))
                 ? 2
                 : k.descriptor && fold(k.descriptor).includes(q)
                   ? 3
@@ -178,7 +180,14 @@ export default function PeopleEditor({
                   <PersonAvatar name={r.name} photoUri={r.photo ?? photos?.[r.name]} size={30} />
                   <View style={{ flex: 1 }}>
                     <Highlight text={r.name} query={draft.trim()} />
-                    {r.descriptor ? <Text style={styles.suggestSub}>{r.descriptor}</Text> : null}
+                    {/* Typed a nickname: say whose it is. */}
+                    {(r.aliases ?? []).some((a) => fold(a).startsWith(q)) && !fold(r.name).includes(q) ? (
+                      <Text style={styles.suggestSub}>
+                        Also called {(r.aliases ?? []).find((a) => fold(a).startsWith(q))}
+                      </Text>
+                    ) : r.descriptor ? (
+                      <Text style={styles.suggestSub}>{r.descriptor}</Text>
+                    ) : null}
                   </View>
                 </Pressable>
               ))}

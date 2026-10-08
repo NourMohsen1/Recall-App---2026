@@ -538,6 +538,7 @@ export async function buildMemoryContext(
     const peopleLines = people.map((p) => {
       const meta = personMeta[p.name];
       const who = meta?.descriptor ? ` (${meta.descriptor})` : '';
+      const nick = meta?.aliases?.length ? `, also called ${meta.aliases.join(', ')}` : '';
       const notes =
         meta && meta.mentions.length > 0
           ? ` Notes: ${meta.mentions
@@ -550,7 +551,7 @@ export async function buildMemoryContext(
       const seen = p.lastSeenDay
         ? `seen on ${p.days.length} day(s); last on ${p.lastSeenDay}.`
         : 'not on any logged day yet.';
-      return `- ${p.name}${who}: ${seen}${notes}`;
+      return `- ${p.name}${who}${nick}: ${seen}${notes}`;
     });
     sections.push(`People the user has tagged in their days:\n${peopleLines.join('\n')}`);
   }

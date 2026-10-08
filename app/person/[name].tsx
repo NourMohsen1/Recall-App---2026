@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,7 +18,7 @@ import {
   stopBackgroundFaceScan,
 } from '../../src/faceMatching';
 import { referenceFaceUri } from '../../src/faceCrop';
-import { renamePersonEverywhere } from '../../src/peopleMerge';
+import { mergePersonEverywhere, renamePersonEverywhere } from '../../src/peopleMerge';
 import {
   PersonSuggestion,
   acceptSuggestion,
@@ -61,7 +61,9 @@ import {
   PersonSummary,
   avatarTint,
   getPeopleSummaries,
+  addNickname,
   getPersonMeta,
+  removeNickname,
   lastSeenLabel,
   removePersonEverywhere,
   setPersonDescriptor,
@@ -140,6 +142,32 @@ function PersonProfile() {
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
   const [dayPlaces, setDayPlaces] = useState<Record<string, DayPlace[]>>({});
   const [meta, setMeta] = useState<PersonMeta | null>(null);
+  // "Also called": typing a new nickname inline.
+  const [nickDraft, setNickDraft] = useState<string | null>(null);
+  const saveNickname = async () => {
+    const nick = nickDraft?.trim();
+    setNickDraft(null);
+    if (!nick || !name) return;
+    const result = await addNickname(name, nick);
+    if (result.ok) {
+      setMeta((m) => ({ ...(m ?? { verified: true, mentions: [] }), aliases: [...new Set([...(m?.aliases ?? []), nick])] }));
+    } else if ('isPerson' in result) {
+      // The nickname is someone already in People — two profiles, one person.
+      Alert.alert(`${result.isPerson} is in People too`, `Is ${result.isPerson} the same person as ${name}?`, [
+        { text: 'Different people', style: 'cancel' },
+        {
+          text: 'Same person — join them',
+          onPress: async () => {
+            await mergePersonEverywhere(result.isPerson, name);
+            setMeta(await getPersonMeta(name));
+            console.log('[people] joined two profiles from a nickname');
+          },
+        },
+      ]);
+    } else {
+      Alert.alert('Already taken', `“${nick}” is already ${result.taken}'s nickname.`);
+    }
+  };
   // Photo analysis per day, so the recap line can fall back to what the
   // photos showed when the user never wrote anything down themselves.
   const [assumed, setAssumed] = useState<Record<string, string>>({});
@@ -437,7 +465,13 @@ function PersonProfile() {
         )}
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        // The nickname field sits low on the page: lift it above the keyboard.
+        automaticallyAdjustKeyboardInsets
+        keyboardShouldPersistTaps="handled"
+      >
         {loaded && !person && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="account-question-outline" size={40} color="#AEB6B7" />
@@ -466,6 +500,51 @@ function PersonProfile() {
 
             <Text style={styles.name}>{person.name}</Text>
             {meta?.descriptor && <Text style={styles.descriptor}>{meta.descriptor}</Text>}
+
+            {/* Other names for the same person: logs, search and Ask use them. */}
+            <View style={styles.nickRow}>
+              {(meta?.aliases ?? []).length > 0 && <Text style={styles.nickLabel}>Also called</Text>}
+              {(meta?.aliases ?? []).map((a) => (
+                <Pressable
+                  key={a}
+                  style={styles.nickChip}
+                  onPress={() =>
+                    Alert.alert(`“${a}”`, `Stop treating “${a}” as ${person.name}?`, [
+                      { text: 'Keep', style: 'cancel' },
+                      {
+                        text: 'Remove',
+                        style: 'destructive',
+                        onPress: async () => {
+                          await removeNickname(person.name, a);
+                          setMeta((m) => (m ? { ...m, aliases: (m.aliases ?? []).filter((x) => x !== a) } : m));
+                        },
+                      },
+                    ])
+                  }
+                >
+                  <Text style={styles.nickText}>{a}</Text>
+                </Pressable>
+              ))}
+              {nickDraft === null ? (
+                <Pressable style={[styles.nickChip, styles.nickAdd]} onPress={() => setNickDraft('')} hitSlop={6}>
+                  <Ionicons name="add" size={14} color={colors.teal} />
+                  <Text style={styles.nickAddText}>{(meta?.aliases ?? []).length ? 'Add' : 'Add a nickname'}</Text>
+                </Pressable>
+              ) : (
+                <TextInput
+                  style={styles.nickInput}
+                  value={nickDraft}
+                  onChangeText={setNickDraft}
+                  placeholder="Nickname"
+                  placeholderTextColor="#9AA4A5"
+                  autoFocus
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  // Done leaves the field, which saves it — once.
+                  onBlur={saveNickname}
+                />
+              )}
+            </View>
 
             {recapLine.length > 0 && (
               <Pressable onPress={() => person.lastSeenDay && openDay(person.lastSeenDay)}>
@@ -765,6 +844,31 @@ const styles = StyleSheet.create({
 
   name: { fontFamily: fonts.bold, fontSize: 38, color: '#1B1B1B', marginTop: 18 },
   descriptor: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B', marginTop: 4 },
+  nickRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 10 },
+  nickLabel: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginRight: 2 },
+  nickChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.pale,
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+  },
+  nickText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
+  nickAdd: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.soft, borderStyle: 'dashed' },
+  nickAddText: { fontFamily: fonts.medium, fontSize: 13, color: colors.teal },
+  nickInput: {
+    minWidth: 120,
+    borderWidth: 1.5,
+    borderColor: colors.accent,
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: '#1B1B1B',
+  },
   recapLine: {
     fontFamily: fonts.regular,
     fontSize: 16,

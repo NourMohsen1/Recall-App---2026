@@ -68,6 +68,14 @@ function Highlight({ text, query, style, boldStyle }: { text: string; query: str
   );
 }
 
+/** The nickname a search found someone by, when it wasn't their name —
+ *  so "kit" showing Omar Khaled says why. */
+function aliasMatch(person: PersonSummary, meta: PersonMeta | undefined, query: string): string | undefined {
+  const q = fold(query.trim());
+  if (!q || fold(person.name).includes(q)) return undefined;
+  return (meta?.aliases ?? []).find((a) => fold(a).startsWith(q));
+}
+
 // The design's view: a grid of faces, the name under each — many people at
 // a glance, no scrolling through cards.
 function PersonTile({ person, meta, size, query }: { person: PersonSummary; meta?: PersonMeta; size: number; query: string }) {
@@ -80,6 +88,9 @@ function PersonTile({ person, meta, size, query }: { person: PersonSummary; meta
           {unverified && <View style={styles.tileNewDot} />}
         </View>
         <Highlight text={person.name} query={query} style={styles.tileName} boldStyle={styles.matchBold} />
+        {aliasMatch(person, meta, query) && (
+          <Highlight text={aliasMatch(person, meta, query)!} query={query} style={styles.tileAlias} boldStyle={styles.matchBold} />
+        )}
       </Pressable>
     </Link>
   );
@@ -122,6 +133,11 @@ function PersonCard({
             )}
           </View>
           {meta?.descriptor && <Text style={styles.descriptor}>{meta.descriptor}</Text>}
+          {aliasMatch(person, meta, query) && (
+            <Text numberOfLines={1} style={styles.aliasLine}>
+              Also called <Highlight text={aliasMatch(person, meta, query)!} query={query} style={styles.aliasLine} boldStyle={styles.matchBold} />
+            </Text>
+          )}
           <Text style={styles.seenLine}>{seenLine}</Text>
           {lastNote ? (
             <Text numberOfLines={2} style={[styles.noteLine, rtlIfArabic(lastNote)]}>
@@ -219,6 +235,8 @@ function People() {
     if (n.startsWith(q)) return 0;
     if (n.split(/\s+/).some((w) => w.startsWith(q))) return 1;
     if (n.includes(q)) return 2;
+    // "Kitch" finds Omar Khaled.
+    if ((meta[p.name]?.aliases ?? []).some((a) => fold(a).startsWith(q))) return 2;
     if (fold(meta[p.name]?.descriptor ?? '').includes(q)) return 3;
     return -1;
   };
@@ -483,6 +501,7 @@ const styles = StyleSheet.create({
     borderColor: colors.white,
   },
   tileName: { fontFamily: fonts.regular, fontSize: 15, color: '#1B1B1B', marginTop: 8, textAlign: 'center', maxWidth: '100%' },
+  tileAlias: { fontFamily: fonts.regular, fontSize: 12, color: colors.teal, textAlign: 'center', maxWidth: '100%' },
   noMatch: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -563,6 +582,7 @@ const styles = StyleSheet.create({
   cardBody: { flex: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   personName: { fontFamily: fonts.semiBold, fontSize: 16, color: '#2B2B2B' },
+  aliasLine: { fontFamily: fonts.regular, fontSize: 13, color: colors.teal, marginTop: 1 },
   newBadge: {
     backgroundColor: colors.accent,
     borderRadius: 999,
