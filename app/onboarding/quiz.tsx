@@ -67,8 +67,8 @@ const STEPS: Step[] = [
     question: 'When should Recall recap your memories?',
     hint: 'A short summary, sent as a notification.',
     options: [
-      { label: 'Every evening', value: 'daily' },
-      { label: 'Every Sunday', value: 'weekly' },
+      { label: 'Every morning', value: 'daily' },
+      { label: 'Every Monday', value: 'weekly' },
       { label: 'Every month', value: 'monthly' },
     ],
     multi: true,

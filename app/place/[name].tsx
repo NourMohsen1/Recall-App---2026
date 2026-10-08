@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { goBack } from '../../src/navigation';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -130,7 +131,7 @@ function PlaceProfile() {
   );
   useEffect(() => onPlacesChanged(() => load()), [load]);
 
-  const back = () => (router.canGoBack() ? router.back() : router.dismissTo('/places'));
+  const back = () => goBack(router, '/places');
 
   // A rename can fold this place into another one with the same name; the
   // screen follows whichever place remains.
@@ -582,7 +583,7 @@ function Header({ onBack, onMore }: { onBack: () => void; onMore?: () => void })
       <Pressable onPress={onBack} hitSlop={12} style={styles.back}>
         <Ionicons name="arrow-back" size={28} color={colors.primary} />
       </Pressable>
-      <Text style={styles.headerTitle}>Profile</Text>
+      <Text style={styles.headerTitle}>Place</Text>
       {onMore && (
         <Pressable onPress={onMore} hitSlop={12} style={styles.more}>
           <MaterialCommunityIcons name="dots-horizontal" size={26} color={colors.primary} />

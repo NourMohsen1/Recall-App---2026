@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -258,7 +259,7 @@ function PersonProfile() {
   const removePerson = async () => {
     if (!name) return;
     await removePersonEverywhere(name);
-    router.dismissTo('/people');
+    goBack(router, '/people');
   };
 
   // Stores whatever the user chose as this person's reference face. Always
@@ -425,10 +426,10 @@ function PersonProfile() {
       <View style={styles.header}>
         {/* Primary entry is the People list — explicit target for the same
             reason noted in day/[offset]/index.tsx. */}
-        <Pressable onPress={() => router.dismissTo('/people')} hitSlop={12} style={styles.back}>
+        <Pressable onPress={() => goBack(router, '/people')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={styles.headerTitle}>Person</Text>
         {person && (
           <Pressable onPress={() => setEditOpen(true)} hitSlop={12} style={styles.headerAction}>
             <Ionicons name="create-outline" size={24} color={colors.primary} />

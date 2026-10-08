@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { goBack } from '../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -104,7 +105,7 @@ function MyProfile() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.dismissTo('/profile')} hitSlop={12} style={styles.back}>
+        <Pressable onPress={() => goBack(router, '/profile')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>

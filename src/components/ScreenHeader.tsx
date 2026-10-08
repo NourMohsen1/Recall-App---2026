@@ -1,17 +1,14 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, type Href } from 'expo-router';
+import { goBack } from '../navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
 
 // White page header with a teal back arrow and centered title,
 // used by People / Places / On This Day / Recap.
 //
-// `backTo` names this screen's known primary entry point (e.g. "/home").
-// Plain `router.back()`/`canGoBack()` looks right but isn't reliable here:
-// this screen is pushed onto the root Stack from *inside* the bottom Tabs
-// navigator, and Expo Router's implicit back-resolution doesn't restore
-// which tab was active — it lands on the tab bar's first tab instead. An
-// explicit `dismissTo` sidesteps that entirely.
+// Back returns to the screen this one was opened from (src/navigation.ts);
+// `backTo` is only where it goes when there is nothing behind it.
 export default function ScreenHeader({
   title,
   backTo = '/home',
@@ -30,7 +27,7 @@ export default function ScreenHeader({
   return (
     <View style={styles.header}>
       <Pressable
-        onPress={onBack ?? (() => router.dismissTo(backTo as Parameters<typeof router.dismissTo>[0]))}
+        onPress={onBack ?? (() => goBack(router, backTo as Href))}
         hitSlop={12}
         style={styles.back}
       >

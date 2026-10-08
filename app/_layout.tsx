@@ -19,7 +19,7 @@ import { startPlaceIndexing } from '../src/places';
 import { refreshTaskReminders } from '../src/tasks';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImport';
-import { syncRecapNotifications } from '../src/recapNotifications';
+import { notificationTarget, startNotifications } from '../src/recapNotifications';
 import { loadAccount } from '../src/account';
 import { loadAiConsent } from '../src/aiConsent';
 import { startInstallPass } from '../src/install';
@@ -62,26 +62,25 @@ function AppRoot() {
     refreshTaskReminders();
   }, []);
 
-  // "Your recap is ready": keep the schedule matching Profile's switches,
-  // and open the Recap on the right tab when one is tapped — including the
-  // tap that launched the app.
+  // Notifications (src/recapNotifications.ts): rebuilt at launch and on
+  // leaving the app; a tap opens what it's about — including the tap that
+  // launched the app.
   const router = useRouter();
   useEffect(() => {
     loadAccount();
-    syncRecapNotifications();
+    const stop = startNotifications();
     const open = (response: Notifications.NotificationResponse | null) => {
-      const tab = response?.notification.request.content.data?.recap;
-      if (typeof tab !== 'string') return;
-      console.log(`[recap] notification opened the ${tab} recap`);
-      const offset = response?.notification.request.content.data?.offset;
-      router.push({
-        pathname: '/recap',
-        params: typeof offset === 'number' ? { period: tab, offset: String(offset) } : { period: tab },
-      });
+      const target = notificationTarget(response?.notification.request.content.data);
+      if (!target) return;
+      console.log(`[notify] opened ${target.pathname}`);
+      router.push(target as Parameters<typeof router.push>[0]);
     };
     Notifications.getLastNotificationResponseAsync().then(open).catch(() => {});
     const sub = Notifications.addNotificationResponseReceivedListener(open);
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      stop();
+    };
   }, [router]);
 
   // Photos deleted from Photos leave Recall, and any photo not yet checked

@@ -1,6 +1,5 @@
 import { AppState } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import * as AppIntegrity from '@expo/app-integrity';
 import { backendUrl, setInstallPass } from './backend';
 
 // This install's pass to Recall's server — how the App Store build proves
@@ -18,6 +17,17 @@ import { backendUrl, setInstallPass } from './backend';
 // again.
 
 type Stored = { keyId: string; pass: string; expiresAt: number };
+
+// Loaded carefully: in a build made before App Attest was added (an old
+// simulator build, say) the native part is missing, and a plain import
+// would crash the whole app at launch.
+type Integrity = typeof import('@expo/app-integrity');
+let AppIntegrity: Integrity | null = null;
+try {
+  AppIntegrity = require('@expo/app-integrity') as Integrity;
+} catch {
+  console.warn('[install] App Attest is not in this build');
+}
 
 const KEY = 'installPass';
 const STORE_OPTIONS = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
@@ -59,9 +69,9 @@ async function challenge(): Promise<string> {
 
 /** A new key, vouched for by Apple. */
 async function attest(): Promise<void> {
-  const keyId = await AppIntegrity.generateKeyAsync();
+  const keyId = await AppIntegrity!.generateKeyAsync();
   const c = await challenge();
-  const attestation = await AppIntegrity.attestKeyAsync(keyId, c);
+  const attestation = await AppIntegrity!.attestKeyAsync(keyId, c);
   const { status, json } = await post('/attest/register', { keyId, attestation, challenge: c });
   if (status !== 200 || typeof json.pass !== 'string') {
     throw new Error(`register HTTP ${status} ${JSON.stringify(json.error ?? '')}`);
@@ -75,7 +85,7 @@ async function renew(stored: Stored): Promise<boolean> {
   const c = await challenge();
   let assertion: string;
   try {
-    assertion = await AppIntegrity.generateAssertionAsync(stored.keyId, c);
+    assertion = await AppIntegrity!.generateAssertionAsync(stored.keyId, c);
   } catch (e) {
     console.warn('[install] the key is gone (reinstalled or restored) — attesting again:', e);
     return false;
@@ -92,7 +102,7 @@ async function ensure(): Promise<void> {
   const stored = await load();
   if (stored) setInstallPass(stored.pass);
   if (stored && stored.expiresAt - Date.now() > RENEW_WHEN_LEFT_MS) return;
-  if (!AppIntegrity.isSupported) {
+  if (!AppIntegrity?.isSupported) {
     // The simulator, or a device without App Attest. A development build
     // falls back to its development token; a release build can't reach
     // the AI — said loudly so it is never a silent mystery.

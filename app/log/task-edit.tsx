@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -100,7 +101,7 @@ export default function TaskEdit() {
     if (!id) return;
     getTask(id).then((task) => {
       if (!task) {
-        router.dismissTo('/tasks');
+        goBack(router, '/tasks');
         return;
       }
       setTitle(task.title);
@@ -186,10 +187,7 @@ export default function TaskEdit() {
       }
       await addTask({ ...fields, source: 'manual' });
     }
-    // Always opened from the Tasks tab — an explicit target instead of
-    // back()/canGoBack(), which don't reliably restore the active tab (see
-    // day/[offset]/index.tsx for why).
-    router.dismissTo('/tasks');
+    goBack(router, '/tasks');
   };
 
   const remove = () => {
@@ -201,7 +199,7 @@ export default function TaskEdit() {
         style: 'destructive',
         onPress: async () => {
           await deleteTask(id);
-          router.dismissTo('/tasks');
+          goBack(router, '/tasks');
         },
       },
     ]);
@@ -230,7 +228,7 @@ export default function TaskEdit() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.dismissTo('/tasks')} hitSlop={10}>
+        <Pressable onPress={() => goBack(router, '/tasks')} hitSlop={10}>
           <Text style={styles.headerAction}>Cancel</Text>
         </Pressable>
         <Text style={styles.headerTitle}>{isNew ? 'New Task' : 'Edit Task'}</Text>

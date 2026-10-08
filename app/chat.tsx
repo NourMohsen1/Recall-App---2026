@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { goBack } from '../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -588,7 +589,7 @@ export default function Chat() {
         <View style={styles.header}>
           {/* Pushed from Home's chat pill — explicit target for the same
               reason noted in day/[offset]/index.tsx. */}
-          <Pressable onPress={() => router.dismissTo('/home')} hitSlop={12} style={styles.back}>
+          <Pressable onPress={() => goBack(router, '/home')} hitSlop={12} style={styles.back}>
             <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
           {messages.length > 0 && <Text style={styles.headerTitle}>Ask</Text>}

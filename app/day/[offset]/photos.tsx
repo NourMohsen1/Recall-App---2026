@@ -8,6 +8,8 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { goBack } from '../../../src/navigation';
+import { useLightStatusBar } from '../../../src/statusBar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PhotoSourceSheet from '../../../src/components/PhotoSourceSheet';
@@ -24,6 +26,8 @@ const THUMB_GAP = 8;
 // Full-screen, swipeable viewer for a day's real logged photos — reached by
 // tapping any thumbnail in the Photo Library card or day-detail photo row.
 export default function PhotoViewer() {
+  // Black screen: white top bar while it shows.
+  useLightStatusBar();
   const router = useRouter();
   const { offset, start } = useLocalSearchParams<{ offset: string; start?: string }>();
   const offsetNum = Number(offset ?? 0);
@@ -91,7 +95,7 @@ export default function PhotoViewer() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.dismissTo('/timeline')} hitSlop={12} style={styles.back}>
+        <Pressable onPress={() => goBack(router, '/timeline')} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={28} color={colors.white} />
         </Pressable>
         <View style={styles.headerRight}>

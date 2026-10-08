@@ -3,8 +3,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import ScreenHeader from '../../src/components/ScreenHeader';
 import { MISC } from '../../src/images';
 import { colors, fonts } from '../../src/theme';
+import { withAppNav } from '../../src/components/AppNav';
 
-export default function GlassesDetail() {
+function GlassesDetail() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader title="Devices" />
@@ -44,3 +45,5 @@ const styles = StyleSheet.create({
   statNum: { fontFamily: fonts.bold, fontSize: 30, color: '#1B1B1B' },
   statLabel: { fontFamily: fonts.regular, fontSize: 14, color: '#5B6364', marginTop: 6 },
 });
+
+export default withAppNav(GlassesDetail);

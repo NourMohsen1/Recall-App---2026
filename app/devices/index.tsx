@@ -6,8 +6,9 @@ import PillButton from '../../src/components/PillButton';
 import ScreenHeader from '../../src/components/ScreenHeader';
 import { MISC } from '../../src/images';
 import { colors, fonts } from '../../src/theme';
+import { withAppNav } from '../../src/components/AppNav';
 
-export default function Devices() {
+function Devices() {
   const router = useRouter();
 
   return (
@@ -91,3 +92,5 @@ const styles = StyleSheet.create({
 
   addMore: { alignSelf: 'stretch', marginTop: 40, marginHorizontal: 8 },
 });
+
+export default withAppNav(Devices);

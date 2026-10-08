@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AttachmentViewer from '../../src/components/AttachmentViewer';
@@ -392,7 +393,7 @@ export default function Tasks() {
       {/* Header with the + button for deliberate task creation */}
       <View style={styles.header}>
         <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.push('/home'))}
+          onPress={() => goBack(router, '/home')}
           hitSlop={12}
           style={styles.back}
         >

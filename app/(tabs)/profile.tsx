@@ -59,7 +59,7 @@ export default function Profile() {
   const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
   const [aiConsent, setAiConsentState] = useState<AiConsent | null>(getAiConsent());
   useEffect(() => onAiConsentChanged(() => setAiConsentState(getAiConsent())), []);
-  const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ daily: true, weekly: true, monthly: false });
+  const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ reminder: true, daily: true, weekly: true, monthly: false });
   const [positiveFocus, setPositiveFocusState] = useState(false);
   const [signedIn, setSignedIn] = useState(!!getAccount());
   useEffect(() => onAccountChanged(() => setSignedIn(!!getAccount())), []);
@@ -260,15 +260,16 @@ export default function Profile() {
         {/* Notifications */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Notifications</Text>
-          {/* "Your recap is ready" — each on its own schedule. */}
+          {/* Each on its own schedule — src/recapNotifications.ts. */}
           {(
             [
-              ['daily', 'Daily recap', 'Every evening at 9 pm'],
-              ['weekly', 'Weekly recap', 'Sundays at 7 pm'],
-              ['monthly', 'Monthly recap', 'On the 1st of each month'],
+              ['reminder', 'Daily reminder', '10 pm, only if nothing was logged'],
+              ['daily', 'Daily recap', 'Each morning at 9, about yesterday'],
+              ['weekly', 'Weekly recap', 'Mondays at 9, about last week'],
+              ['monthly', 'Monthly recap', 'On the 1st at 9, about last month'],
             ] as const
           ).map(([cadence, label, when], i) => (
-            <View key={cadence} style={[styles.toggleRow, i < 2 && styles.rowDivider]}>
+            <View key={cadence} style={[styles.toggleRow, i < 3 && styles.rowDivider]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.toggleLabel}>{label}</Text>
                 <Text style={styles.rowHint}>{when}</Text>

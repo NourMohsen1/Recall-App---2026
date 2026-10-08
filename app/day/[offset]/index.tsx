@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { goBack } from '../../../src/navigation';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import AddPlaceSheet from '../../../src/components/AddPlaceSheet';
@@ -377,11 +378,8 @@ function DayDetailScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
-        {/* Day Detail is pushed onto the root Stack from inside the Tabs
-            navigator (usually Timeline) — plain back()/canGoBack() looks
-            right but doesn't restore which tab was active, landing on Home
-            instead. An explicit dismissTo target sidesteps that. */}
-        <Pressable onPress={() => router.dismissTo('/timeline')} hitSlop={12} style={styles.back}>
+        {/* Back to wherever the day was opened from (src/navigation.ts). */}
+        <Pressable onPress={() => goBack(router, '/timeline')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>

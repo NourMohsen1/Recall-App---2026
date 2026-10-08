@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { goBack } from '../../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
@@ -251,7 +252,7 @@ function SourceScreen() {
   // Pushed onto the root Stack from Day Detail (or Timeline's waveform
   // icon) — always for this exact day, so that's the reliable, explicit
   // place to return to. See the note in day/[offset]/index.tsx.
-  const backToDay = () => router.dismissTo(`/day/${offsetNum}` as Parameters<typeof router.dismissTo>[0]);
+  const backToDay = () => goBack(router, `/day/${offsetNum}` as Href);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>

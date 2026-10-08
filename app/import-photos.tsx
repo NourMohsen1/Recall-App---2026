@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { goBack } from '../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Toggle from '../src/components/Toggle';
@@ -97,7 +98,7 @@ function ImportPhotos() {
       <View style={styles.header}>
         {/* Only ever opened from Profile — explicit target for the same
             reason noted in day/[offset]/index.tsx. */}
-        <Pressable onPress={() => router.dismissTo('/profile')} hitSlop={12} style={styles.back}>
+        <Pressable onPress={() => goBack(router, '/profile')} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.primary} />
         </Pressable>
         <Text style={styles.headerTitle}>Import Photos</Text>
