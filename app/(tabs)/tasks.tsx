@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AttachmentViewer from '../../src/components/AttachmentViewer';
+import SwipeToDelete from '../../src/components/SwipeToDelete';
 import { MONTHS_SHORT } from '../../src/data';
 import {
   StoredTask,
   confirmNoDueDate,
+  deleteTask,
+  restoreTask,
   taskClock,
   taskTimeLabel,
   getTasks,
@@ -292,6 +295,29 @@ export default function Tasks() {
     }, [reload]),
   );
 
+  // Swipe to delete, with a few seconds to take it back.
+  const { width: screenW } = useWindowDimensions();
+  const [undo, setUndo] = useState<StoredTask | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onDelete = async (id: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setTasks((all) => all.filter((t) => t.id !== id));
+    const removed = await deleteTask(id);
+    console.log(`[tasks] deleted by swipe: ${removed?.title ?? id}`);
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndo(removed);
+    undoTimer.current = setTimeout(() => setUndo(null), 6000);
+    reload();
+  };
+  const onUndo = async () => {
+    if (!undo) return;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    await restoreTask(undo);
+    setUndo(null);
+    reload();
+  };
+
   const onToggle = async (id: string) => {
     const wasNext = id === nextId;
     await toggleTask(id);
@@ -426,8 +452,13 @@ export default function Tasks() {
               ) : null}
             </View>
             {section.tasks.map((task) => (
-              <TaskCard
+              <SwipeToDelete
                 key={task.id}
+                rowWidth={screenW - 40}
+                style={styles.swipeRow}
+                onDelete={() => onDelete(task.id)}
+              >
+              <TaskCard
                 task={task}
                 isNew={newIds.has(task.id)}
                 isNext={task.id === nextId}
@@ -449,10 +480,24 @@ export default function Tasks() {
                     : null
                 }
               />
+              </SwipeToDelete>
             ))}
           </View>
         ))}
       </ScrollView>
+
+      {undo && (
+        <View style={styles.undoBar} pointerEvents="box-none">
+          <View style={styles.undoPill}>
+            <Text style={styles.undoText} numberOfLines={1}>
+              Task deleted
+            </Text>
+            <Pressable onPress={onUndo} hitSlop={10}>
+              <Text style={styles.undoAction}>Undo</Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
 
       {/* "When is this due?" — confirmation for AI-created dateless tasks */}
       <Modal visible={!!askTask} transparent animationType="fade" onRequestClose={dismissAsk}>
@@ -534,12 +579,26 @@ const styles = StyleSheet.create({
   sectionPast: { color: '#8B9394' },
   mutedText: { color: '#A6ACAD' },
 
+  // The gap above each task belongs to its swipe row, so the red Delete
+  // behind a card is exactly the card's height.
+  swipeRow: { marginTop: 14 },
+  undoBar: { position: 'absolute', left: 0, right: 0, bottom: 176, alignItems: 'center' },
+  undoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    backgroundColor: colors.ink,
+    borderRadius: 999,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+  },
+  undoText: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
+  undoAction: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.accent },
   card: {
     backgroundColor: colors.white,
     borderRadius: 20,
     paddingVertical: 16,
     paddingHorizontal: 18,
-    marginTop: 14,
     borderWidth: 2,
     borderColor: colors.white,
   },

@@ -180,11 +180,22 @@ export async function toggleTask(id: string): Promise<void> {
   await writeTasks(existing.map((t) => (t.id === id ? updated : t)));
 }
 
-export async function deleteTask(id: string): Promise<void> {
+export async function deleteTask(id: string): Promise<StoredTask | null> {
   const existing = await getTasks();
   const target = existing.find((t) => t.id === id);
   if (target) await cancelAll(target);
   await writeTasks(existing.filter((t) => t.id !== id));
+  return target ?? null;
+}
+
+/** Undo a delete: the task comes back as it was, reminders set again. */
+export async function restoreTask(task: StoredTask): Promise<void> {
+  const existing = await getTasks();
+  if (existing.some((t) => t.id === task.id)) return;
+  const back: StoredTask = { ...task, reminderIds: undefined, notificationId: undefined, earlyReminderIds: undefined };
+  Object.assign(back, await scheduleAll(back));
+  await writeTasks([back, ...existing]);
+  console.log(`[tasks] restored "${task.title}"`);
 }
 
 // The user chose to keep a task without a due date — stop asking.
