@@ -8,10 +8,7 @@ import { getAllDayPlaces } from './places';
 
 // Recall's notifications, all scheduled on the phone (no server):
 //
-//   Reminder — 10 pm, only on a day nothing was logged yet: "Don't miss
-//              today". Never nags someone who already used the app; and
-//              only the next three days are lined up, so someone who
-//              stopped opening Recall isn't chased forever.
+//   Reminder — (off) 10 pm, only on a day nothing was logged yet.
 //   Daily    — 9 am, yesterday's recap: the day is truly over by then,
 //              late-night notes included.
 //   Weekly   — Monday 9 am, the Monday–Sunday week just finished.
@@ -28,7 +25,9 @@ export type RecapCadence = 'daily' | 'weekly' | 'monthly';
 export type RecapPrefs = Record<RecapCadence | 'reminder', boolean>;
 
 const PREFS_KEY = 'recapNotifications';
-const DEFAULTS: RecapPrefs = { reminder: true, daily: true, weekly: true, monthly: false };
+// The 10 pm reminder was built and switched off (Nour: rarely wanted,
+// more confusing than useful). Kept off for everyone; the code stays.
+const DEFAULTS: RecapPrefs = { reminder: false, daily: true, weekly: true, monthly: false };
 
 /** The Recap tab each notification opens. */
 export const RECAP_TAB: Record<RecapCadence, 'Today' | 'Weekly' | 'Monthly'> = {
@@ -51,7 +50,7 @@ const REMINDER_LINES = [
 
 export async function getRecapPrefs(): Promise<RecapPrefs> {
   const raw = await AsyncStorage.getItem(PREFS_KEY);
-  return raw ? { ...DEFAULTS, ...(JSON.parse(raw) as Partial<RecapPrefs>) } : DEFAULTS;
+  return { ...DEFAULTS, ...(raw ? (JSON.parse(raw) as Partial<RecapPrefs>) : {}), reminder: false };
 }
 
 // ── Building the words ───────────────────────────────────────────────────

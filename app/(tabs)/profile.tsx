@@ -21,6 +21,9 @@ import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
 import { colors, fonts } from '../../src/theme';
 
+// The Devices card (Meta glasses): a mockup, not connected to anything yet.
+const SHOW_DEVICES = false;
+
 function InfoRow({
   icon,
   label,
@@ -245,7 +248,9 @@ export default function Profile() {
           </Pressable>
         )}
 
-        {/* Devices */}
+        {/* Devices — hidden until connecting glasses is real (an idea for
+            later, Nour, Oct 2026). The pages stay in app/devices. */}
+        {SHOW_DEVICES && (
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Devices</Text>
           <Pressable
@@ -256,6 +261,7 @@ export default function Profile() {
             <Toggle value />
           </Pressable>
         </View>
+        )}
 
         {/* Notifications */}
         <View style={styles.card}>
@@ -263,13 +269,12 @@ export default function Profile() {
           {/* Each on its own schedule — src/recapNotifications.ts. */}
           {(
             [
-              ['reminder', 'Daily reminder', '10 pm, only if nothing was logged'],
               ['daily', 'Daily recap', 'Each morning at 9, about yesterday'],
               ['weekly', 'Weekly recap', 'Mondays at 9, about last week'],
               ['monthly', 'Monthly recap', 'On the 1st at 9, about last month'],
             ] as const
           ).map(([cadence, label, when], i) => (
-            <View key={cadence} style={[styles.toggleRow, i < 3 && styles.rowDivider]}>
+            <View key={cadence} style={[styles.toggleRow, i < 2 && styles.rowDivider]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.toggleLabel}>{label}</Text>
                 <Text style={styles.rowHint}>{when}</Text>
