@@ -1,5 +1,6 @@
-import { useCallback, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -32,6 +33,8 @@ import { withAppNav } from '../src/components/AppNav';
 // an English sentence doesn't drag the punctuation and surrounding words
 // around with it. Without this, "بابا and Baba look like…" renders with the
 // name and the full stop in the wrong places.
+const VIEW_KEY = 'peopleView';
+
 function isolate(name: string): string {
   return `⁨${name}⁩`;
 }
@@ -47,16 +50,53 @@ function initials(name: string) {
 
 // One person, recap-style: who they are to your log — when you last saw
 // them, where that was, and what you noted that day.
+/** Lowercase, without accents — so "omar", "Omar" and "Ómar" match. */
+function fold(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/** The name with the typed part in bold, like a search bar's suggestions. */
+function Highlight({ text, query, style, boldStyle }: { text: string; query: string; style: object; boldStyle: object }) {
+  const at = query ? fold(text).indexOf(fold(query)) : -1;
+  if (at < 0) return <Text numberOfLines={1} style={style}>{text}</Text>;
+  return (
+    <Text numberOfLines={1} style={style}>
+      {text.slice(0, at)}
+      <Text style={boldStyle}>{text.slice(at, at + query.length)}</Text>
+      {text.slice(at + query.length)}
+    </Text>
+  );
+}
+
+// The design's view: a grid of faces, the name under each — many people at
+// a glance, no scrolling through cards.
+function PersonTile({ person, meta, size, query }: { person: PersonSummary; meta?: PersonMeta; size: number; query: string }) {
+  const unverified = meta ? meta.verified === false : false;
+  return (
+    <Link href={{ pathname: '/person/[name]', params: { name: person.name } }} asChild>
+      <Pressable style={StyleSheet.flatten([styles.tile, { width: size + 12 }])}>
+        <View style={StyleSheet.flatten([styles.tileRing, { width: size + 6, height: size + 6, borderRadius: (size + 6) / 2 }])}>
+          <PersonAvatar name={person.name} photoUri={meta?.photoUri} size={size} />
+          {unverified && <View style={styles.tileNewDot} />}
+        </View>
+        <Highlight text={person.name} query={query} style={styles.tileName} boldStyle={styles.matchBold} />
+      </Pressable>
+    </Link>
+  );
+}
+
 function PersonCard({
   person,
   meta,
   lastPlace,
   lastNote,
+  query = '',
 }: {
   person: PersonSummary;
   meta?: PersonMeta;
   lastPlace?: string;
   lastNote?: string;
+  query?: string;
 }) {
   // Someone added by hand hasn't been seen anywhere yet — saying "Last seen"
   // about a day that doesn't exist would be a small lie.
@@ -74,7 +114,7 @@ function PersonCard({
         <PersonAvatar name={person.name} photoUri={meta?.photoUri} size={56} />
         <View style={styles.cardBody}>
           <View style={styles.nameRow}>
-            <Text style={styles.personName}>{person.name}</Text>
+            <Highlight text={person.name} query={query} style={styles.personName} boldStyle={styles.matchBold} />
             {unverified && (
               <View style={styles.newBadge}>
                 <Text style={styles.newBadgeText}>New — review</Text>
@@ -112,6 +152,19 @@ function People() {
   const [mergeOpen, setMergeOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  // Faces (the design's grid) or cards; remembered between visits.
+  const [view, setView] = useState<'grid' | 'list'>('grid');
+  useEffect(() => {
+    AsyncStorage.getItem(VIEW_KEY).then((v) => v === 'list' && setView('list')).catch(() => {});
+  }, []);
+  const chooseView = (v: 'grid' | 'list') => {
+    setView(v);
+    AsyncStorage.setItem(VIEW_KEY, v).catch(() => {});
+  };
+  const [query, setQuery] = useState('');
+  const { width: screenW } = useWindowDimensions();
+  // Three faces a row, as in the design.
+  const tileSize = Math.min(104, Math.floor((screenW - 40 - 2 * 18) / 3) - 12);
 
   useFocusEffect(
     useCallback(() => {
@@ -157,6 +210,25 @@ function People() {
     people.map((p) => p.name),
     profileWeight,
   ).filter((d) => !isRejectedMerge(rejected, d.keep, d.merge));
+
+  // Search: names starting with what's typed first, then a later word in
+  // the name, then anywhere in it, then who they are ("Dad", "coworker").
+  const q = fold(query.trim());
+  const rank = (p: PersonSummary): number => {
+    const n = fold(p.name);
+    if (n.startsWith(q)) return 0;
+    if (n.split(/\s+/).some((w) => w.startsWith(q))) return 1;
+    if (n.includes(q)) return 2;
+    if (fold(meta[p.name]?.descriptor ?? '').includes(q)) return 3;
+    return -1;
+  };
+  const shown = q
+    ? people
+        .map((p) => ({ p, r: rank(p) }))
+        .filter((x) => x.r >= 0)
+        .sort((a, b) => a.r - b.r)
+        .map((x) => x.p)
+    : people;
 
   const reload = () =>
     Promise.all([getPeopleSummaries(), getAllPersonMeta(), getRejectedMerges()]).then(
@@ -208,7 +280,41 @@ function People() {
           onPress: () => setMenuOpen(true),
         }}
       />
-      <ScrollView style={styles.body} contentContainerStyle={styles.scroll}>
+      {/* Find someone fast, and how to see everyone. */}
+      {people.length > 0 && (
+        <View style={styles.toolbar}>
+          <View style={styles.search}>
+            <Ionicons name="search" size={17} color="#7D8B8D" />
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search people"
+              placeholderTextColor="#8B9394"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
+          <View style={styles.viewSwitch}>
+            {(['grid', 'list'] as const).map((v) => (
+              <Pressable
+                key={v}
+                onPress={() => chooseView(v)}
+                style={[styles.viewBtn, view === v && styles.viewBtnOn]}
+                accessibilityLabel={v === 'grid' ? 'Faces' : 'Cards'}
+              >
+                <Ionicons
+                  name={v === 'grid' ? 'grid-outline' : 'list-outline'}
+                  size={18}
+                  color={view === v ? colors.white : colors.primary}
+                />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
+      <ScrollView style={styles.body} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
         {loaded && people.length === 0 && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="account-heart-outline" size={40} color="#AEB6B7" />
@@ -220,7 +326,7 @@ function People() {
           </View>
         )}
 
-        {duplicates.map((d) => (
+        {!q && duplicates.map((d) => (
           <View key={`${d.keep}|${d.merge}`} style={styles.mergeCard}>
             <View style={styles.mergeHeader}>
               <MaterialCommunityIcons name="account-multiple-outline" size={18} color={colors.teal} />
@@ -242,15 +348,32 @@ function People() {
           </View>
         ))}
 
-        {people.map((p) => (
-          <PersonCard
-            key={p.name}
-            person={p}
-            meta={meta[p.name]}
-            lastPlace={lastPlaceOf(p)}
-            lastNote={lastNoteOf(p)}
-          />
-        ))}
+        {view === 'grid' ? (
+          <View style={styles.grid}>
+            {shown.map((p) => (
+              <PersonTile key={p.name} person={p} meta={meta[p.name]} size={tileSize} query={query.trim()} />
+            ))}
+          </View>
+        ) : (
+          shown.map((p) => (
+            <PersonCard
+              key={p.name}
+              person={p}
+              meta={meta[p.name]}
+              lastPlace={lastPlaceOf(p)}
+              lastNote={lastNoteOf(p)}
+              query={query.trim()}
+            />
+          ))
+        )}
+
+        {/* Nobody by that name: offer to add them, named already. */}
+        {!!q && shown.length === 0 && (
+          <Pressable style={styles.noMatch} onPress={() => setAddOpen(true)}>
+            <Ionicons name="person-add-outline" size={20} color={colors.teal} />
+            <Text style={styles.noMatchText}>Add “{query.trim()}”</Text>
+          </Pressable>
+        )}
       </ScrollView>
 
       <ActionMenuSheet
@@ -288,8 +411,11 @@ function People() {
       <PersonEditSheet
         visible={addOpen}
         mode="add"
-        name=""
-        onSave={addPerson}
+        name={shown.length === 0 ? query.trim() : ''}
+        onSave={async (n, d) => {
+          await addPerson(n, d);
+          setQuery('');
+        }}
         onClose={() => setAddOpen(false)}
       />
 
@@ -307,7 +433,67 @@ function People() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.white },
   body: { flex: 1, backgroundColor: colors.pale },
-  scroll: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 120 },
+  scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
+
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 2,
+    backgroundColor: colors.pale,
+  },
+  search: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.white,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    height: 42,
+  },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 15, color: '#1B1B1B', paddingVertical: 0 },
+  viewSwitch: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 999, padding: 3 },
+  viewBtn: { width: 38, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
+  viewBtnOn: { backgroundColor: colors.primary },
+  matchBold: { fontFamily: fonts.bold, color: colors.primary },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 18 },
+  tile: { alignItems: 'center' },
+  tileRing: {
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  tileNewDot: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.accent,
+    borderWidth: 2,
+    borderColor: colors.white,
+  },
+  tileName: { fontFamily: fonts.regular, fontSize: 15, color: '#1B1B1B', marginTop: 8, textAlign: 'center', maxWidth: '100%' },
+  noMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginTop: 4,
+  },
+  noMatchText: { fontFamily: fonts.medium, fontSize: 15, color: colors.teal },
 
   // Sits above the list because it's a question, not a person — the user
   // answers it once and it disappears for good either way.
