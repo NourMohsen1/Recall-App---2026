@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -82,9 +82,12 @@ export default function SirCluster({
   slots,
   scale,
   onRemove,
+  onNote,
 }: {
   day: string;
   markers: ShownMarker[];
+  /** The user wrote (or cleared) the note on an icon. */
+  onNote: (marker: ShownMarker, note: string) => void;
   /** Free spots on the canvas, best first — one per icon. */
   slots: Spot[];
   /** The canvas zoom, so a drag follows the finger at any zoom. */
@@ -108,7 +111,6 @@ export default function SirCluster({
 
   const spotOf = (m: ShownMarker, i: number): Spot => saved[m.id] ?? slots[i] ?? slots[slots.length - 1] ?? { x: 40, y: 40 };
   const active = markers.find((m) => m.id === open) ?? null;
-  const activeSpot = active ? spotOf(active, markers.indexOf(active)) : null;
 
   return (
     <>
@@ -128,28 +130,12 @@ export default function SirCluster({
         />
       ))}
 
-      {/* Drawn last so it sits over the cards around it, right beside the
-          icon that was tapped. */}
-      {active && activeSpot && (
-        <View style={[styles.bubble, { left: activeSpot.x + SIR_SIZE + 10, top: activeSpot.y - 4 }]}>
-          <View style={styles.bubbleHeader}>
-            <MaterialCommunityIcons name={SIR_KINDS[active.kind].icon} size={18} color={colors.primary} />
-            <Text style={[styles.bubbleTitle, rtlIfArabic(active.label)]} numberOfLines={2}>
-              {active.label}
-            </Text>
-          </View>
-          <Text style={styles.bubbleSub}>{describe(active)}</Text>
-          <Pressable
-            onPress={() => {
-              setOpen(null);
-              onRemove(active);
-            }}
-            hitSlop={8}
-          >
-            <Text style={styles.bubbleRemove}>{active.recurring ? 'Remove from every year' : 'Remove'}</Text>
-          </Pressable>
-        </View>
-      )}
+      <SirWindow
+        marker={active}
+        onClose={() => setOpen(null)}
+        onSave={(note) => active && onNote(active, note)}
+        onRemove={() => active && onRemove(active)}
+      />
     </>
   );
 }
@@ -223,63 +209,135 @@ function SirIcon({
 
 /** The same markers on the day screen: a plain row of labelled icons rather
  *  than a floating grid, because this screen is a list, not a canvas. Both
- *  read one store, so removing an icon here removes it from the Timeline. */
+ *  read one store, so a note or a removal here shows on the Timeline too. */
 export function SirRow({
   markers,
   onAdd,
   onRemove,
+  onNote,
 }: {
   markers: ShownMarker[];
   onAdd: () => void;
   onRemove: (marker: ShownMarker) => void;
+  onNote: (marker: ShownMarker, note: string) => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const active = markers.find((m) => m.id === open) ?? null;
   return (
     <View style={styles.row}>
-      {markers.map((m) => {
-        const isOpen = open === m.id;
-        return (
-          <View key={m.id} style={styles.rowItem}>
-            <Pressable
-              onPress={() => setOpen(isOpen ? null : m.id)}
-              style={[styles.chip, isOpen && styles.chipOpen]}
-            >
-              <MaterialCommunityIcons
-                name={SIR_KINDS[m.kind].icon}
-                size={18}
-                color={isOpen ? colors.white : colors.primary}
-              />
-              <Text
-                style={[styles.chipLabel, isOpen && styles.chipLabelOpen, rtlIfArabic(m.label)]}
-                numberOfLines={1}
-              >
-                {m.label}
-              </Text>
-            </Pressable>
-            {isOpen && (
-              <View style={styles.chipDetail}>
-                <Text style={styles.bubbleSub}>{describe(m)}</Text>
-                <Pressable
-                  onPress={() => {
-                    setOpen(null);
-                    onRemove(m);
-                  }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.bubbleRemove}>
-                    {m.recurring ? 'Remove from every year' : 'Remove'}
-                  </Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        );
-      })}
+      {markers.map((m) => (
+        <Pressable key={m.id} onPress={() => setOpen(m.id)} style={styles.chip}>
+          <MaterialCommunityIcons name={SIR_KINDS[m.kind].icon} size={18} color={colors.primary} />
+          <Text style={[styles.chipLabel, rtlIfArabic(m.note ?? m.label)]} numberOfLines={1}>
+            {m.note ? `${m.label} · ${m.note}` : m.label}
+          </Text>
+        </Pressable>
+      ))}
       <Pressable onPress={onAdd} style={[styles.chip, styles.chipAdd]}>
         <MaterialCommunityIcons name="plus" size={18} color={colors.slate} />
         <Text style={[styles.chipLabel, { color: colors.slate }]}>Mark this day</Text>
       </Pressable>
+      <SirWindow
+        marker={active}
+        onClose={() => setOpen(null)}
+        onSave={(note) => active && onNote(active, note)}
+        onRemove={() => active && onRemove(active)}
+      />
     </View>
+  );
+}
+
+// What the note field asks, by kind — a nudge toward the one detail that
+// makes the icon worth having ("Payday" alone could be any money).
+const NOTE_HINT: Partial<Record<SirKind, string>> = {
+  payday: 'What was it? Salary, freelance, a refund…',
+  purchase: 'What did you buy?',
+  medicine: 'Which medicine?',
+  doctor: 'Which doctor, and what for?',
+  sick: 'What was it?',
+  travel: 'Where to?',
+  birthday: 'Whose? Any plans?',
+  anniversary: 'Of what?',
+  dinner: 'Where, and with whom?',
+  call: 'Who with, about what?',
+  study: 'Which exam or subject?',
+  work: 'What happened?',
+  workout: 'What did you do?',
+  celebration: 'What were you celebrating?',
+  car: 'What happened with the car?',
+  pet: 'What happened?',
+  family: 'What was it?',
+  holiday: 'Which holiday?',
+  home: 'What changed?',
+  achievement: 'What did you do?',
+};
+
+/** A small window over the screen — not a new page — for one icon: what
+ *  it is, a line of the user's own words about it, Done. */
+function SirWindow({
+  marker,
+  onClose,
+  onSave,
+  onRemove,
+}: {
+  marker: ShownMarker | null;
+  onClose: () => void;
+  onSave: (note: string) => void;
+  onRemove: () => void;
+}) {
+  const [text, setText] = useState('');
+  useEffect(() => setText(marker?.note ?? ''), [marker?.id, marker?.note]);
+
+  // Closing keeps what was typed — tapping outside is not "discard".
+  const close = () => {
+    if (marker && text.trim() !== (marker.note ?? '')) onSave(text);
+    onClose();
+  };
+
+  return (
+    <Modal visible={!!marker} transparent animationType="fade" onRequestClose={close}>
+      <KeyboardAvoidingView behavior="padding" style={styles.windowWrap}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={close} />
+        {marker && (
+          <View style={styles.window}>
+            <View style={styles.windowHead}>
+              <View style={styles.windowIcon}>
+                <MaterialCommunityIcons name={SIR_KINDS[marker.kind].icon} size={22} color={colors.white} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.bubbleTitle, rtlIfArabic(marker.label)]} numberOfLines={2}>
+                  {marker.label}
+                </Text>
+                <Text style={styles.bubbleSub}>{describe(marker)}</Text>
+              </View>
+            </View>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              placeholder={NOTE_HINT[marker.kind] ?? 'Add a note'}
+              placeholderTextColor="#9AA4A5"
+              style={[styles.noteInput, rtlIfArabic(text)]}
+              multiline
+              maxLength={140}
+            />
+            <View style={styles.windowActions}>
+              <Pressable
+                onPress={() => {
+                  onClose();
+                  onRemove();
+                }}
+                hitSlop={8}
+              >
+                <Text style={styles.bubbleRemove}>{marker.recurring ? 'Remove from every year' : 'Remove'}</Text>
+              </Pressable>
+              <Pressable onPress={close} style={styles.doneBtn}>
+                <Text style={styles.doneText}>Done</Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -340,24 +398,44 @@ const styles = StyleSheet.create({
   },
   // Tapped: the colours swap back, so it reads as selected.
   iconOpen: { backgroundColor: colors.white, borderColor: colors.primary },
-  bubble: {
-    position: 'absolute',
-    // Above every card, including one that was just moved to the top.
-    zIndex: 2000,
-    width: 200,
-    backgroundColor: colors.white,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#E1E7E8',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-    gap: 4,
-  },
   bubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  windowWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, backgroundColor: 'rgba(8,17,18,0.25)' },
+  window: {
+    backgroundColor: colors.white,
+    borderRadius: 22,
+    padding: 18,
+    gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  windowHead: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  windowIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  noteInput: {
+    minHeight: 64,
+    maxHeight: 120,
+    borderRadius: 14,
+    backgroundColor: '#EEF3F3',
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 12,
+    fontFamily: fonts.regular,
+    fontSize: 15,
+    color: colors.ink,
+    textAlignVertical: 'top',
+  },
+  windowActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  doneBtn: { backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 22 },
+  doneText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
   bubbleTitle: { flex: 1, color: colors.ink, fontFamily: fonts.semiBold, fontSize: 14 },
   bubbleSub: { color: colors.slate, fontFamily: fonts.regular, fontSize: 12 },
   bubbleRemove: {
@@ -378,7 +456,6 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#EEF3F3',
   },
-  chipOpen: { backgroundColor: colors.primary },
   chipAdd: {
     backgroundColor: 'transparent',
     borderWidth: 1,
@@ -386,8 +463,6 @@ const styles = StyleSheet.create({
     borderColor: colors.soft,
   },
   chipLabel: { color: colors.primary, fontFamily: fonts.medium, fontSize: 13, flexShrink: 1 },
-  chipLabelOpen: { color: colors.white },
-  chipDetail: { paddingHorizontal: 12, gap: 2 },
   scrim: { flex: 1, backgroundColor: 'rgba(8,17,18,0.35)' },
   sheet: {
     backgroundColor: colors.white,

@@ -30,6 +30,7 @@ import {
   getMarkersForDay,
   markDay,
   removeMarker,
+  setMarkerNote,
   type ShownMarker,
   type SirKind,
 } from '../../src/dayMarkers';
@@ -477,6 +478,10 @@ export default function Timeline() {
   };
   const removeSir = async (marker: ShownMarker) => {
     await removeMarker(dayKey, marker);
+    setMarkers(await getMarkersForDay(dayKey));
+  };
+  const noteSir = async (marker: ShownMarker, note: string) => {
+    await setMarkerNote(dayKey, marker, note);
     setMarkers(await getMarkersForDay(dayKey));
   };
 
@@ -1289,16 +1294,21 @@ export default function Timeline() {
                 slots={sirSlots}
                 scale={sc}
                 onRemove={removeSir}
+                onNote={noteSir}
               />
               </View>
             </Animated.View>
           </GestureDetector>
 
           {/* Marking the day — pinned to the screen's corner rather than
-              lost somewhere on the canvas. */}
-          <Pressable style={styles.markDay} onPress={() => setPickerOpen(true)} hitSlop={6}>
-            <Ionicons name="add" size={18} color={colors.white} />
-            <Text style={styles.markDayText}>Mark day</Text>
+              lost somewhere on the canvas. Just the "+", so it takes no room. */}
+          <Pressable
+            style={styles.markDay}
+            onPress={() => setPickerOpen(true)}
+            hitSlop={8}
+            accessibilityLabel="Mark this day"
+          >
+            <Ionicons name="add" size={24} color={colors.white} />
           </Pressable>
         </View>
 
@@ -1351,21 +1361,18 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 12,
-    flexDirection: 'row',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
     backgroundColor: colors.primary,
-    borderRadius: 999,
-    paddingVertical: 8,
-    paddingLeft: 10,
-    paddingRight: 14,
     shadowColor: '#0B2A2E',
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  markDayText: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
   rail: { width: 88, backgroundColor: colors.white, flexGrow: 0 },
   railCell: {
     minHeight: 70,

@@ -192,6 +192,7 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
   const marked = marks.length
     ? marks.map((m) => ({
         what: m.label,
+        note: m.note,
         kind: m.kind,
         repeats: m.recurring ? (m.recurring.every === 'year' ? 'every year' : 'every month') : undefined,
       }))

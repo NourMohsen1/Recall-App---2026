@@ -113,10 +113,20 @@ export type RecurringMarker = {
 };
 
 /** What a day actually shows: its own markers plus any repeat that lands on it. */
-export type ShownMarker = DayMarker & { recurring?: RecurringMarker };
+export type ShownMarker = DayMarker & {
+  recurring?: RecurringMarker;
+  /** The user's few words about it on this day — "salary", "freelance
+   *  from Omar". A repeating birthday gets its own note each year. */
+  note?: string;
+};
 
 const DAY_KEY = 'dayMarkers';
 const RECURRING_KEY = 'recurringMarkers';
+// Notes live apart from the markers, keyed by day and marker: a birthday
+// is one marker for every year, but "dinner at Zooba" belongs to one of them.
+const NOTES_KEY = 'markerNotes';
+type Notes = Record<string, string>;
+const noteKey = (dayKey: string, id: string) => `${dayKey}|${id}`;
 
 type MarkersByDay = Record<string, DayMarker[]>;
 
@@ -168,6 +178,12 @@ export async function getMarkersForDay(dayKey: string): Promise<ShownMarker[]> {
     shown.push({ id: r.id, kind: r.kind, label: r.label, source: r.source, recurring: r });
   }
 
+  const notes = await readJSON<Notes>(NOTES_KEY, {});
+  const withNote = (m: ShownMarker): ShownMarker => {
+    const note = notes[noteKey(dayKey, m.id)];
+    return note ? { ...m, note } : m;
+  };
+
   const recurringLabels = new Set(shown.map((s) => s.label.trim().toLowerCase()));
   for (const m of byDay[dayKey] ?? []) {
     // The same occasion twice under two icons — a cake for the birthday and
@@ -178,7 +194,27 @@ export async function getMarkersForDay(dayKey: string): Promise<ShownMarker[]> {
     if (shown.some((s) => sameMoment(s, m))) continue;
     shown.push(m);
   }
-  return shown;
+  return shown.map(withNote);
+}
+
+/** Every note, as "day|markerId" → words — for Ask, which reads all days. */
+export async function getAllMarkerNotes(): Promise<Record<string, string>> {
+  return readJSON<Notes>(NOTES_KEY, {});
+}
+
+export function markerNoteKey(dayKey: string, id: string): string {
+  return noteKey(dayKey, id);
+}
+
+/** Saves (or, when empty, clears) the note on one icon for one day. */
+export async function setMarkerNote(dayKey: string, marker: ShownMarker, note: string): Promise<void> {
+  const notes = await readJSON<Notes>(NOTES_KEY, {});
+  const k = noteKey(dayKey, marker.id);
+  const words = note.trim();
+  if (words) notes[k] = words;
+  else delete notes[k];
+  await AsyncStorage.setItem(NOTES_KEY, JSON.stringify(notes));
+  console.log(`[marker] note ${words ? 'saved' : 'cleared'} on ${marker.kind} for ${dayKey}`);
 }
 
 export async function addDayMarker(
@@ -242,6 +278,7 @@ export async function markDay(dayKey: string, kind: SirKind): Promise<void> {
 /** Take an icon off. A repeating one goes from every date it lands on —
  *  the user pressed remove on a birthday, not on one year of it. */
 export async function removeMarker(dayKey: string, marker: ShownMarker): Promise<void> {
+  if (marker.note) await setMarkerNote(dayKey, marker, '');
   if (marker.recurring) {
     const all = await getRecurringMarkers();
     await AsyncStorage.setItem(

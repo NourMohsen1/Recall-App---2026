@@ -1,6 +1,6 @@
 import { getAllAssumedMemories } from './assumedMemory';
 import { PLACES, WEEKDAYS } from './data';
-import { getAllDayMarkers, getRecurringMarkers, occursOn } from './dayMarkers';
+import { getAllDayMarkers, getAllMarkerNotes, getRecurringMarkers, markerNoteKey, occursOn } from './dayMarkers';
 import { getAllDayTags } from './dayTags';
 import { searchDays, type SearchDoc, type SearchHit } from './memorySearch';
 import { getLoggedMemories, shownMemories } from './memoryLog';
@@ -174,9 +174,15 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
   // copied onto every date they land on — that would put the same birthday
   // on dozens of days of context. They go in their own list instead; see
   // recurringBlock.
+  // With the user's note on it when there is one: "payday: Payday —
+  // freelance from Omar" is what makes the icon answer a question.
+  const markerNotes = await getAllMarkerNotes();
   for (const [key, list] of Object.entries(await getAllDayMarkers())) {
     const rec = get(key);
-    for (const m of list) rec.markers.push(`${m.kind}: ${m.label}`);
+    for (const m of list) {
+      const note = markerNotes[markerNoteKey(key, m.id)];
+      rec.markers.push(`${m.kind}: ${m.label}${note ? ` — ${note}` : ''}`);
+    }
   }
 
   return days;

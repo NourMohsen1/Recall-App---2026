@@ -14,6 +14,7 @@ import {
   getMarkersForDay,
   markDay,
   removeMarker,
+  setMarkerNote,
   type ShownMarker,
   type SirKind,
 } from '../../../src/dayMarkers';
@@ -136,6 +137,10 @@ function DayDetailScreen() {
   };
   const removeSir = async (marker: ShownMarker) => {
     await removeMarker(dayKey, marker);
+    setMarkers(await getMarkersForDay(dayKey));
+  };
+  const noteSir = async (marker: ShownMarker, note: string) => {
+    await setMarkerNote(dayKey, marker, note);
     setMarkers(await getMarkersForDay(dayKey));
   };
 
@@ -589,7 +594,7 @@ function DayDetailScreen() {
             ("took my medicine") is one of the reasons it exists. */}
         <View style={styles.divider} />
         <Text style={styles.placesTitle}>Moments</Text>
-        <SirRow markers={markers} onAdd={() => setPickerOpen(true)} onRemove={removeSir} />
+        <SirRow markers={markers} onAdd={() => setPickerOpen(true)} onRemove={removeSir} onNote={noteSir} />
         <SirPicker visible={pickerOpen} onPick={addSir} onClose={() => setPickerOpen(false)} />
 
         {/* Assumed Memory, maximized — deliberately its own section, well
