@@ -1,6 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  type SharedValue,
+} from 'react-native-reanimated';
+import * as Haptics from 'expo-haptics';
 
 import {
   SIR_KINDS,
@@ -14,22 +25,32 @@ import { colors, fonts } from '../theme';
 // Smart Icon Reminders, drawn on the Timeline canvas. See src/dayMarkers.ts
 // for what they are and where they come from.
 //
-// LAID OUT AS A SMALL GRID BELOW-LEFT OF THE DAY CARD, not scattered. That
-// corner is the one part of the canvas no connector passes through: the day
-// card's line to On This Day leaves from its bottom-centre, and everything
-// right of it belongs to Places. Icons placed anywhere else end up sitting on
-// a dashed line, which reads as if they were connected to something.
+// As in Nour's original Timeline design: solid teal circles with a white
+// icon, spread around the cards rather than packed into one corner — the
+// Timeline screen works out free spots between and beside the cards
+// (sirSlots in app/(tabs)/timeline.tsx). Like the cards, an icon can be
+// held and dragged anywhere, and stays where it was put on that day. The
+// "+" to add one lives on the screen itself, not on the canvas.
 
-const SIZE = 44;
-const GAP = 10;
-const COLUMNS = 3;
+export const SIR_SIZE = 54;
+const KEY = 'sirLayout';
 
-/** Where a grid slot sits, counted from the top-left of the cluster. */
-function slot(index: number, origin: { x: number; y: number }) {
-  return {
-    left: origin.x + (index % COLUMNS) * (SIZE + GAP),
-    top: origin.y + Math.floor(index / COLUMNS) * (SIZE + GAP),
-  };
+type Spot = { x: number; y: number };
+type Saved = Record<string, Record<string, Spot>>;
+
+async function readSaved(): Promise<Saved> {
+  try {
+    return JSON.parse((await AsyncStorage.getItem(KEY)) ?? '{}') as Saved;
+  } catch {
+    return {};
+  }
+}
+
+async function saveSpot(day: string, id: string, spot: Spot): Promise<void> {
+  const all = await readSaved();
+  all[day] = { ...(all[day] ?? {}), [id]: { x: Math.round(spot.x), y: Math.round(spot.y) } };
+  await AsyncStorage.setItem(KEY, JSON.stringify(all));
+  console.log(`[timeline] moved a moment icon on ${day}`);
 }
 
 const MONTHS = [
@@ -56,66 +77,63 @@ function describe(m: ShownMarker): string {
 }
 
 export default function SirCluster({
+  day,
   markers,
-  origin,
-  onAdd,
+  slots,
+  scale,
   onRemove,
 }: {
+  day: string;
   markers: ShownMarker[];
-  /** Top-left of the grid, in canvas coordinates. */
-  origin: { x: number; y: number };
-  onAdd: () => void;
+  /** Free spots on the canvas, best first — one per icon. */
+  slots: Spot[];
+  /** The canvas zoom, so a drag follows the finger at any zoom. */
+  scale: SharedValue<number>;
   onRemove: (marker: ShownMarker) => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Record<string, Spot>>({});
+  useEffect(() => {
+    let live = true;
+    setOpen(null);
+    readSaved().then((all) => live && setSaved(all[day] ?? {}));
+    return () => {
+      live = false;
+    };
+  }, [day]);
+
+  useEffect(() => {
+    if (markers.length) console.log(`[timeline] ${markers.length} moment icon(s) on ${day}, ${slots.length} free spot(s)`);
+  }, [markers.length, slots.length, day]);
+
+  const spotOf = (m: ShownMarker, i: number): Spot => saved[m.id] ?? slots[i] ?? slots[slots.length - 1] ?? { x: 40, y: 40 };
   const active = markers.find((m) => m.id === open) ?? null;
-  const activeIndex = active ? markers.indexOf(active) : -1;
+  const activeSpot = active ? spotOf(active, markers.indexOf(active)) : null;
 
   return (
     <>
       {markers.map((m, i) => (
-        <Pressable
+        <SirIcon
           key={m.id}
+          marker={m}
+          spot={spotOf(m, i)}
+          open={open === m.id}
+          scale={scale}
           onPress={() => setOpen(open === m.id ? null : m.id)}
-          hitSlop={4}
-          style={[styles.icon, slot(i, origin), open === m.id && styles.iconOpen]}
-        >
-          <MaterialCommunityIcons
-            name={SIR_KINDS[m.kind].icon}
-            size={22}
-            color={open === m.id ? colors.white : colors.primary}
-          />
-        </Pressable>
+          onMoved={(spot) => {
+            setOpen(null);
+            setSaved((prev) => ({ ...prev, [m.id]: spot }));
+            saveSpot(day, m.id, spot).catch((e) => console.warn('[timeline] could not remember an icon:', e));
+          }}
+        />
       ))}
 
-      <Pressable
-        onPress={onAdd}
-        hitSlop={4}
-        style={[styles.icon, styles.add, slot(markers.length, origin)]}
-      >
-        <MaterialCommunityIcons name="plus" size={20} color={colors.slate} />
-      </Pressable>
-
-      {/* Drawn last so it sits over the cards around it. Right beside the
-          icon that was tapped — anchoring it to the edge of the whole grid
-          left a gap when the day had one or two icons, and pushed the
-          bubble off the right of the screen. */}
-      {active && (
-        <View
-          style={[
-            styles.bubble,
-            {
-              left: slot(activeIndex, origin).left + SIZE + 10,
-              top: slot(activeIndex, origin).top - 6,
-            },
-          ]}
-        >
+      {/* Drawn last so it sits over the cards around it, right beside the
+          icon that was tapped. */}
+      {active && activeSpot && (
+        <View style={[styles.bubble, { left: activeSpot.x + SIR_SIZE + 10, top: activeSpot.y - 4 }]}>
           <View style={styles.bubbleHeader}>
-            <MaterialCommunityIcons
-              name={SIR_KINDS[active.kind].icon}
-              size={18}
-              color={colors.primary}
-            />
+            <MaterialCommunityIcons name={SIR_KINDS[active.kind].icon} size={18} color={colors.primary} />
             <Text style={[styles.bubbleTitle, rtlIfArabic(active.label)]} numberOfLines={2}>
               {active.label}
             </Text>
@@ -128,13 +146,78 @@ export default function SirCluster({
             }}
             hitSlop={8}
           >
-            <Text style={styles.bubbleRemove}>
-              {active.recurring ? 'Remove from every year' : 'Remove'}
-            </Text>
+            <Text style={styles.bubbleRemove}>{active.recurring ? 'Remove from every year' : 'Remove'}</Text>
           </Pressable>
         </View>
       )}
     </>
+  );
+}
+
+/** One icon: tap to say what it is, hold to move it. */
+function SirIcon({
+  marker,
+  spot,
+  open,
+  scale,
+  onPress,
+  onMoved,
+}: {
+  marker: ShownMarker;
+  spot: Spot;
+  open: boolean;
+  scale: SharedValue<number>;
+  onPress: () => void;
+  onMoved: (spot: Spot) => void;
+}) {
+  const dx = useSharedValue(0);
+  const dy = useSharedValue(0);
+  const lift = useSharedValue(0);
+  // The new spot is drawn by its left/top once saved; the drag offset goes
+  // back to zero in the same frame so it doesn't jump.
+  useEffect(() => {
+    dx.value = 0;
+    dy.value = 0;
+  }, [spot.x, spot.y, dx, dy]);
+
+  const tick = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+  const drop = (x: number, y: number) => onMoved({ x: spot.x + x, y: spot.y + y });
+
+  const tap = Gesture.Tap().onEnd((_e, ok) => {
+    if (ok) runOnJS(onPress)();
+  });
+  const drag = Gesture.Pan()
+    .activateAfterLongPress(320)
+    .onStart(() => {
+      lift.value = withSpring(1, { damping: 16, stiffness: 260 });
+      runOnJS(tick)();
+    })
+    .onUpdate((e) => {
+      const s = scale.value || 1;
+      dx.value = e.translationX / s;
+      dy.value = e.translationY / s;
+    })
+    .onFinalize((_e, success) => {
+      lift.value = withTiming(0, { duration: 180 });
+      if (success) runOnJS(drop)(dx.value, dy.value);
+    });
+
+  const style = useAnimatedStyle(() => ({
+    transform: [{ translateX: dx.value }, { translateY: dy.value }, { scale: 1 + 0.12 * lift.value }],
+    zIndex: lift.value > 0.01 ? 1000 : 5,
+    shadowOpacity: 0.18 + 0.15 * lift.value,
+  }));
+
+  return (
+    <GestureDetector gesture={Gesture.Exclusive(drag, tap)}>
+      <Animated.View style={[styles.icon, { left: spot.x, top: spot.y }, open && styles.iconOpen, style]}>
+        <MaterialCommunityIcons
+          name={SIR_KINDS[marker.kind].icon}
+          size={26}
+          color={open ? colors.primary : colors.white}
+        />
+      </Animated.View>
+    </GestureDetector>
   );
 }
 
@@ -237,34 +320,30 @@ export function SirPicker({
 }
 
 const styles = StyleSheet.create({
+  // Solid teal with a white icon and a white edge, so a small thing reads
+  // clearly on the dotted canvas (Nour's original design, larger and
+  // inverted from the first build's white circles).
   icon: {
     position: 'absolute',
-    width: SIZE,
-    height: SIZE,
-    borderRadius: SIZE / 2,
-    backgroundColor: colors.white,
-    borderWidth: 1,
-    borderColor: '#E1E7E8',
+    width: SIR_SIZE,
+    height: SIR_SIZE,
+    borderRadius: SIR_SIZE / 2,
+    backgroundColor: colors.primary,
+    borderWidth: 2.5,
+    borderColor: colors.white,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
+    shadowColor: '#0B2A2E',
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
   },
-  iconOpen: { backgroundColor: colors.primary, borderColor: colors.primary },
-  // Quieter than a real marker, so an empty day doesn't look like it has
-  // something on it.
-  add: {
-    backgroundColor: 'transparent',
-    borderStyle: 'dashed',
-    borderColor: colors.soft,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
+  // Tapped: the colours swap back, so it reads as selected.
+  iconOpen: { backgroundColor: colors.white, borderColor: colors.primary },
   bubble: {
     position: 'absolute',
+    // Above every card, including one that was just moved to the top.
+    zIndex: 2000,
     width: 200,
     backgroundColor: colors.white,
     borderRadius: 14,

@@ -16,7 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { CARD_IDS, Connectors, DraggableCard, IN_SLOT, restoreOffsets, useCardOffsets, type CardId, type Link } from '../../src/components/CanvasCards';
+import { CARD_IDS, Connectors, DraggableCard, IN_SLOT, restoreOffsets, useCardOffsets, type CardId, type Link, type Shift } from '../../src/components/CanvasCards';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
@@ -25,7 +25,7 @@ import PlaceTile from '../../src/components/PlaceTile';
 import ReadDayCard from '../../src/components/ReadDayCard';
 import { mayReadDay, onPhotoReadingChanged } from '../../src/photoReading';
 import { askToReadDay, offerAllIfTime } from '../../src/readDayPrompt';
-import SirCluster, { SirPicker } from '../../src/components/SirCluster';
+import SirCluster, { SIR_SIZE, SirPicker } from '../../src/components/SirCluster';
 import {
   getMarkersForDay,
   markDay,
@@ -217,17 +217,13 @@ const CARD_POS = {
 // between.
 const PLACE_TILE = 112;
 
-const SIR_X = 24;
 /** Space between cards that sit one above the other. */
 const CARD_GAP = 44;
-const SIR_GAP = 22;
 // On an empty or upcoming day there is only the placeholder card (left 40,
-// top 420), so the icons go just ABOVE it. Both other spots were tried on a
-// phone-sized screen and failed: under it they sat level with the app's big
-// "+" button, crowded and half hidden; beside it they were past the right
-// edge of what a phone shows before panning, so an upcoming birthday simply
-// wasn't visible.
-const EMPTY_DAY_SIR = { x: 40, y: 362 };
+// top 420), so its moment icons go in a row just ABOVE it. Under it they
+// sat level with the app's big "+" button; beside it they were past the
+// right edge of what a phone shows before panning.
+const EMPTY_DAY_SIR_Y = 350;
 
 const MAX_SCALE = 2.5;
 const MIN_SCALE = 0.2;
@@ -281,8 +277,19 @@ export default function Timeline() {
   const [cardH, setCardH] = useState<Record<string, number>>({});
   // Where the user moved each card, per day (src/components/CanvasCards.tsx).
   const offsets = useCardOffsets();
+  // Where the user moved each card, kept as plain numbers too, so the
+  // moment icons' free spots follow the cards (the animated copy can't be
+  // read while the screen is drawn).
+  const [cardShift, setCardShift] = useState<Shift>({});
+  const onCardMoved = useCallback(
+    (id: CardId, x: number, y: number) => setCardShift((prev) => ({ ...prev, [id]: { x, y } })),
+    [],
+  );
   useEffect(() => {
-    restoreOffsets(dateKey(dateWithOffset(selected)), offsets).catch(() => {});
+    setCardShift({});
+    restoreOffsets(dateKey(dateWithOffset(selected)), offsets)
+      .then(setCardShift)
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected]);
   const measure = (key: string) => (e: LayoutChangeEvent) => {
@@ -744,9 +751,9 @@ export default function Timeline() {
     if (showPeople) y += h('people', 160) + CARD_GAP;
     const day = { x: LEFT, y, w: CARD_POS.day.w };
     if (showDayCard) y += h('day', 220);
-    // The day's moment icons hang under the day card (3 across).
-    const sirRows = Math.ceil((markers.length + 1) / 3);
-    const leftBottom = (showDayCard ? y + SIR_GAP : y) + sirRows * 54 - 10;
+    // Room under the day card for a moment icon, when a day has enough of
+    // them to need that spot (see sirSlots below).
+    const leftBottom = showDayCard && markers.length > 3 ? y + 22 + SIR_SIZE : y;
     const leftW = Math.max(showPeople ? peopleW + 10 : 0, showDayCard ? day.w : 0);
 
     const rightX = showPeople || showDayCard ? LEFT + leftW + 70 : LEFT;
@@ -793,17 +800,67 @@ export default function Timeline() {
   const drag = {
     day: dateKey(dateWithOffset(selected)),
     offsets,
+    onMoved: onCardMoved,
     scale: sc,
     // Anywhere on the canvas, short of its very edge.
     bounds: { minX: 20 - MARGIN, minY: 20 - MARGIN, maxX: CANVAS_W + MARGIN - 20, maxY: CANVAS_H + MARGIN - 20 },
   };
-  // The day's moment icons hang under the day card, so they move with it.
-  const sirFollows = hasContent && showDayCard;
-  const sirFollow = useAnimatedStyle(() => ({
-    transform: sirFollows
-      ? [{ translateX: offsets.day.x.value }, { translateY: offsets.day.y.value }]
-      : [{ translateX: 0 }, { translateY: 0 }],
-  }));
+
+  // Where the moment icons go by default: spread around the cards, as in
+  // the original design — between the two columns, beside On This Day, to
+  // the right of the photos, under the day — never on a card, never on
+  // each other. Each icon can then be dragged anywhere (SirCluster).
+  const sirSlots = (() => {
+    const S = SIR_SIZE;
+    if (!hasContent) return Array.from({ length: 8 }, (_, i) => ({ x: 40 + i * (S + 14), y: EMPTY_DAY_SIR_Y }));
+    const shownIds: [CardId, boolean][] = [
+      ['people', showPeople],
+      ['photo', showPhotoLib],
+      ['day', showDayCard],
+      ['places', showPlaces],
+      ['otd', otdShown],
+      ['assumed', showAssumedSlot],
+    ];
+    // Where each card is now, including where the user dragged it.
+    const at = (id: CardId, fallbackH: number) => ({
+      x: pos[id].x + (cardShift[id]?.x ?? 0),
+      y: pos[id].y + (cardShift[id]?.y ?? 0),
+      w: pos[id].w,
+      h: cardH[id] ?? fallbackH,
+    });
+    const cards = shownIds.filter(([, on]) => on).map(([id]) => at(id, 180));
+    const leftCol = [showPeople && at('people', 160), showDayCard && at('day', 220)].filter(Boolean) as { x: number; w: number }[];
+    const leftRight = Math.max(0, ...leftCol.map((c) => c.x + c.w));
+    const upper = [showPhotoLib && at('photo', 190), showPlaces && at('places', 190)].filter(Boolean) as { x: number; y: number; w: number; h: number }[];
+    const upperRight = Math.max(leftRight, ...upper.map((c) => c.x + c.w));
+    const row = [otdShown && at('otd', 200), showAssumedSlot && at('assumed', 160)].filter(Boolean) as { x: number; y: number; w: number; h: number }[];
+    const rowRight = Math.max(0, ...row.map((c) => c.x + c.w));
+    const bottom = Math.max(...cards.map((c) => c.y + c.h));
+    const top = Math.min(...cards.map((c) => c.y));
+
+    const candidates: { x: number; y: number }[] = [];
+    // Between the two columns, near the top.
+    if (leftCol.length && upper.length) candidates.push({ x: (leftRight + Math.min(...upper.map((c) => c.x))) / 2 - S / 2, y: top + 8 });
+    // Left of On This Day.
+    if (otdShown) candidates.push({ x: at('otd', 200).x - S - 24, y: at('otd', 200).y + 30 });
+    // Right of the photos and places.
+    if (upper.length) candidates.push({ x: upperRight + 28, y: upper[upper.length - 1].y + 24 });
+    // Under the day card, clear of its line down to On This Day.
+    if (showDayCard) candidates.push({ x: at('day', 220).x + 6, y: at('day', 220).y + (cardH.day ?? 220) + 22 });
+    // Right of the bottom row.
+    if (row.length) candidates.push({ x: rowRight + 28, y: row[0].y + 30 });
+    // Top right.
+    candidates.push({ x: upperRight + 28, y: top + 8 });
+    // Then a row under everything, for a day with many.
+    for (let i = 0; i < 8; i++) candidates.push({ x: 40 + i * (S + 24), y: bottom + 40 });
+
+    const clear = (p: { x: number; y: number }, others: { x: number; y: number }[]) =>
+      cards.every((c) => p.x + S + 4 <= c.x || p.x >= c.x + c.w + 4 || p.y + S + 4 <= c.y || p.y >= c.y + c.h + 4) &&
+      others.every((o) => Math.abs(o.x - p.x) > S + 6 || Math.abs(o.y - p.y) > S + 6);
+    const out: { x: number; y: number }[] = [];
+    for (const c of candidates) if (clear(c, out)) out.push(c);
+    return out;
+  })();
 
   // One flat rail tile — a month (or, nested inside an opened year, still a
   // month) collapsed to its label, or expanded into a small header plus its
@@ -1226,27 +1283,23 @@ export default function Timeline() {
                   your medicine, and an upcoming birthday has to show on a
                   day that hasn't happened yet. Drawn last so an open bubble
                   sits over the cards beside it. */}
-              <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, sirFollow]}>
               <SirCluster
+                day={dateKey(dateWithOffset(selected))}
                 markers={markers}
-                origin={
-                  !hasContent
-                    ? EMPTY_DAY_SIR
-                    : {
-                        x: SIR_X,
-                        y:
-                          showDayCard && cardH.day
-                            ? pos.day.y + cardH.day + SIR_GAP
-                            : pos.day.y,
-                      }
-                }
-                onAdd={() => setPickerOpen(true)}
+                slots={sirSlots}
+                scale={sc}
                 onRemove={removeSir}
               />
-              </Animated.View>
               </View>
             </Animated.View>
           </GestureDetector>
+
+          {/* Marking the day — pinned to the screen's corner rather than
+              lost somewhere on the canvas. */}
+          <Pressable style={styles.markDay} onPress={() => setPickerOpen(true)} hitSlop={6}>
+            <Ionicons name="add" size={18} color={colors.white} />
+            <Text style={styles.markDayText}>Mark day</Text>
+          </Pressable>
         </View>
 
         <AddPlaceSheet
@@ -1294,6 +1347,25 @@ const styles = StyleSheet.create({
 
   bodyRow: { flex: 1, flexDirection: 'row', backgroundColor: colors.white },
   viewport: { flex: 1, overflow: 'hidden' },
+  markDay: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primary,
+    borderRadius: 999,
+    paddingVertical: 8,
+    paddingLeft: 10,
+    paddingRight: 14,
+    shadowColor: '#0B2A2E',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4,
+  },
+  markDayText: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
   rail: { width: 88, backgroundColor: colors.white, flexGrow: 0 },
   railCell: {
     minHeight: 70,

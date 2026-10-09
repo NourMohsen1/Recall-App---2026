@@ -70,14 +70,18 @@ async function readAll(): Promise<Saved> {
   }
 }
 
+export type Shift = Partial<Record<CardId, { x: number; y: number }>>;
+
 /** Puts every card where the user left it on that day (or where it
- *  belongs, if never moved). */
-export async function restoreOffsets(day: string, offsets: Offsets): Promise<void> {
+ *  belongs, if never moved), and says where that is — for laying things
+ *  out around the cards without reading the animation while drawing. */
+export async function restoreOffsets(day: string, offsets: Offsets): Promise<Shift> {
   const saved = (await readAll())[day] ?? {};
   for (const id of CARD_IDS) {
     offsets[id].x.value = saved[id]?.x ?? 0;
     offsets[id].y.value = saved[id]?.y ?? 0;
   }
+  return saved;
 }
 
 async function saveOffset(day: string, id: CardId, x: number, y: number): Promise<void> {
@@ -95,8 +99,11 @@ export function DraggableCard({
   scale,
   bounds,
   onLayout,
+  onMoved,
   children,
 }: {
+  /** After a card is put down, with how far it now sits from its place. */
+  onMoved?: (id: CardId, x: number, y: number) => void;
   onLayout?: (e: LayoutChangeEvent) => void;
   id: CardId;
   day: string;
@@ -115,6 +122,7 @@ export function DraggableCard({
   const tick = () => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   const save = (x: number, y: number) => {
     saveOffset(day, id, x, y).catch((e) => console.warn('[timeline] could not remember where a card went:', e));
+    onMoved?.(id, x, y);
   };
 
   const drag = Gesture.Pan()
