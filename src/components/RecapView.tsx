@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
 import PhotoSlideshow from './PhotoSlideshow';
-import RecapCompany from './RecapCompany';
+import DayCompany from './DayCompany';
 import {
   periodPhotos,
   recapLine,
@@ -154,20 +154,14 @@ export default function RecapView({
                   ) : (
                     <Text style={styles.rowText}>{r.line?.summary}</Text>
                   )}
+                  {/* A week's days each say who and where — not the whole
+                      week's people and places piled up at the end. */}
+                  {kind === 'week' && <DayCompany day={r.unit.from} />}
                   {i < shown.length - 1 && <View style={styles.separator} />}
                 </View>
               </Pressable>
             ))}
           </>
-        )}
-
-        {/* Who and where, for a week only for now. */}
-        {kind === 'week' && rows !== null && (
-          <RecapCompany
-            from={period.units[0].from}
-            to={period.units[period.units.length - 1].to}
-            style={{ marginLeft: DOT_LEFT }}
-          />
         )}
 
         {/* One line at the end whenever any of this leaned on a guess: what
