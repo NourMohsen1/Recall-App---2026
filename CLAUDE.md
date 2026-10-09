@@ -319,6 +319,11 @@ Each of these cost real time once.
   through `toLocation()` (`src/places.ts`). Stored as text they look right
   and break every calculation — the first places sweep filed correctly and
   then failed to name a single place.
+- **An animation follows only the shared values its own code reads.**
+  Reached through a helper function, a value's changes go unseen: the
+  Timeline's dashed lines stayed where a dragged card used to be. Read
+  them in the `useDerivedValue` / `useAnimatedStyle` body itself
+  (`src/components/CanvasCards.tsx`).
 - **`grep` treats `src/peopleTags.ts` as binary** and silently skips it. Use
   `grep -a`.
 

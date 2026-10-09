@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { CARD_IDS, Connectors, DraggableCard, IN_SLOT, restoreOffsets, useCardOffsets, type CardId, type Link } from '../../src/components/CanvasCards';
 import Svg, { Circle, Defs, Pattern, Rect } from 'react-native-svg';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import PeopleEditor from '../../src/components/PeopleEditor';
@@ -228,47 +229,6 @@ const SIR_GAP = 22;
 // wasn't visible.
 const EMPTY_DAY_SIR = { x: 40, y: 362 };
 
-type Point = { x: number; y: number };
-
-// Dashed elbow connector between two card-edge midpoints, with a dot at each
-// end. `axis` is the direction the line leaves the first card: 'v' exits
-// through a top/bottom edge, 'h' through a left/right edge.
-function Elbow({ from, to, axis }: { from: Point; to: Point; axis: 'v' | 'h' }) {
-  const segs: { x: number; y: number; len: number; vertical: boolean }[] = [];
-  if (axis === 'v') {
-    const ym = (from.y + to.y) / 2;
-    segs.push({ x: from.x, y: Math.min(from.y, ym), len: Math.abs(ym - from.y), vertical: true });
-    segs.push({ x: Math.min(from.x, to.x), y: ym, len: Math.abs(to.x - from.x), vertical: false });
-    segs.push({ x: to.x, y: Math.min(ym, to.y), len: Math.abs(to.y - ym), vertical: true });
-  } else {
-    const xm = (from.x + to.x) / 2;
-    segs.push({ x: Math.min(from.x, xm), y: from.y, len: Math.abs(xm - from.x), vertical: false });
-    segs.push({ x: xm, y: Math.min(from.y, to.y), len: Math.abs(to.y - from.y), vertical: true });
-    segs.push({ x: Math.min(xm, to.x), y: to.y, len: Math.abs(to.x - xm), vertical: false });
-  }
-  return (
-    <>
-      {segs
-        .filter((s) => s.len > 0.5)
-        .map((s, i) => (
-          <View
-            key={i}
-            style={[
-              styles.dash,
-              s.vertical
-                ? { left: s.x - 1, top: s.y, height: s.len, borderLeftWidth: 2 }
-                : { left: s.x, top: s.y - 1, width: s.len, borderTopWidth: 2 },
-            ]}
-          />
-        ))}
-      <View style={[styles.dashDot, { left: from.x - 5, top: from.y - 5 }]} />
-      <View style={[styles.dashDot, { left: to.x - 5, top: to.y - 5 }]} />
-    </>
-  );
-}
-
-
-
 const MAX_SCALE = 2.5;
 const MIN_SCALE = 0.2;
 
@@ -319,6 +279,12 @@ export default function Timeline() {
 
   // Measured card heights, used to anchor connectors to edge midpoints.
   const [cardH, setCardH] = useState<Record<string, number>>({});
+  // Where the user moved each card, per day (src/components/CanvasCards.tsx).
+  const offsets = useCardOffsets();
+  useEffect(() => {
+    restoreOffsets(dateKey(dateWithOffset(selected)), offsets).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected]);
   const measure = (key: string) => (e: LayoutChangeEvent) => {
     const h = Math.round(e.nativeEvent.layout.height);
     setCardH((prev) => (prev[key] === h ? prev : { ...prev, [key]: h }));
@@ -798,14 +764,46 @@ export default function Timeline() {
     // side, below everything above them.
     const rowY = Math.max(leftBottom, rightBottom - (showPlaces || showPhotoLib ? 0 : CARD_GAP)) + CARD_GAP;
     const otd = { x: LEFT + 150, y: rowY, w: CARD_POS.otd.w };
-    const otdShown = !otdFuture && otdTopics.length > 0;
+    const otdOn = !otdFuture && otdTopics.length > 0;
     const assumed = {
-      x: otdShown ? otd.x + otd.w + 30 : Math.max(placesCard.x, LEFT + 150),
+      x: otdOn ? otd.x + otd.w + 30 : Math.max(placesCard.x, LEFT + 150),
       y: rowY,
       w: CARD_POS.assumed.w,
     };
     return { people: peopleCard, photo, day, places: placesCard, otd, assumed };
   })();
+
+  // Which cards are joined, and where each one is, for the dashed lines
+  // and for dragging (src/components/CanvasCards.tsx).
+  const otdShown = !otdFuture && otdTopics.length > 0;
+  const rects: Partial<Record<CardId, { x: number; y: number; w: number; h?: number }>> = Object.fromEntries(
+    CARD_IDS.map((id) => [id, { ...pos[id], h: cardH[id] }]),
+  );
+  const links: Link[] = [];
+  if (showPhotoLib && showPlaces) links.push({ from: 'photo', to: 'places' });
+  if (showDayCard && showPlaces) links.push({ from: 'day', to: 'places' });
+  if (showDayCard && otdShown) links.push({ from: 'day', to: 'otd' });
+  // The day's photos lead to what Recall guessed from them.
+  if (showAssumedSlot && (showPlaces || showPhotoLib)) links.push({ from: showPlaces ? 'places' : 'photo', to: 'assumed' });
+  // No notes that day: People is the hub instead, so every card is still
+  // joined to the rest.
+  if (!showDayCard && showPeople && otdShown) links.push({ from: 'people', to: 'otd' });
+  if (!showDayCard && showPeople && (showPlaces || showPhotoLib)) links.push({ from: 'people', to: showPhotoLib ? 'photo' : 'places' });
+  if (showPeople && showDayCard) links.push({ from: 'people', to: 'day' });
+  const drag = {
+    day: dateKey(dateWithOffset(selected)),
+    offsets,
+    scale: sc,
+    // Anywhere on the canvas, short of its very edge.
+    bounds: { minX: 20 - MARGIN, minY: 20 - MARGIN, maxX: CANVAS_W + MARGIN - 20, maxY: CANVAS_H + MARGIN - 20 },
+  };
+  // The day's moment icons hang under the day card, so they move with it.
+  const sirFollows = hasContent && showDayCard;
+  const sirFollow = useAnimatedStyle(() => ({
+    transform: sirFollows
+      ? [{ translateX: offsets.day.x.value }, { translateY: offsets.day.y.value }]
+      : [{ translateX: 0 }, { translateY: 0 }],
+  }));
 
   // One flat rail tile — a month (or, nested inside an opened year, still a
   // month) collapsed to its label, or expanded into a small header plus its
@@ -924,80 +922,25 @@ export default function Timeline() {
 
               {hasContent ? (
                 <>
-                  {/* Connectors — anchored to card-edge midpoints once measured */}
-                  {showPhotoLib && showPlaces && cardH.photo && (
-                    <Elbow
-                      axis="v"
-                      from={{ x: pos.photo.x + pos.photo.w / 2, y: pos.photo.y + cardH.photo }}
-                      to={{ x: pos.places.x + pos.places.w / 2, y: pos.places.y }}
-                    />
-                  )}
-                  {showDayCard && showPlaces && cardH.day && cardH.places && (
-                    <Elbow
-                      axis="h"
-                      from={{ x: pos.day.x + pos.day.w, y: pos.day.y + cardH.day / 2 }}
-                      to={{ x: pos.places.x, y: pos.places.y + cardH.places / 2 }}
-                    />
-                  )}
-                  {showDayCard && cardH.day && (
-                    <Elbow
-                      axis="v"
-                      from={{ x: pos.day.x + pos.day.w / 2, y: pos.day.y + cardH.day }}
-                      to={{ x: pos.otd.x + pos.otd.w / 2, y: pos.otd.y }}
-                    />
-                  )}
-                  {/* The day's photos lead to what Recall guessed from them —
-                      the guess card itself stays dashed and tinted. */}
-                  {showAssumedSlot && (showPlaces ? !!cardH.places : showPhotoLib && !!cardH.photo) && (
-                    <Elbow
-                      axis="v"
-                      from={
-                        showPlaces
-                          ? { x: pos.places.x + pos.places.w / 2, y: pos.places.y + cardH.places }
-                          : { x: pos.photo.x + pos.photo.w / 2, y: pos.photo.y + cardH.photo }
-                      }
-                      to={{ x: pos.assumed.x + pos.assumed.w / 2, y: pos.assumed.y }}
-                    />
-                  )}
-                  {/* No notes that day: People is the hub instead, so every
-                      card is still joined to the rest. */}
-                  {!showDayCard && showPeople && !otdFuture && otdTopics.length > 0 && cardH.people && (
-                    <Elbow
-                      axis="v"
-                      from={{ x: pos.people.x + pos.people.w / 2, y: pos.people.y + cardH.people }}
-                      to={{ x: pos.otd.x + pos.otd.w / 2, y: pos.otd.y }}
-                    />
-                  )}
-                  {!showDayCard && showPeople && (showPlaces || showPhotoLib) && cardH.people && (
-                    <Elbow
-                      axis="h"
-                      from={{ x: pos.people.x + pos.people.w, y: pos.people.y + cardH.people / 2 }}
-                      to={
-                        showPhotoLib && cardH.photo
-                          ? { x: pos.photo.x, y: pos.photo.y + cardH.photo / 2 }
-                          : { x: pos.places.x, y: pos.places.y + (cardH.places ?? 0) / 2 }
-                      }
-                    />
-                  )}
-                  {showPeople && showDayCard && cardH.people && (
-                    <Elbow
-                      axis="v"
-                      from={{ x: pos.people.x + pos.people.w / 2, y: pos.people.y + cardH.people }}
-                      to={{ x: pos.day.x + pos.day.w / 2, y: pos.day.y }}
-                    />
-                  )}
+                  {/* Connectors — one smooth dashed line per pair of cards,
+                      following a card while it's dragged. */}
+                  <Connectors
+                    links={links}
+                    rects={rects}
+                    offsets={offsets}
+                    origin={{ x: -MARGIN, y: -MARGIN }}
+                    size={{ w: FULL_W, h: FULL_H }}
+                  />
 
                   {/* People card — names the user has manually tagged for
                       this day (no face recognition; a fast, correctable habit
                       instead). Only appears once someone has been tagged. */}
                   {showPeople && (
+                    <DraggableCard id="people" rect={rects.people!} {...drag}>
                     <View
                       ref={peopleCard}
                       onLayout={measure('people')}
-                      style={[
-                        styles.card,
-                        { left: pos.people.x, top: pos.people.y, width: pos.people.w },
-                      ]}
+                      style={[styles.card, IN_SLOT]}
                     >
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>People</Text>
@@ -1017,17 +960,13 @@ export default function Timeline() {
                         />
                       </View>
                     </View>
+                    </DraggableCard>
                   )}
 
                   {/* Photo Library card — only appears when real photos are logged */}
                   {showPhotoLib && (
-                    <View
-                      onLayout={measure('photo')}
-                      style={[
-                        styles.card,
-                        { left: pos.photo.x, top: pos.photo.y, width: pos.photo.w },
-                      ]}
-                    >
+                    <DraggableCard id="photo" rect={rects.photo!} {...drag}>
+                    <View onLayout={measure('photo')} style={[styles.card, IN_SLOT]}>
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>Photo Library</Text>
                         <MaterialCommunityIcons
@@ -1063,16 +1002,15 @@ export default function Timeline() {
                         </Text>
                       </View>
                     </View>
+                    </DraggableCard>
                   )}
 
                   {/* Day summary card — real logged text/voice takes priority */}
                   {showDayCard && (
+                    <DraggableCard id="day" rect={rects.day!} {...drag}>
                     <Pressable
                       onLayout={measure('day')}
-                      style={[
-                        styles.dayCard,
-                        { left: pos.day.x, top: pos.day.y, width: pos.day.w },
-                      ]}
+                      style={[styles.dayCard, IN_SLOT]}
                       onPress={() =>
                         router.push(`/day/${selected}` as Parameters<typeof router.push>[0])
                       }
@@ -1117,6 +1055,7 @@ export default function Timeline() {
                         </View>
                       )}
                     </Pressable>
+                    </DraggableCard>
                   )}
 
                   {/* Places card — where the day's photos were actually taken,
@@ -1124,13 +1063,8 @@ export default function Timeline() {
                       the user's own photo from there (src/places.ts), never
                       an address. Only appears once there is a real place. */}
                   {showPlaces && (
-                    <View
-                      onLayout={measure('places')}
-                      style={[
-                        styles.card,
-                        { left: pos.places.x, top: pos.places.y, width: pos.places.w },
-                      ]}
-                    >
+                    <DraggableCard id="places" rect={rects.places!} {...drag}>
+                    <View onLayout={measure('places')} style={[styles.card, IN_SLOT]}>
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>Places</Text>
                         <Pressable onPress={() => router.push('/places')} hitSlop={10}>
@@ -1164,18 +1098,14 @@ export default function Timeline() {
                         )}
                       </View>
                     </View>
+                    </DraggableCard>
                   )}
 
                   {/* On This Day card — live topics, horizontally swipeable,
                       same feed as the full On This Day page */}
-                  {!otdFuture && otdTopics.length > 0 && (
-                    <View
-                      onLayout={measure('otd')}
-                      style={[
-                        styles.card,
-                        { left: pos.otd.x, top: pos.otd.y, width: pos.otd.w, padding: 0 },
-                      ]}
-                    >
+                  {otdShown && (
+                    <DraggableCard id="otd" rect={rects.otd!} {...drag}>
+                    <View onLayout={measure('otd')} style={[styles.card, IN_SLOT, { padding: 0 }]}>
                       <View style={[styles.cardHeaderRow, styles.otdCardHeader]}>
                         <Text style={styles.cardTitle}>On This Day</Text>
                         <Pressable onPress={() => router.push('/on-this-day')}>
@@ -1201,6 +1131,7 @@ export default function Timeline() {
                         ))}
                       </ScrollView>
                     </View>
+                    </DraggableCard>
                   )}
 
                   {/* Assumed Memory — floating on purpose (no connector): an
@@ -1208,11 +1139,9 @@ export default function Timeline() {
                       user's real logged account. Dismissible; never
                       promoted into the real Day memory. */}
                   {assumedMemory && !assumedDismissed && (
+                    <DraggableCard id="assumed" rect={rects.assumed!} onLayout={measure('assumed')} {...drag}>
                     <Pressable
-                      style={[
-                        styles.assumedCard,
-                        { left: pos.assumed.x, top: pos.assumed.y, width: pos.assumed.w },
-                      ]}
+                      style={[styles.assumedCard, IN_SLOT]}
                       onPress={() =>
                         router.push(`/day/${selected}` as Parameters<typeof router.push>[0])
                       }
@@ -1248,6 +1177,7 @@ export default function Timeline() {
                         </Text>
                       </Pressable>
                     </Pressable>
+                    </DraggableCard>
                   )}
 
                   {/* A real attempt was made and came back with nothing —
@@ -1256,23 +1186,14 @@ export default function Timeline() {
                       offers a manual retry instead of leaving the day
                       looking like analysis will never arrive. */}
                   {(assumedStatus === 'ask' || readingDay) && !assumedMemory && (
-                    <ReadDayCard
-                      photoUris={realPhotoUris}
-                      reading={readingDay}
-                      onRead={readThisDay}
-                      style={{ position: 'absolute', left: pos.assumed.x, top: pos.assumed.y, width: pos.assumed.w }}
-                    />
+                    <DraggableCard id="assumed" rect={rects.assumed!} onLayout={measure('assumed')} {...drag}>
+                      <ReadDayCard photoUris={realPhotoUris} reading={readingDay} onRead={readThisDay} style={IN_SLOT} />
+                    </DraggableCard>
                   )}
 
                   {assumedStatus === 'failed' && (
-                    <Pressable
-                      style={[
-                        styles.assumedCard,
-                        styles.assumedCardFailed,
-                        { left: pos.assumed.x, top: pos.assumed.y, width: pos.assumed.w },
-                      ]}
-                      onPress={retryAssumed}
-                    >
+                    <DraggableCard id="assumed" rect={rects.assumed!} onLayout={measure('assumed')} {...drag}>
+                    <Pressable style={[styles.assumedCard, styles.assumedCardFailed, IN_SLOT]} onPress={retryAssumed}>
                       <View style={styles.assumedTitleRow}>
                         <Ionicons name="refresh" size={16} color="#8B9394" />
                         <Text style={styles.assumedTitle}>Assumed Memory</Text>
@@ -1281,6 +1202,7 @@ export default function Timeline() {
                         Couldn't analyze this day's photos yet — tap to try again
                       </Text>
                     </Pressable>
+                    </DraggableCard>
                   )}
                 </>
               ) : (
@@ -1304,6 +1226,7 @@ export default function Timeline() {
                   your medicine, and an upcoming birthday has to show on a
                   day that hasn't happened yet. Drawn last so an open bubble
                   sits over the cards beside it. */}
+              <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, sirFollow]}>
               <SirCluster
                 markers={markers}
                 origin={
@@ -1320,6 +1243,7 @@ export default function Timeline() {
                 onAdd={() => setPickerOpen(true)}
                 onRemove={removeSir}
               />
+              </Animated.View>
               </View>
             </Animated.View>
           </GestureDetector>
@@ -1409,14 +1333,6 @@ const styles = StyleSheet.create({
   },
   railHeaderText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#8B9394', letterSpacing: 0.3 },
 
-  dash: { position: 'absolute', borderColor: colors.accent, borderStyle: 'dashed' },
-  dashDot: {
-    position: 'absolute',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.accent,
-  },
   card: {
     position: 'absolute',
     backgroundColor: colors.white,
