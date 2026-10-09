@@ -9,6 +9,9 @@ export const MISC = {
   // The live-voice brain (assets/animations/brain.html), drawn as a still:
   // a dark round icon, and a transparent glow for dark backgrounds.
   brain: require('../assets/misc/brain-new.png'),
+  // Nour's original brain — the avatar on Home's Ask pill and beside every
+  // answer in Ask (his call, Oct 2026: neither still of the 3D model).
+  brainAvatar: require('../assets/misc/brain-3d.png'),
   brainGlow: require('../assets/misc/brain-glow.png'),
   network: require('../assets/misc/network.png'),
   glasses: require('../assets/misc/glasses.png'),

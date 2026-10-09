@@ -1,3 +1,5 @@
+import { getUserProfile } from '../src/userProfile';
+import { localFile } from '../src/memoryLog';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -210,12 +212,34 @@ function TypingDots() {
 }
 
 
-/** Recall's side of the conversation: the brain, ringed like on Home so
- *  it stands out from the dark screen. */
+/** Recall's side of the conversation: Nour's original brain in a white
+ *  ringed circle — the same avatar as Home's Ask pill. */
 function BrainAvatar() {
   return (
     <View style={styles.brainAvatar}>
-      <Image source={MISC.brain} style={styles.brainAvatarImg} />
+      <Image source={MISC.brainAvatar} style={styles.brainAvatarImg} resizeMode="cover" />
+    </View>
+  );
+}
+
+/** The user's side: their own photo, else their initials, else a person. */
+function UserAvatar({ photo, name }: { photo?: string; name?: string }) {
+  const letters = (name ?? '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join('');
+  return (
+    <View style={styles.userAvatar}>
+      {photo ? (
+        <Image source={{ uri: photo }} style={styles.userAvatarImg} />
+      ) : letters ? (
+        <Text style={styles.userAvatarInitials}>{letters}</Text>
+      ) : (
+        <Ionicons name="person" size={18} color={colors.white} />
+      )}
     </View>
   );
 }
@@ -368,6 +392,13 @@ export default function Chat() {
   useLightStatusBar();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
+  // The user's own face beside their messages, from their profile.
+  const [me, setMe] = useState<{ photo?: string; name?: string }>({});
+  useEffect(() => {
+    getUserProfile()
+      .then((p) => setMe({ photo: p.photoUri ? localFile(p.photoUri) : undefined, name: p.name }))
+      .catch(() => {});
+  }, []);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -692,9 +723,7 @@ export default function Chat() {
                         )}
                         <Text style={[styles.bubbleText, rtlIfArabic(m.text)]}>{m.text}</Text>
                       </View>
-                      <View style={styles.userAvatar}>
-                        <Ionicons name="person" size={18} color={colors.white} />
-                      </View>
+                      <UserAvatar photo={me.photo} name={me.name} />
                     </View>
                   </MessageAppear>
                 ),
@@ -799,9 +828,12 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#7FB8BF',
     overflow: 'hidden',
-    backgroundColor: '#021416',
+    backgroundColor: colors.white,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  brainAvatarImg: { width: '100%', height: '100%' },
+  // The artwork has wide margins; larger than the circle so the brain fills it.
+  brainAvatarImg: { width: 60, height: 60 },
   header: { paddingVertical: 16, alignItems: 'center', minHeight: 64 },
   back: { position: 'absolute', left: 20, top: 18 },
   headerRight: { position: 'absolute', right: 20, top: 14, flexDirection: 'row', alignItems: 'center', gap: 16 },
@@ -873,7 +905,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.slate,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  userAvatarImg: { width: '100%', height: '100%' },
+  userAvatarInitials: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.white },
   bubbleText: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.white },
   spokenRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginBottom: 5 },
   spokenText: { fontFamily: fonts.medium, fontSize: 11, color: colors.accent },

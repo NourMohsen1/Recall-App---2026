@@ -208,7 +208,7 @@ export default function Home() {
         <Link href="/chat" asChild>
           <Pressable style={styles.chatRow}>
             <View style={styles.chatAvatar}>
-              <Image source={MISC.brain} style={styles.chatAvatarImg} resizeMode="cover" />
+              <Image source={MISC.brainAvatar} style={styles.chatAvatarImg} resizeMode="cover" />
             </View>
             <View style={styles.chatPill}>
               <Text style={styles.chatPillText}>Hey, its your memory, How can i help ?</Text>
@@ -320,8 +320,9 @@ const styles = StyleSheet.create({
   headerSymbol: { width: 34, height: 34 },
   logoText: { color: colors.primary, fontFamily: fonts.bold, fontSize: 24 },
   profileBtn: { marginLeft: 'auto' },
-  profileIcon: { width: 30, height: 30 },
-  profilePhoto: { width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, borderColor: colors.pale },
+  // A button and an avatar at once: big enough to read as the user's face.
+  profileIcon: { width: 36, height: 36 },
+  profilePhoto: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, borderColor: colors.pale },
 
   // 34-pt circles, 15 apart (the design), as one centred group.
   weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
@@ -350,11 +351,13 @@ const styles = StyleSheet.create({
     borderColor: '#7FB8BF',
     alignItems: 'center',
     justifyContent: 'center',
-    // The new brain is drawn on its own dark ground, like Ask and live voice.
-    backgroundColor: '#021416',
+    // White, like the design — the brain sits on the page, not on black.
+    backgroundColor: colors.white,
     overflow: 'hidden',
   },
-  chatAvatarImg: { width: 54, height: 54 },
+  // The artwork has wide empty margins; scaled up so the brain fills the
+  // circle as in the design.
+  chatAvatarImg: { width: 66, height: 66 },
   chatPill: {
     flex: 1,
     backgroundColor: colors.primary,

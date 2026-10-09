@@ -14,7 +14,7 @@ import { colors, fonts } from '../theme';
 // one line of places; a few of each, then "+2", so it never wraps. A face the app only
 // recognised is drawn as the guess it is (dashed, "Omar?").
 
-const FACE = 26;
+const FACE = 30;
 const MAX_FACES = 4;
 const MAX_PLACES = 2;
 
@@ -85,7 +85,7 @@ export default function DayCompany({ day }: { day: string }) {
               hitSlop={4}
             >
               {p.cover ? (
-                <PlaceCover cover={p.cover} kind={p.kind} size={18} radius={9} style={styles.placeCover} />
+                <PlaceCover cover={p.cover} kind={p.kind} size={22} radius={11} style={styles.placeCover} />
               ) : (
                 <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.teal} />
               )}
@@ -106,14 +106,14 @@ export default function DayCompany({ day }: { day: string }) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginTop: 12, gap: 10 },
-  peopleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  wrap: { marginTop: 14, gap: 12 },
+  peopleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stack: { flexDirection: 'row' },
   // A white edge between overlapping faces, like a contact list.
   face: { borderRadius: FACE / 2 + 2, borderWidth: 2, borderColor: colors.white, backgroundColor: colors.white },
-  faceOverlap: { marginLeft: -9 },
-  names: { flex: 1, fontFamily: fonts.medium, fontSize: 13, color: '#4A5253' },
-  placesRow: { flexDirection: 'row', gap: 6 },
+  faceOverlap: { marginLeft: -8 },
+  names: { flex: 1, fontFamily: fonts.medium, fontSize: 14, color: '#4A5253' },
+  placesRow: { flexDirection: 'row', gap: 8 },
   placeChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -121,11 +121,11 @@ const styles = StyleSheet.create({
     maxWidth: 118,
     backgroundColor: colors.pale,
     borderRadius: 999,
-    paddingVertical: 4,
-    paddingLeft: 4,
+    paddingVertical: 5,
+    paddingLeft: 5,
     paddingRight: 10,
   },
   placeCover: { borderWidth: 0 },
   moreChip: { paddingLeft: 10 },
-  placeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 12, color: colors.ink },
+  placeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink },
 });
