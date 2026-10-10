@@ -8,26 +8,27 @@ import { getAllDayPlaces } from './places';
 
 // Recall's notifications, all scheduled on the phone (no server):
 //
-//   Reminder — (off) 10 pm, only on a day nothing was logged yet.
-//   Daily    — 9 am, yesterday's recap: the day is truly over by then,
-//              late-night notes included.
-//   Weekly   — Monday 9 am, the Monday–Sunday week just finished.
-//   Monthly  — the 1st at 9 am, the month just finished.
+//   Daily    — 9 am, "your recap of yesterday is ready".
+//   Weekly   — Monday 9 am, about the Monday–Sunday week just finished.
+//   Monthly  — the 1st at 9 am, about the month just finished.
+//   Nudges   — at most one a day, and never on a day already logged:
+//              "did you log today?" at 9 pm (every other day at most),
+//              "it's been a while" after three quiet days, and "this day
+//              last year" at 6 pm when there's a memory from that date.
 //
-// Each one carries what actually happened ("Yesterday · 5 moments · with
-// Omar · at Dunkin"), built here from the user's own logs — nothing goes
-// to an AI for it. Since an app can't run at the moment a notification
-// fires, they're rebuilt whenever Recall opens or goes to the background,
-// so they include what was logged last. Lock screens can show them, so
-// they say who, where and how much — never the words of a note.
+// A lock screen is seen by anyone near the phone, so a notification never
+// says who, where or what — only that a recap is ready, and how many
+// moments it holds (Nour, Oct 2026). The detail is one tap away, inside
+// the app. Since an app can't run at the moment a notification fires,
+// they're rebuilt whenever Recall opens or goes to the background.
 
 export type RecapCadence = 'daily' | 'weekly' | 'monthly';
-export type RecapPrefs = Record<RecapCadence | 'reminder', boolean>;
+export type RecapPrefs = Record<RecapCadence | 'reminder' | 'nudges', boolean>;
 
 const PREFS_KEY = 'recapNotifications';
-// The 10 pm reminder was built and switched off (Nour: rarely wanted,
-// more confusing than useful). Kept off for everyone; the code stays.
-const DEFAULTS: RecapPrefs = { reminder: false, daily: true, weekly: true, monthly: false };
+// The old every-night 10 pm reminder stays off (Nour: too often). Nudges
+// replace it: rarer, and only when something is actually missing.
+const DEFAULTS: RecapPrefs = { reminder: false, nudges: true, daily: true, weekly: true, monthly: false };
 
 /** The Recap tab each notification opens. */
 export const RECAP_TAB: Record<RecapCadence, 'Today' | 'Weekly' | 'Monthly'> = {
@@ -36,21 +37,23 @@ export const RECAP_TAB: Record<RecapCadence, 'Today' | 'Weekly' | 'Monthly'> = {
   monthly: 'Monthly',
 };
 
-const REMINDER_HOUR = 22;
 const RECAP_HOUR = 9;
-const REMINDER_DAYS = 3;
+const NUDGE_HOUR = 21;
+const LAST_YEAR_HOUR = 18;
+/** How many days ahead nudges are planned — rebuilt on every open anyway. */
+const NUDGE_DAYS = 4;
 
-const REMINDER_LINES = [
-  'Nothing saved from today yet — 30 seconds is enough.',
+const LOG_LINES = [
+  '30 seconds is enough.',
   'How was today? Say it before it slips away.',
   'One line about today. Future you will thank you.',
   "Today isn't in Recall yet. What happened?",
-  "Who did you see today? Don't let it fade.",
 ];
 
 export async function getRecapPrefs(): Promise<RecapPrefs> {
   const raw = await AsyncStorage.getItem(PREFS_KEY);
   return { ...DEFAULTS, ...(raw ? (JSON.parse(raw) as Partial<RecapPrefs>) : {}), reminder: false };
+  // (`reminder`, the old nightly one, stays off; `nudges` replaced it.)
 }
 
 // ── Building the words ───────────────────────────────────────────────────
@@ -63,14 +66,6 @@ const MONTHS = [
 
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const at = (d: Date, hour: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), hour, 0, 0);
-
-/** "Omar, Sara and 2 more" */
-function names(list: string[], max = 2): string {
-  const shown = list.slice(0, max);
-  const more = list.length - shown.length;
-  if (more > 0) return `${shown.join(', ')} and ${more} more`;
-  return shown.length > 1 ? `${shown.slice(0, -1).join(', ')} and ${shown[shown.length - 1]}` : (shown[0] ?? '');
-}
 
 export type Store = {
   byDay: Map<string, LoggedMemory[]>;
@@ -89,27 +84,17 @@ async function readStore(): Promise<Store> {
   return { byDay, people, places, markers };
 }
 
-/** "5 moments · with Omar and Sara · at Dunkin · gym, doctor" for the days
- *  from..to, or null when nothing was logged in them. */
-function summary(store: Store, from: Date, to: Date): string | null {
+/** How many moments were logged between two days — the only detail a
+ *  notification carries. */
+function momentCount(store: Store, from: Date, to: Date): number {
   let moments = 0;
-  const people = new Set<string>();
-  const places = new Set<string>();
-  const marks = new Set<string>();
   for (let d = from; d <= to; d = addDays(d, 1)) {
-    const key = dateKey(d);
-    moments += (store.byDay.get(key) ?? []).filter(isManualLog).length;
-    for (const p of store.people[key] ?? []) people.add(p);
-    for (const p of store.places[key] ?? []) if (p.named) places.add(p.label);
-    for (const m of store.markers[key] ?? []) marks.add(m.label);
+    moments += (store.byDay.get(dateKey(d)) ?? []).filter(isManualLog).length;
   }
-  if (moments === 0) return null;
-  const parts = [`${moments} ${moments === 1 ? 'moment' : 'moments'}`];
-  if (people.size) parts.push(`with ${names([...people])}`);
-  if (places.size) parts.push(`at ${names([...places])}`);
-  if (marks.size) parts.push(names([...marks], 3).toLowerCase());
-  return parts.join(' · ');
+  return moments;
 }
+
+const moments = (n: number) => `${n} ${n === 1 ? 'moment' : 'moments'}`;
 
 // ── Scheduling ───────────────────────────────────────────────────────────
 
@@ -118,36 +103,19 @@ type Planned = { id: string; when: Date; title: string; body: string; data: Reco
 export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
   const out: Planned[] = [];
   const today = at(now, 0);
-
-  // Reminder: today (if still ahead and nothing logged), and the next days.
-  if (prefs.reminder) {
-    for (let i = 0; i < REMINDER_DAYS; i++) {
-      const day = addDays(today, i);
-      const when = at(day, REMINDER_HOUR);
-      if (when <= now) continue;
-      const logged = (store.byDay.get(dateKey(day)) ?? []).some(isManualLog);
-      if (logged) continue;
-      out.push({
-        id: `reminder-${dateKey(day)}`,
-        when,
-        title: "Don't miss your day",
-        body: REMINDER_LINES[day.getDate() % REMINDER_LINES.length],
-        data: { log: true },
-      });
-    }
-  }
+  const logged = (d: Date) => (store.byDay.get(dateKey(d)) ?? []).some(isManualLog);
 
   // Daily: the next 9 am, about the day before it.
   if (prefs.daily) {
     const when = at(now, RECAP_HOUR) > now ? at(now, RECAP_HOUR) : at(addDays(today, 1), RECAP_HOUR);
     const covered = addDays(at(when, 0), -1);
-    const body = summary(store, covered, covered);
-    if (body) {
+    const n = momentCount(store, covered, covered);
+    if (n > 0) {
       out.push({
         id: 'recap-daily',
         when,
-        title: `Your ${WEEKDAYS[covered.getDay()]}, in Recall`,
-        body,
+        title: `Your ${WEEKDAYS[covered.getDay()]} recap is ready`,
+        body: `${moments(n)} · tap to look back`,
         data: { day: dateKey(covered) },
       });
     }
@@ -159,13 +127,13 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
     let monday = addDays(today, toMonday);
     if (at(monday, RECAP_HOUR) <= now) monday = addDays(monday, 7);
     const from = addDays(monday, -7);
-    const body = summary(store, from, addDays(monday, -1));
-    if (body) {
+    const n = momentCount(store, from, addDays(monday, -1));
+    if (n > 0) {
       out.push({
         id: 'recap-weekly',
         when: at(monday, RECAP_HOUR),
-        title: 'Your week, in Recall',
-        body,
+        title: 'See what happened last week',
+        body: `${moments(n)} last week · tap to check them`,
         data: { recap: RECAP_TAB.weekly, weekOf: dateKey(from) },
       });
     }
@@ -176,14 +144,76 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
     let first = new Date(now.getFullYear(), now.getMonth(), 1, RECAP_HOUR);
     if (first <= now) first = new Date(now.getFullYear(), now.getMonth() + 1, 1, RECAP_HOUR);
     const from = new Date(first.getFullYear(), first.getMonth() - 1, 1);
-    const body = summary(store, from, addDays(at(first, 0), -1));
-    if (body) {
+    const n = momentCount(store, from, addDays(at(first, 0), -1));
+    if (n > 0) {
       out.push({
         id: 'recap-monthly',
         when: first,
-        title: `Your ${MONTHS[from.getMonth()]}, in Recall`,
-        body,
+        title: `Your ${MONTHS[from.getMonth()]} recap is ready`,
+        body: `${moments(n)} in ${MONTHS[from.getMonth()]} · tap to look back`,
         data: { recap: RECAP_TAB.monthly, monthOf: dateKey(from) },
+      });
+    }
+  }
+
+  // Nudges: at most one a day, none on a day already logged, none for
+  // someone who has never logged anything (the app hasn't started yet).
+  if (prefs.nudges && store.byDay.size > 0) {
+    const lastLogged = [...store.byDay.entries()]
+      .filter(([, list]) => list.some(isManualLog))
+      .map(([k]) => k)
+      .sort()
+      .pop();
+    // Never two days in a row, whatever kind: a day off between nudges.
+    let lastNudge = -2;
+    // A memory from a year ago beats an ordinary nudge the day before it.
+    const yearAgoOf = (d: Date) => new Date(d.getFullYear() - 1, d.getMonth(), d.getDate());
+    const yearDay = (i: number) => {
+      const d = addDays(today, i);
+      return logged(yearAgoOf(d)) && at(d, LAST_YEAR_HOUR) > now;
+    };
+    for (let i = 0; i < NUDGE_DAYS; i++) {
+      const day = addDays(today, i);
+      // Days after today can't be known to be logged yet; today can.
+      if (i === 0 && logged(day)) continue;
+      if (i - lastNudge < 2) continue;
+
+      // "This day last year", when there's a memory from that date.
+      const yearAgo = yearAgoOf(day);
+      if (yearDay(i)) {
+        out.push({
+          id: `reminder-year-${dateKey(day)}`,
+          when: at(day, LAST_YEAR_HOUR),
+          title: 'On this day last year',
+          body: 'You have a memory from a year ago today. Tap to see it.',
+          data: { day: dateKey(yearAgo) },
+        });
+        lastNudge = i;
+        continue;
+      }
+
+      const when = at(day, NUDGE_HOUR);
+      if (when <= now || yearDay(i + 1)) continue;
+      // Quiet for three days by then: a softer, different line.
+      const quietDays = lastLogged ? Math.round((at(day, 0).getTime() - at(new Date(`${lastLogged}T00:00:00`), 0).getTime()) / 86400000) : 0;
+      // Instead of "did you log today", never as well as it.
+      if (quietDays >= 3) {
+        out.push({
+          id: `reminder-quiet-${dateKey(day)}`,
+          when,
+          title: "It's been a while",
+          body: 'What has happened since? A few words is enough.',
+          data: { log: true },
+        });
+        break; // one "while" is enough until they're back
+      }
+      lastNudge = i;
+      out.push({
+        id: `reminder-${dateKey(day)}`,
+        when,
+        title: 'Did you log today?',
+        body: LOG_LINES[day.getDate() % LOG_LINES.length],
+        data: { log: true },
       });
     }
   }
@@ -254,8 +284,8 @@ export async function sendTestRecapNotification(): Promise<void> {
   const yesterday = addDays(at(new Date(), 0), -1);
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Your ${WEEKDAYS[yesterday.getDay()]}, in Recall`,
-      body: summary(store, yesterday, yesterday) ?? 'Nothing logged yesterday',
+      title: `Your ${WEEKDAYS[yesterday.getDay()]} recap is ready`,
+      body: `${moments(momentCount(store, yesterday, yesterday))} · tap to look back`,
       data: { day: dateKey(yesterday) },
     },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },

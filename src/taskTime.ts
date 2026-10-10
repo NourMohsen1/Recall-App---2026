@@ -25,9 +25,22 @@ export const PERIOD_START: Record<DayPeriod, string> = {
   night: '20:00',
 };
 
-/** at = at the time; 15m / 1h before it; dayBefore = 8 pm the evening
- *  before; morning = 9 am on the day (for tasks without a time). */
-export type ReminderChoice = 'at' | '15m' | '1h' | 'dayBefore' | 'morning' | 'none';
+/** at = at the time; 15m … 1d = that long before it; dayBefore = 8 pm the
+ *  night before; morning = when the day (or its part) starts, for tasks
+ *  without a time; 2d / 1w = 9 am that long before. */
+export type ReminderChoice =
+  | 'at'
+  | '15m'
+  | '30m'
+  | '1h'
+  | '2h'
+  | '3h'
+  | '1d'
+  | 'dayBefore'
+  | 'morning'
+  | '2d'
+  | '1w'
+  | 'none';
 
 /** The time a task is "at", for sorting: its time, or where its part of
  *  the day starts. */

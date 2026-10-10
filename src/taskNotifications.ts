@@ -65,7 +65,12 @@ export function defaultReminder(t: ReminderTask): ReminderChoice | 'early' {
   return t.dueTime ? '1h' : 'morning';
 }
 
-export function planTaskReminders(t: ReminderTask, now = new Date()): PlannedReminder[] {
+export function planTaskReminders(
+  t: ReminderTask,
+  now = new Date(),
+  /** Off when asking whether a choice itself is still ahead. */
+  rescueLate = true,
+): PlannedReminder[] {
   if (!t.dueDate || t.done || t.reminder === 'none') return [];
   const [y, m, d] = t.dueDate.split('-').map(Number);
   const at = (hhmm: string, daysBefore = 0) => {
@@ -79,6 +84,11 @@ export function planTaskReminders(t: ReminderTask, now = new Date()): PlannedRem
     title: 'Recall — tomorrow',
     body: label ? `${t.title} · ${label}` : t.title,
   };
+  const daysAhead = (days: number, words: string): PlannedReminder => ({
+    when: at(MORNING, days),
+    title: `Recall — in ${words}`,
+    body: label ? `${t.title} · ${label}` : t.title,
+  });
   const plans: PlannedReminder[] = [];
 
   if (t.dueTime) {
@@ -89,15 +99,16 @@ export function planTaskReminders(t: ReminderTask, now = new Date()): PlannedRem
       body: `${t.title} · ${clock(t.dueTime!)}`,
     });
     const onTime: PlannedReminder = { when: start, title: 'Recall — now', body: t.title };
+    const minutes = BEFORE_MINUTES[choice as keyof typeof BEFORE_MINUTES];
     if (choice === 'at') plans.push(onTime);
-    else if (choice === '15m') plans.push(before(15, '15 minutes'));
+    else if (minutes) plans.push(before(minutes, BEFORE_WORDS[choice as keyof typeof BEFORE_WORDS]));
     else if (choice === 'dayBefore') plans.push(eveningBefore);
     else if (choice === 'early') plans.push(eveningBefore, before(120, '2 hours'));
     else plans.push(before(60, '1 hour'));
     const ahead = plans.filter((p) => p.when > now);
     // Added too late for its reminder (at 1:30, "meeting at 2") — still
     // warn: 15 minutes before if there's time, else at the time itself.
-    if (ahead.length === 0 && start > now && choice !== 'at') {
+    if (rescueLate && ahead.length === 0 && start > now && choice !== 'at') {
       const soon = before(15, '15 minutes');
       return [soon.when > now ? soon : onTime];
     }
@@ -112,37 +123,67 @@ export function planTaskReminders(t: ReminderTask, now = new Date()): PlannedRem
   };
   if (choice === 'dayBefore') plans.push(eveningBefore);
   else if (choice === 'early') plans.push(eveningBefore, onTheDay);
+  else if (choice === '2d') plans.push(daysAhead(2, '2 days'));
+  else if (choice === '1w') plans.push(daysAhead(7, 'a week'));
   else plans.push(onTheDay);
   return plans.filter((p) => p.when > now);
 }
+
+const BEFORE_MINUTES = { '15m': 15, '30m': 30, '1h': 60, '2h': 120, '3h': 180, '1d': 1440 } as const;
+const BEFORE_WORDS = {
+  '15m': '15 minutes',
+  '30m': '30 minutes',
+  '1h': '1 hour',
+  '2h': '2 hours',
+  '3h': '3 hours',
+  '1d': '1 day',
+} as const;
 
 /** The reminder in words, for the task page: "1 hour before". */
 export function reminderLabel(t: ReminderTask): string {
   const choice = t.reminder ?? defaultReminder(t);
   const options = reminderOptions(t);
-  return options.find((o) => o.key === choice)?.label ?? (choice === 'early' ? 'Evening before, 2h before' : 'Off');
+  return options.find((o) => o.key === choice)?.label ?? (choice === 'early' ? 'Night before + 2 hours before' : 'Off');
 }
 
-/** The choices that make sense for this task — "15 minutes before" means
- *  nothing without a time. */
-export function reminderOptions(t: ReminderTask): { key: ReminderChoice | 'early'; label: string }[] {
+/** The choices that make sense for this task, in order on the wheel.
+ *  "15 minutes before" means nothing without a time; a reminder that
+ *  would already be in the past isn't offered (a task in 40 minutes has no
+ *  "3 hours before"); "the night before, 8 PM" only when it says more than
+ *  "1 day before" does — for a task earlier than 6 pm. */
+export function reminderOptions(
+  t: ReminderTask,
+  now = new Date(),
+): { key: ReminderChoice | 'early'; label: string }[] {
+  const ahead = (key: ReminderChoice | 'early') =>
+    key === 'none' ||
+    planTaskReminders({ ...t, reminder: key === 'early' ? undefined : key, remindEarly: key === 'early' }, now, false).length > 0;
   if (t.dueTime) {
-    return [
-      ...(t.remindEarly ? [{ key: 'early' as const, label: 'Evening before, 2h before' }] : []),
+    const night = Number(t.dueTime.slice(0, 2)) < 18;
+    const all: { key: ReminderChoice | 'early'; label: string }[] = [
+      ...(t.remindEarly ? [{ key: 'early' as const, label: 'Night before + 2 hours before' }] : []),
       { key: 'at', label: 'At the time' },
       { key: '15m', label: '15 minutes before' },
+      { key: '30m', label: '30 minutes before' },
       { key: '1h', label: '1 hour before' },
-      { key: 'dayBefore', label: 'The evening before' },
+      { key: '2h', label: '2 hours before' },
+      { key: '3h', label: '3 hours before' },
+      { key: '1d', label: '1 day before' },
+      ...(night ? [{ key: 'dayBefore' as const, label: 'The night before, 8 PM' }] : []),
       { key: 'none', label: 'Off' },
     ];
+    return all.filter((o) => ahead(o.key));
   }
   const start = t.duePeriod ? PERIOD_START[t.duePeriod] : MORNING;
-  return [
-    ...(t.remindEarly ? [{ key: 'early' as const, label: 'Evening before & on the day' }] : []),
+  const all: { key: ReminderChoice | 'early'; label: string }[] = [
+    ...(t.remindEarly ? [{ key: 'early' as const, label: 'Night before + on the day' }] : []),
     { key: 'morning', label: `On the day, ${clock(start)}` },
-    { key: 'dayBefore', label: 'The evening before' },
+    { key: 'dayBefore', label: 'The night before, 8 PM' },
+    { key: '2d', label: '2 days before' },
+    { key: '1w', label: '1 week before' },
     { key: 'none', label: 'Off' },
   ];
+  return all.filter((o) => ahead(o.key));
 }
 
 /** Sets every reminder the task should have. Returns their ids. */

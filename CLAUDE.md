@@ -161,7 +161,7 @@ locations of older photos and files everything.
 **Tasks and reminders** (`src/tasks.ts`, `src/taskNotifications.ts`,
 `app/log/task-edit.tsx`, Oct 2026). A task's time is when it *happens*; the
 reminder comes before it, and is automatic — there is no "Remind me" switch.
-Defaults (`planTaskReminders`): a time → 1 hour before; from a saved
+Choices are a wheel (`ChoiceWheel`), only those still ahead of now. Defaults (`planTaskReminders`): a time → 1 hour before; from a saved
 ticket/letter (`remindEarly`) → the evening before and 2 hours before; a
 date and a part of the day → when that part starts (afternoon → 1 pm); a
 date only → 9 am. A task added too late for its reminder still gets one.
@@ -171,6 +171,15 @@ editing; a name like "dentist tomorrow at 2" with no date picked is read by
 the AI on save. The time wheel is Apple's own
 (`@react-native-community/datetimepicker`, native — changing it needs a
 rebuild).
+
+**Notifications say nothing private** (`src/recapNotifications.ts`, Oct
+2026). A lock screen is seen by anyone near the phone: no names, places,
+moment labels or note text — only that a recap is ready and how many
+moments it holds ("Your Tuesday recap is ready · 5 moments"). Nudges
+("Did you log today?", "It's been a while", "On this day last year") are
+at most one a day, never two days running, never on a day already
+logged; a memory from a year ago wins over an ordinary nudge. Profile →
+Gentle nudges turns them off.
 
 **Attachments** (`src/attachments.ts`, `app/log/attachment.tsx`): a screenshot
 or PDF saved as a `document` memory. The local native module

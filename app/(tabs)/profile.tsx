@@ -62,7 +62,7 @@ export default function Profile() {
   const [photoReading, setPhotoReadingState] = useState<PhotoReading | null>(null);
   const [aiConsent, setAiConsentState] = useState<AiConsent | null>(getAiConsent());
   useEffect(() => onAiConsentChanged(() => setAiConsentState(getAiConsent())), []);
-  const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ reminder: true, daily: true, weekly: true, monthly: false });
+  const [recapPrefs, setRecapPrefs] = useState<RecapPrefs>({ reminder: false, nudges: true, daily: true, weekly: true, monthly: false });
   const [positiveFocus, setPositiveFocusState] = useState(false);
   const [signedIn, setSignedIn] = useState(!!getAccount());
   useEffect(() => onAccountChanged(() => setSignedIn(!!getAccount())), []);
@@ -272,9 +272,10 @@ export default function Profile() {
               ['daily', 'Daily recap', 'Each morning at 9, about yesterday'],
               ['weekly', 'Weekly recap', 'Mondays at 9, about last week'],
               ['monthly', 'Monthly recap', 'On the 1st at 9, about last month'],
+              ['nudges', 'Gentle nudges', 'Did you log today, this day last year — at most one a day'],
             ] as const
           ).map(([cadence, label, when], i) => (
-            <View key={cadence} style={[styles.toggleRow, i < 2 && styles.rowDivider]}>
+            <View key={cadence} style={[styles.toggleRow, i < 3 && styles.rowDivider]}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.toggleLabel}>{label}</Text>
                 <Text style={styles.rowHint}>{when}</Text>

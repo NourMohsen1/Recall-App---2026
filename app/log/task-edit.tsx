@@ -16,10 +16,10 @@ import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import ActionMenuSheet, { type MenuAction } from '../../src/components/ActionMenuSheet';
 import CalendarSheet from '../../src/components/CalendarSheet';
 import { MONTHS_SHORT, WEEKDAYS } from '../../src/data';
-import { reminderLabel, reminderOptions } from '../../src/taskNotifications';
+import { defaultReminder, reminderLabel, reminderOptions } from '../../src/taskNotifications';
+import ChoiceWheel from '../../src/components/ChoiceWheel';
 import {
   PERIOD_START,
   addTask,
@@ -134,6 +134,7 @@ export default function TaskEdit() {
 
   const toggleTime = () => {
     Keyboard.dismiss();
+    setReminderMenu(false);
     if (timeOpen) {
       setTimeOpen(false);
       return;
@@ -209,21 +210,10 @@ export default function TaskEdit() {
     return <SafeAreaView style={styles.safe} edges={['top']} />;
   }
 
-  const chosenLabel = reminderLabel(when);
-  const reminderActions: MenuAction[] = reminderOptions(when).map((o) => {
-    const chosen = o.label === chosenLabel;
-    return {
-      key: o.key,
-      icon: chosen ? 'check-circle' : o.key === 'none' ? 'bell-off-outline' : 'bell-outline',
-      label: o.label,
-      onPress: () => {
-        // "Evening before & 2 hours before" is the default for saved
-        // tickets — choosing it is choosing the default.
-        setReminder(o.key === 'early' ? undefined : o.key);
-        setReminderMenu(false);
-      },
-    };
-  });
+  // The wheel's choices, and which is on now — the user's, or the
+  // default the task would get.
+  const wheelOptions = reminderOptions(when);
+  const wheelValue = reminder ?? defaultReminder(when);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -307,7 +297,9 @@ export default function TaskEdit() {
                 style={[styles.row, styles.rowBorder]}
                 onPress={() => {
                   Keyboard.dismiss();
-                  setReminderMenu(true);
+                  // One wheel open at a time keeps the page short.
+                  setTimeOpen(false);
+                  setReminderMenu((open) => !open);
                 }}
               >
                 <View style={styles.rowLead}>
@@ -320,9 +312,19 @@ export default function TaskEdit() {
                 </View>
                 <View style={styles.rowValueWrap}>
                   <Text style={[styles.rowValue, styles.rowValueSet]}>{reminderLabel(when)}</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#B4B8B8" />
+                  <Ionicons name={reminderMenu ? 'chevron-down' : 'chevron-forward'} size={16} color="#B4B8B8" />
                 </View>
               </Pressable>
+            )}
+            {/* A wheel under the row, like the time's — swipe to "2 hours
+                before". "Night before + 2 hours before" is the default for
+                saved tickets; choosing it is choosing the default. */}
+            {dueDate && reminderMenu && (
+              <ChoiceWheel
+                options={wheelOptions}
+                value={wheelValue}
+                onChange={(key) => setReminder(key === 'early' ? undefined : key)}
+              />
             )}
           </View>
 
@@ -361,12 +363,6 @@ export default function TaskEdit() {
           }
         }}
         onClose={() => setCalendarOpen(false)}
-      />
-      <ActionMenuSheet
-        visible={reminderMenu}
-        title="Remind me"
-        actions={reminderActions}
-        onClose={() => setReminderMenu(false)}
       />
     </SafeAreaView>
   );
