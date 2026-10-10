@@ -1,3 +1,4 @@
+import { withAppNav } from '../src/components/AppNav';
 import { getUserProfile } from '../src/userProfile';
 import { localFile } from '../src/memoryLog';
 import { useEffect, useRef, useState } from 'react';
@@ -6,6 +7,7 @@ import {
   Animated,
   Easing,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -387,11 +389,27 @@ function SourceList({ sources }: { sources: Source[] }) {
 
 type VoiceState = 'idle' | 'recording' | 'transcribing';
 
-export default function Chat() {
+function Chat() {
   // Dark teal screen: white top bar while it shows (src/statusBar.ts).
   useLightStatusBar();
   const router = useRouter();
   const [messages, setMessages] = useState<Message[]>([]);
+  // The field sits above the bottom menu and its "+"; with the keyboard
+  // up the menu is hidden under it, so the field comes down to the keys.
+  // Measured from the keyboard itself: KeyboardAvoidingView misjudges it on
+  // iOS 27 (it left a 95-pt gap here, and too little room on the typing
+  // screen), so the field is lifted by the keyboard's own height.
+  const [keyboardH, setKeyboardH] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener('keyboardWillShow', (e) => setKeyboardH(e.endCoordinates.height));
+    const hide = Keyboard.addListener('keyboardWillHide', () => setKeyboardH(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  const fieldLift = { marginBottom: keyboardH > 0 ? keyboardH + 10 : 150 };
+
   // The user's own face beside their messages, from their profile.
   const [me, setMe] = useState<{ photo?: string; name?: string }>({});
   useEffect(() => {
@@ -638,7 +656,7 @@ export default function Chat() {
 
         <KeyboardAvoidingView
           style={styles.fill}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={undefined}
           pointerEvents="box-none"
         >
           {messages.length === 0 ? (
@@ -743,7 +761,7 @@ export default function Chat() {
 
           {/* Input bar — morphs into a live recording strip while speaking */}
           {voiceState === 'recording' ? (
-            <View style={[styles.inputBar, styles.inputBarRec]}>
+            <View style={[styles.inputBar, styles.inputBarRec, fieldLift]}>
               <Pressable onPress={cancelVoice} hitSlop={8}>
                 <Ionicons name="close-circle" size={30} color="rgba(255,255,255,0.7)" />
               </Pressable>
@@ -755,12 +773,12 @@ export default function Chat() {
               </Pressable>
             </View>
           ) : voiceState === 'transcribing' ? (
-            <View style={[styles.inputBar, styles.inputBarRec]}>
+            <View style={[styles.inputBar, styles.inputBarRec, fieldLift]}>
               <TypingDots />
               <Text style={styles.recTimer}>Listening back…</Text>
             </View>
           ) : (
-            <View style={styles.inputBar}>
+            <View style={[styles.inputBar, fieldLift]}>
               <TextInput
                 style={styles.input}
                 value={input}
@@ -1028,3 +1046,7 @@ const styles = StyleSheet.create({
   },
   miniWaveBar: { width: 3, borderRadius: 2, backgroundColor: colors.accent },
 });
+
+// The app's bottom menu here too (Nour, Oct 2026): the field already sits
+// above where it goes.
+export default withAppNav(Chat);

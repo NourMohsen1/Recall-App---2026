@@ -1,6 +1,6 @@
 import type { ComponentType } from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import MemoryFab from './MemoryFab';
 import { ICONS } from '../images';
 import { colors, fonts } from '../theme';
@@ -22,6 +22,7 @@ export const APP_NAV_HEIGHT = 84;
 
 export default function AppNav() {
   const router = useRouter();
+  const path = usePathname();
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <View style={styles.bar}>
@@ -29,12 +30,13 @@ export default function AppNav() {
           <Pressable
             key={t.href}
             style={styles.tab}
-            onPress={() =>
+            onPress={() => {
+              // Already there: nothing to open (Ask would stack a second copy).
+              if (path === t.href) return;
               // Ask opens on top; the tabs are gone back to.
-              t.href === '/chat'
-                ? router.push('/chat')
-                : router.dismissTo(t.href as Parameters<typeof router.dismissTo>[0])
-            }
+              if (t.href === '/chat') router.push('/chat');
+              else router.dismissTo(t.href as Parameters<typeof router.dismissTo>[0]);
+            }}
           >
             <Image source={t.icon} style={styles.icon} tintColor={colors.primary} resizeMode="contain" />
             <Text style={styles.label}>{t.label}</Text>
