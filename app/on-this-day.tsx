@@ -1,3 +1,4 @@
+import { glassScroll, useGlassTop } from '../src/components/GlassBar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -442,6 +443,7 @@ function MoreSheet({ target, onClose }: { target: { topic: Topic; date: Date } |
 // ── The screen ─────────────────────────────────────────────────────────────
 
 function OnThisDay() {
+  const glassTop = useGlassTop();
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
   const cardW = screenW - SIDE - GAP - PEEK;
@@ -698,12 +700,17 @@ function OnThisDay() {
     .find((u) => !photoSources[u]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={[]}>
       <ScreenHeader
         title="On This Day"
         action={{ icon: 'options-outline', label: 'Your mix', onPress: () => setMixOpen(true) }}
       />
-      <ScrollView style={styles.page} contentContainerStyle={{ paddingBottom: 130 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.page}
+        contentContainerStyle={{ paddingBottom: 130 }}
+        showsVerticalScrollIndicator={false}
+        {...glassScroll(glassTop)}
+      >
         {analyzing && (
           <View style={{ paddingHorizontal: SIDE, paddingTop: 8 }}>
             <AnalyzingBanner />

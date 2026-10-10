@@ -1,3 +1,4 @@
+import GlassBar, { glassScroll, useGlassTop } from '../../src/components/GlassBar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -270,6 +271,7 @@ function TaskCard({
 
 export default function Tasks() {
   const router = useRouter();
+  const glassTop = useGlassTop();
   const [tasks, setTasks] = useState<StoredTask[]>([]);
   const [loaded, setLoaded] = useState(false);
   // Ids that were unseen when this visit started — they keep their
@@ -415,8 +417,9 @@ export default function Tasks() {
   }, [nextId, nextSection]);
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={[]}>
       {/* Header with the + button for deliberate task creation */}
+      <GlassBar>
       <View style={styles.header}>
         <Pressable
           onPress={() => goBack(router, '/home')}
@@ -430,8 +433,9 @@ export default function Tasks() {
           <Ionicons name="add" size={26} color={colors.white} />
         </Pressable>
       </View>
+      </GlassBar>
 
-      <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.scroll}>
+      <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.scroll} {...glassScroll(glassTop)}>
         {loaded && tasks.length === 0 && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="checkbox-marked-circle-plus-outline" size={40} color="#AEB6B7" />
@@ -528,19 +532,13 @@ export default function Tasks() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.white },
-  header: {
-    backgroundColor: colors.white,
-    paddingTop: 12,
-    paddingBottom: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  back: { position: 'absolute', left: 20, top: 14 },
+  // Inside the glass bar (GlassBar), which sets its height and edge.
+  header: { alignItems: 'center', justifyContent: 'center' },
+  back: { position: 'absolute', left: 20 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
   addBtn: {
     position: 'absolute',
     right: 20,
-    top: 12,
     width: 38,
     height: 38,
     borderRadius: 19,

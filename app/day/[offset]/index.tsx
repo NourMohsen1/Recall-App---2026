@@ -1,3 +1,4 @@
+import GlassBar, { glassScroll, useGlassTop } from '../../../src/components/GlassBar';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { goBack } from '../../../src/navigation';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -72,6 +73,7 @@ import { withAppNav } from '../../../src/components/AppNav';
 
 function DayDetailScreen() {
   const router = useRouter();
+  const glassTop = useGlassTop();
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
   const date = dateWithOffset(offsetNum);
@@ -381,7 +383,8 @@ function DayDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top']}>
+    <SafeAreaView style={styles.safe} edges={[]}>
+      <GlassBar>
       <View style={styles.header}>
         {/* Back to wherever the day was opened from (src/navigation.ts). */}
         <Pressable onPress={() => goBack(router, '/timeline')} hitSlop={12} style={styles.back}>
@@ -401,10 +404,12 @@ function DayDetailScreen() {
           )}
         </Pressable>
       </View>
+      </GlassBar>
 
       <GestureHandlerRootView style={{ flex: 1 }}>
       <ScrollView
         ref={scrollRef}
+        {...glassScroll(glassTop)}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!dragging}
@@ -698,15 +703,10 @@ function DayDetailScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.white },
-  header: {
-    paddingTop: 12,
-    paddingBottom: 20,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
-  },
-  back: { position: 'absolute', left: 20, top: 16 },
-  headerAction: { position: 'absolute', right: 20, top: 18 },
+  // Inside the glass bar (GlassBar), which sets its height and edge.
+  header: { alignItems: 'center', justifyContent: 'center' },
+  back: { position: 'absolute', left: 20 },
+  headerAction: { position: 'absolute', right: 20 },
   headerDone: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.teal },
   editDot: { padding: 2 },
   addRow: {
