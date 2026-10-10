@@ -161,7 +161,7 @@ locations of older photos and files everything.
 **Tasks and reminders** (`src/tasks.ts`, `src/taskNotifications.ts`,
 `app/log/task-edit.tsx`, Oct 2026). A task's time is when it *happens*; the
 reminder comes before it, and is automatic — there is no "Remind me" switch.
-Choices are a wheel (`ChoiceWheel`), only those still ahead of now. Defaults (`planTaskReminders`): a time → 1 hour before; from a saved
+Choices are a wheel (`ChoiceWheel`), always all of them; a choice already past falls back to 15 minutes before (or the day itself). Defaults (`planTaskReminders`): a time → 1 hour before; from a saved
 ticket/letter (`remindEarly`) → the evening before and 2 hours before; a
 date and a part of the day → when that part starts (afternoon → 1 pm); a
 date only → 9 am. A task added too late for its reminder still gets one.

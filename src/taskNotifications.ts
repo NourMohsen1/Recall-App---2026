@@ -103,6 +103,8 @@ export function planTaskReminders(
     if (choice === 'at') plans.push(onTime);
     else if (minutes) plans.push(before(minutes, BEFORE_WORDS[choice as keyof typeof BEFORE_WORDS]));
     else if (choice === 'dayBefore') plans.push(eveningBefore);
+    else if (choice === '2d') plans.push(daysAhead(2, '2 days'));
+    else if (choice === '1w') plans.push(daysAhead(7, 'a week'));
     else if (choice === 'early') plans.push(eveningBefore, before(120, '2 hours'));
     else plans.push(before(60, '1 hour'));
     const ahead = plans.filter((p) => p.when > now);
@@ -126,7 +128,10 @@ export function planTaskReminders(
   else if (choice === '2d') plans.push(daysAhead(2, '2 days'));
   else if (choice === '1w') plans.push(daysAhead(7, 'a week'));
   else plans.push(onTheDay);
-  return plans.filter((p) => p.when > now);
+  const ahead = plans.filter((p) => p.when > now);
+  // "A week before" a task in three days: remind on the day instead.
+  if (rescueLate && ahead.length === 0 && onTheDay.when > now) return [onTheDay];
+  return ahead;
 }
 
 const BEFORE_MINUTES = { '15m': 15, '30m': 30, '1h': 60, '2h': 120, '3h': 180, '1d': 1440 } as const;
@@ -146,21 +151,17 @@ export function reminderLabel(t: ReminderTask): string {
   return options.find((o) => o.key === choice)?.label ?? (choice === 'early' ? 'Night before + 2 hours before' : 'Off');
 }
 
-/** The choices that make sense for this task, in order on the wheel.
- *  "15 minutes before" means nothing without a time; a reminder that
- *  would already be in the past isn't offered (a task in 40 minutes has no
- *  "3 hours before"); "the night before, 8 PM" only when it says more than
- *  "1 day before" does — for a task earlier than 6 pm. */
-export function reminderOptions(
-  t: ReminderTask,
-  now = new Date(),
-): { key: ReminderChoice | 'early'; label: string }[] {
-  const ahead = (key: ReminderChoice | 'early') =>
-    key === 'none' ||
-    planTaskReminders({ ...t, reminder: key === 'early' ? undefined : key, remindEarly: key === 'early' }, now, false).length > 0;
+/** The choices on the wheel, in order. All of them, always — hiding the
+ *  ones already past left a task due soon with "15 minutes before" and
+ *  "Off" and nothing else. A choice that has passed still reminds: the
+ *  late-task rule in planTaskReminders warns 15 minutes before, or at the
+ *  time. "15 minutes before" means nothing without a time, so a task
+ *  without one gets day-sized choices; "the night before, 8 PM" only for a
+ *  task earlier than 6 pm, where it says something "1 day before" doesn't. */
+export function reminderOptions(t: ReminderTask): { key: ReminderChoice | 'early'; label: string }[] {
   if (t.dueTime) {
     const night = Number(t.dueTime.slice(0, 2)) < 18;
-    const all: { key: ReminderChoice | 'early'; label: string }[] = [
+    return [
       ...(t.remindEarly ? [{ key: 'early' as const, label: 'Night before + 2 hours before' }] : []),
       { key: 'at', label: 'At the time' },
       { key: '15m', label: '15 minutes before' },
@@ -170,12 +171,13 @@ export function reminderOptions(
       { key: '3h', label: '3 hours before' },
       { key: '1d', label: '1 day before' },
       ...(night ? [{ key: 'dayBefore' as const, label: 'The night before, 8 PM' }] : []),
+      { key: '2d', label: '2 days before' },
+      { key: '1w', label: '1 week before' },
       { key: 'none', label: 'Off' },
     ];
-    return all.filter((o) => ahead(o.key));
   }
   const start = t.duePeriod ? PERIOD_START[t.duePeriod] : MORNING;
-  const all: { key: ReminderChoice | 'early'; label: string }[] = [
+  return [
     ...(t.remindEarly ? [{ key: 'early' as const, label: 'Night before + on the day' }] : []),
     { key: 'morning', label: `On the day, ${clock(start)}` },
     { key: 'dayBefore', label: 'The night before, 8 PM' },
@@ -183,7 +185,6 @@ export function reminderOptions(
     { key: '1w', label: '1 week before' },
     { key: 'none', label: 'Off' },
   ];
-  return all.filter((o) => ahead(o.key));
 }
 
 /** Sets every reminder the task should have. Returns their ids. */
