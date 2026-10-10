@@ -1,4 +1,3 @@
-import { glassScroll, useGlassTop } from '../src/components/GlassBar';
 import { logDayKey } from '../src/logicalDay';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
@@ -192,7 +191,6 @@ function Recap() {
   // again from what's there now (people, places and stories included).
   const [refreshing, setRefreshing] = useState(false);
   const [round, setRound] = useState(0);
-  const glassTop = useGlassTop();
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -207,7 +205,7 @@ function Recap() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.safe} edges={[]}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Inside one week, month or year, back returns to the list of them. */}
       <ScreenHeader title="Recap" onBack={period !== 'Today' && offset !== null ? () => setOffset(null) : undefined} />
       <View style={styles.body}>
@@ -217,7 +215,6 @@ function Recap() {
           showsVerticalScrollIndicator={false}
           scrollEnabled={!dragging}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
-          {...glassScroll(glassTop)}
         >
           {analyzing && <AnalyzingBanner />}
 

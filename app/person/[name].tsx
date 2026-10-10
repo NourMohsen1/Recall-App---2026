@@ -1,4 +1,3 @@
-import GlassBar, { glassScroll, useGlassTop } from '../../src/components/GlassBar';
 import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -137,7 +136,6 @@ function reachLabel(dayKey: string): string {
 
 function PersonProfile() {
   const router = useRouter();
-  const glassTop = useGlassTop();
   const { name } = useLocalSearchParams<{ name: string }>();
 
   const [person, setPerson] = useState<PersonSummary | null>(null);
@@ -452,8 +450,7 @@ function PersonProfile() {
 
 
   return (
-    <SafeAreaView style={styles.safe} edges={[]}>
-      <GlassBar>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         {/* Primary entry is the People list — explicit target for the same
             reason noted in day/[offset]/index.tsx. */}
@@ -467,12 +464,10 @@ function PersonProfile() {
           </Pressable>
         )}
       </View>
-      </GlassBar>
 
       <ScrollView
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
-        {...glassScroll(glassTop)}
         // The nickname field sits low on the page: lift it above the keyboard.
         automaticallyAdjustKeyboardInsets
         keyboardShouldPersistTaps="handled"
@@ -807,10 +802,15 @@ const styles = StyleSheet.create({
   },
   confirmAllText: { color: colors.ink, fontFamily: fonts.medium, fontSize: 13 },
   safe: { flex: 1, backgroundColor: colors.white },
-  // Inside the glass bar (GlassBar), which sets its height and edge.
-  header: { alignItems: 'center', justifyContent: 'center' },
-  back: { position: 'absolute', left: 20 },
-  headerAction: { position: 'absolute', right: 20 },
+  header: {
+    paddingTop: 12,
+    paddingBottom: 16,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8E8',
+  },
+  back: { position: 'absolute', left: 20, top: 16 },
+  headerAction: { position: 'absolute', right: 20, top: 16 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
   scroll: { paddingHorizontal: 24, paddingBottom: 140 },
 

@@ -1,4 +1,3 @@
-import GlassBar, { glassScroll, useGlassTop } from '../src/components/GlassBar';
 import { useCallback, useState } from 'react';
 import {
   Alert,
@@ -55,7 +54,6 @@ function railLabel(key: string): string {
 // are a person in their own memory log, not a settings screen.
 function MyProfile() {
   const router = useRouter();
-  const glassTop = useGlassTop();
   const [profile, setProfile] = useState<UserProfile>({});
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
   const [editOpen, setEditOpen] = useState(false);
@@ -114,8 +112,7 @@ function MyProfile() {
   const firstName = (profile.name ?? '').trim().split(/\s+/)[0];
 
   return (
-    <SafeAreaView style={styles.safe} edges={[]}>
-      <GlassBar>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => goBack(router, '/profile')} hitSlop={12} style={styles.back}>
           <Ionicons name="arrow-back" size={28} color={colors.primary} />
@@ -125,9 +122,8 @@ function MyProfile() {
           <Ionicons name="create-outline" size={24} color={colors.primary} />
         </Pressable>
       </View>
-      </GlassBar>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false} {...glassScroll(glassTop)}>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Pressable onPress={pickPhoto} style={styles.heroWrap}>
           {profile.photoUri ? (
             <PhotoImage uri={profile.photoUri} style={styles.hero} />
@@ -202,10 +198,15 @@ function MyProfile() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.white },
-  // Inside the glass bar (GlassBar), which sets its height and edge.
-  header: { alignItems: 'center', justifyContent: 'center' },
-  back: { position: 'absolute', left: 20 },
-  headerAction: { position: 'absolute', right: 20 },
+  header: {
+    paddingTop: 12,
+    paddingBottom: 16,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E8E8',
+  },
+  back: { position: 'absolute', left: 20, top: 16 },
+  headerAction: { position: 'absolute', right: 20, top: 16 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
   scroll: { paddingHorizontal: 24, paddingBottom: 140 },
 

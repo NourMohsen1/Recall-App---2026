@@ -1,4 +1,3 @@
-import { glassScroll, useGlassTop } from '../src/components/GlassBar';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
@@ -83,7 +82,6 @@ function Places() {
   // Pull down: new photos brought in and filed, deleted ones taken out,
   // then the list. Filing older photos carries on quietly after.
   const [refreshing, setRefreshing] = useState(false);
-  const glassTop = useGlassTop();
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -185,13 +183,12 @@ function Places() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={[]}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader title={selecting ? 'Select places' : 'Places'} />
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.scroll}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
-        {...glassScroll(glassTop)}
       >
         <View style={styles.filterRow}>
           <FilterPill

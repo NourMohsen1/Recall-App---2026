@@ -3,11 +3,9 @@ import { useRouter, type Href } from 'expo-router';
 import { goBack } from '../navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
-import GlassBar from './GlassBar';
 
-// Page header with a teal back arrow and centered title, used by People /
-// Places / On This Day / Recap — drawn as frosted glass the page scrolls
-// under (GlassBar). The page gives its ScrollView glassScroll(useGlassTop()).
+// White page header with a teal back arrow and centered title,
+// used by People / Places / On This Day / Recap.
 //
 // Back returns to the screen this one was opened from (src/navigation.ts);
 // `backTo` is only where it goes when there is nothing behind it.
@@ -27,7 +25,6 @@ export default function ScreenHeader({
 }) {
   const router = useRouter();
   return (
-    <GlassBar>
     <View style={styles.header}>
       <Pressable
         onPress={onBack ?? (() => goBack(router, backTo as Href))}
@@ -48,16 +45,18 @@ export default function ScreenHeader({
         </Pressable>
       )}
     </View>
-    </GlassBar>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
+    backgroundColor: colors.white,
+    paddingTop: 12,
+    paddingBottom: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  back: { position: 'absolute', left: 20 },
-  action: { position: 'absolute', right: 20 },
+  back: { position: 'absolute', left: 20, top: 14 },
+  action: { position: 'absolute', right: 20, top: 16 },
   title: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
 });

@@ -1,4 +1,3 @@
-import { glassScroll, useGlassTop } from '../src/components/GlassBar';
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
@@ -182,7 +181,6 @@ function People() {
     AsyncStorage.setItem(VIEW_KEY, v).catch(() => {});
   };
   const [query, setQuery] = useState('');
-  const glassTop = useGlassTop();
   const { width: screenW } = useWindowDimensions();
   // Three faces a row, as in the design.
   const tileSize = Math.min(104, Math.floor((screenW - 40 - 2 * 18) / 3) - 12);
@@ -316,7 +314,7 @@ function People() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={[]}>
+    <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader
         title="People"
         action={{
@@ -325,48 +323,47 @@ function People() {
           onPress: () => setMenuOpen(true),
         }}
       />
+      {/* Find someone fast, and how to see everyone. */}
+      {people.length > 0 && (
+        <View style={styles.toolbar}>
+          <View style={styles.search}>
+            <Ionicons name="search" size={17} color="#7D8B8D" />
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search people"
+              placeholderTextColor="#8B9394"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+          </View>
+          <View style={styles.viewSwitch}>
+            {(['grid', 'list'] as const).map((v) => (
+              <Pressable
+                key={v}
+                onPress={() => chooseView(v)}
+                style={[styles.viewBtn, view === v && styles.viewBtnOn]}
+                accessibilityLabel={v === 'grid' ? 'Faces' : 'Cards'}
+              >
+                <Ionicons
+                  name={v === 'grid' ? 'grid-outline' : 'list-outline'}
+                  size={18}
+                  color={view === v ? colors.white : colors.primary}
+                />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      )}
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
-        {...glassScroll(glassTop)}
       >
-        {/* Find someone fast, and how to see everyone. */}
-        {people.length > 0 && (
-          <View style={styles.toolbar}>
-            <View style={styles.search}>
-              <Ionicons name="search" size={17} color="#7D8B8D" />
-              <TextInput
-                style={styles.searchInput}
-                value={query}
-                onChangeText={setQuery}
-                placeholder="Search people"
-                placeholderTextColor="#8B9394"
-                autoCorrect={false}
-                returnKeyType="search"
-                clearButtonMode="while-editing"
-              />
-            </View>
-            <View style={styles.viewSwitch}>
-              {(['grid', 'list'] as const).map((v) => (
-                <Pressable
-                  key={v}
-                  onPress={() => chooseView(v)}
-                  style={[styles.viewBtn, view === v && styles.viewBtnOn]}
-                  accessibilityLabel={v === 'grid' ? 'Faces' : 'Cards'}
-                >
-                  <Ionicons
-                    name={v === 'grid' ? 'grid-outline' : 'list-outline'}
-                    size={18}
-                    color={view === v ? colors.white : colors.primary}
-                  />
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        )}
         {loaded && people.length === 0 && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="account-heart-outline" size={40} color="#AEB6B7" />
@@ -487,13 +484,14 @@ const styles = StyleSheet.create({
   body: { flex: 1, backgroundColor: colors.pale },
   scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
 
-  // Inside the scroll now, so it slides under the glass header with the
-  // page; the page's own padding sets its sides.
   toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    marginBottom: 14,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 2,
+    backgroundColor: colors.pale,
   },
   search: {
     flex: 1,
