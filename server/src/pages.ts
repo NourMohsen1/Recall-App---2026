@@ -5,7 +5,7 @@
 // leaves the phone changes — a new AI company, crash reporting off, a new
 // service — this page changes in the same commit.
 
-const CONTACT = '@@CONTACT@@';
+const CONTACT = 'recallsupport10@gmail.com';
 const UPDATED = '7 October 2026';
 
 const shell = (title: string, body: string) => `<!doctype html>
