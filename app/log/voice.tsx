@@ -1,3 +1,4 @@
+import { logDayKey } from '../../src/logicalDay';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -24,7 +25,7 @@ import {
 } from 'expo-audio';
 import EarAnimation, { type EarHandle } from '../../src/components/EarAnimation';
 import VoicePlayer from '../../src/components/VoicePlayer';
-import { TranscriptWord, dateKey, persistFile, saveMemory } from '../../src/memoryLog';
+import { TranscriptWord, persistFile, saveMemory } from '../../src/memoryLog';
 import { processMemoryIntake } from '../../src/memoryIntake';
 import { recordCurrentLocationForDay } from '../../src/places';
 import {
@@ -179,12 +180,12 @@ export default function LogVoice() {
         ? playerStatus.duration * 1000
         : recorderState.durationMillis,
     });
-    recordCurrentLocationForDay(dateKey(new Date())).catch(() => {});
+    recordCurrentLocationForDay(logDayKey()).catch(() => {});
     // The intake brain reads the transcript (plus any typed note) and routes
     // everything: polished memory → Timeline, commitments → Tasks, people
     // met → People, places mentioned → Places. Works in any language.
     const spokenText = [transcript.trim(), note.trim()].filter(Boolean).join(' — ');
-    if (spokenText) processMemoryIntake(saved.id, spokenText, dateKey(new Date())).catch(() => {});
+    if (spokenText) processMemoryIntake(saved.id, spokenText, logDayKey()).catch(() => {});
     returnTo();
   };
 

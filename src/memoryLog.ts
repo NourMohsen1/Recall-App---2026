@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
+import { logTakenAt } from './logicalDay';
 
 // Local-first store for memories the user logs from the "+" button.
 // Every memory carries two timestamps: `createdAt` (when it was logged) and
@@ -171,7 +172,8 @@ export async function saveMemory(
     ...memory,
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     createdAt: new Date().toISOString(),
-    takenAt: (memory.takenAt ?? new Date()).toISOString(),
+    // Written after midnight, it belongs to the night still going (logicalDay.ts).
+    takenAt: (memory.takenAt ?? logTakenAt()).toISOString(),
   };
   const existing = await getLoggedMemories();
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify([entry, ...existing]));

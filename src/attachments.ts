@@ -1,8 +1,9 @@
+import { logDayKey } from './logicalDay';
 import * as FileSystem from 'expo-file-system/legacy';
 import { readImageText, readPdfText, textReaderAvailable } from '../modules/text-reader';
 import { processMemoryIntake } from './memoryIntake';
 import { isPrivateFile } from './photoGuard';
-import { dateKey, localFile, persistFile, saveMemory, type Attachment } from './memoryLog';
+import { localFile, persistFile, saveMemory, type Attachment } from './memoryLog';
 
 // A screenshot or file saved as a memory — an appointment confirmation, a
 // ticket, a bill. The phone reads it (modules/text-reader); the words go to
@@ -69,7 +70,7 @@ export async function saveAttachmentMemory(
     text: trimmed || undefined,
     attachments: [attachment],
   });
-  processMemoryIntake(saved.id, trimmed, dateKey(new Date())).catch((e) =>
+  processMemoryIntake(saved.id, trimmed, logDayKey()).catch((e) =>
     console.warn('[attach] intake failed:', e),
   );
   const words = (attachment.text ?? '').split(/\s+/).filter(Boolean).length;

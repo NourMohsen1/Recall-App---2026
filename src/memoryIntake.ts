@@ -1,3 +1,4 @@
+import { LATE_NIGHT_ENDS, isLateNight, logicalToday } from './logicalDay';
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -151,7 +152,14 @@ export async function analyzeMemory(
 ): Promise<IntakeResult | null> {
   if (!intakeAvailable() || !text.trim()) return null;
 
-  const now = new Date();
+  // After midnight and before 4 am the user's day is still going
+  // (logicalDay.ts): "today" is the day before, "tomorrow" is the date the
+  // clock already shows, "yesterday" the day before that.
+  const clock = new Date();
+  const now = isLateNight(clock) ? logicalToday(clock) : clock;
+  const lateNight = isLateNight(clock)
+    ? ` It is ${String(clock.getHours()).padStart(2, '0')}:${String(clock.getMinutes()).padStart(2, '0')} at night, after midnight, and the user hasn't slept: their day is still ${WEEKDAYS_LONG[now.getDay()]} — "today" and "tonight" mean ${localDate(now)}, "tomorrow" means the day after it.`
+    : '';
   const known = await getKnownPeopleForPrompt();
   const knownPlaces = await knownPlaceNames().catch(() => [] as string[]);
 
@@ -176,7 +184,7 @@ export async function analyzeMemory(
         messages: [
           {
             role: 'system',
-            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}.${entryDayLine(options.entryDay, now)} Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}\n\nKNOWN PLACES:\n${knownPlaces.join('\n') || '(none yet)'}`,
+            content: `${INTAKE_PROMPT}\n\nTODAY is ${WEEKDAYS_LONG[now.getDay()]}, ${localDate(now)}.${lateNight}${entryDayLine(options.entryDay, now)} Upcoming dates for reference: ${calendar}.${self}\n\nKNOWN PEOPLE:\n${known || '(none yet)'}\n\nKNOWN PLACES:\n${knownPlaces.join('\n') || '(none yet)'}`,
           },
           { role: 'user', content: entryFor(text, options) },
         ],
@@ -550,6 +558,9 @@ function retime(
   const [y, mo, d] = day.split('-').map(Number);
   const at = new Date(memory.takenAt);
   const [hh, mm] = happened.time ? happened.time.split(':').map(Number) : [at.getHours(), at.getMinutes()];
+  // "Got home at 1" written at 1:30 am: the small hours of the night that
+  // is still going, already at its end — not 1 am that morning.
+  if (!happened.date && hh < LATE_NIGHT_ENDS && at.getHours() === 23 && at.getMinutes() === 59) return null;
   const when = new Date(y, mo - 1, d, hh, mm);
   const now = Date.now();
   if (when.getTime() > now || now - when.getTime() > 31 * 86400000) return null;

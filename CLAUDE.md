@@ -206,6 +206,14 @@ name → profile, interests → On This Day (`quizAnswers[0]`), recap
 frequency → recap notifications, Positive Focus. No accounts: memories live
 on the phone and return with its iCloud backup.
 
+**After midnight it's still the day before** (`src/logicalDay.ts`, Oct
+2026). Nour's day runs to 1 or 2 am. Until 4 am a new log belongs to the
+evening still going — placed at 23:59 of it, later notes after earlier
+ones — with no question asked; the intake is told it's still that day
+("tomorrow" = the date the clock shows), and the Timeline and Recap's
+Today open on it. A log that names its day ("yesterday morning…") goes
+there as before. Measured at a faked 1:30 am, 4/4 placed right.
+
 **Polishing never rewrites** (`src/memoryIntake.ts`, Oct 2026). Voice notes
 are always polished as transcripts (misheard words worked out from the
 same day's notes); the raw words live only in Source. Nothing is reworded:

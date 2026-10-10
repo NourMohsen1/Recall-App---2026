@@ -1,3 +1,4 @@
+import { isLateNight } from '../../src/logicalDay';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Image,
@@ -231,7 +232,8 @@ const MIN_SCALE = 0.2;
 
 export default function Timeline() {
   const router = useRouter();
-  const [selected, setSelected] = useState(0);
+  // After midnight it opens on the evening still going (logicalDay.ts).
+  const [selected, setSelected] = useState(() => (isLateNight() ? -1 : 0));
   // Home's week opens the Timeline on the day tapped. `at` changes on every
   // tap, so tapping the same day again still lands there.
   const params = useLocalSearchParams<{ offset?: string; at?: string }>();

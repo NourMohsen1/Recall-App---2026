@@ -1,3 +1,4 @@
+import { logDayKey } from '../src/logicalDay';
 import { useCallback, useEffect, useState } from 'react';
 import { Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
@@ -70,7 +71,8 @@ function TodayRecap({
   onReordered: () => void;
 }) {
   const router = useRouter();
-  const today = dateKey(new Date());
+  // The day still going: after midnight, the evening before (logicalDay.ts).
+  const today = logDayKey();
   const entries = memories
     .filter((m) => dateKey(new Date(m.takenAt)) === today && (m.kind !== 'photo' || m.text))
     .sort((a, b) => a.takenAt.localeCompare(b.takenAt));

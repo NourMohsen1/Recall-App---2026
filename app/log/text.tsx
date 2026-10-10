@@ -1,3 +1,4 @@
+import { logDayKey } from '../../src/logicalDay';
 import { useEffect, useRef, useState } from 'react';
 import {
   Keyboard,
@@ -14,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import EarAnimation, { type EarHandle } from '../../src/components/EarAnimation';
 import PillButton from '../../src/components/PillButton';
 import { processMemoryIntake } from '../../src/memoryIntake';
-import { dateKey, saveMemory } from '../../src/memoryLog';
+import { saveMemory } from '../../src/memoryLog';
 import { recordCurrentLocationForDay } from '../../src/places';
 import { useLightStatusBar } from '../../src/statusBar';
 import { colors, fonts } from '../../src/theme';
@@ -82,11 +83,11 @@ export default function LogText() {
     const closing = new Promise((r) => setTimeout(r, 900));
     const saved = await saveMemory({ kind: 'text', text: trimmed });
     // Tag where this happened — best-effort, never blocks saving the memory.
-    recordCurrentLocationForDay(dateKey(new Date())).catch(() => {});
+    recordCurrentLocationForDay(logDayKey()).catch(() => {});
     // The intake brain reads the entry and routes everything to its place:
     // polished memory → Timeline, commitments → Tasks, people → People,
     // mentioned places → Places.
-    processMemoryIntake(saved.id, trimmed, dateKey(new Date())).catch(() => {});
+    processMemoryIntake(saved.id, trimmed, logDayKey()).catch(() => {});
     await closing;
     returnTo();
   };
