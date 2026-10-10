@@ -110,7 +110,10 @@ export default function SirCluster({
   }, [markers.length, slots.length, day]);
 
   const spotOf = (m: ShownMarker, i: number): Spot => saved[m.id] ?? slots[i] ?? slots[slots.length - 1] ?? { x: 40, y: 40 };
+  // A tap shows what an icon is; editing is a step the user asks for.
   const active = markers.find((m) => m.id === open) ?? null;
+  const activeSpot = active ? spotOf(active, markers.indexOf(active)) : null;
+  const [editing, setEditing] = useState<ShownMarker | null>(null);
 
   return (
     <>
@@ -130,12 +133,47 @@ export default function SirCluster({
         />
       ))}
 
+      {/* Drawn last so it sits over the cards around it, right beside the
+          icon that was tapped. */}
+      {active && activeSpot && (
+        <View style={[styles.bubble, { left: activeSpot.x + SIR_SIZE + 10, top: activeSpot.y - 4 }]}>
+          <SirDetails
+            marker={active}
+            onEdit={() => {
+              setOpen(null);
+              setEditing(active);
+            }}
+          />
+        </View>
+      )}
+
       <SirWindow
-        marker={active}
-        onClose={() => setOpen(null)}
-        onSave={(note) => active && onNote(active, note)}
-        onRemove={() => active && onRemove(active)}
+        marker={editing}
+        onClose={() => setEditing(null)}
+        onSave={(note) => editing && onNote(editing, note)}
+        onRemove={() => editing && onRemove(editing)}
       />
+    </>
+  );
+}
+
+/** What an icon is — its name, the user's note, where it came from — with
+ *  the way into editing it. */
+function SirDetails({ marker, onEdit }: { marker: ShownMarker; onEdit: () => void }) {
+  return (
+    <>
+      <View style={styles.bubbleHeader}>
+        <MaterialCommunityIcons name={SIR_KINDS[marker.kind].icon} size={18} color={colors.primary} />
+        <Text style={[styles.bubbleTitle, rtlIfArabic(marker.label)]} numberOfLines={2}>
+          {marker.label}
+        </Text>
+      </View>
+      {marker.note ? <Text style={[styles.bubbleNote, rtlIfArabic(marker.note)]}>{marker.note}</Text> : null}
+      <Text style={styles.bubbleSub}>{describe(marker)}</Text>
+      <Pressable onPress={onEdit} hitSlop={8} style={styles.editBtn}>
+        <MaterialCommunityIcons name="pencil-outline" size={14} color={colors.primary} />
+        <Text style={styles.editText}>{marker.note ? 'Edit' : 'Add a note'}</Text>
+      </Pressable>
     </>
   );
 }
@@ -222,26 +260,39 @@ export function SirRow({
   onNote: (marker: ShownMarker, note: string) => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
-  const active = markers.find((m) => m.id === open) ?? null;
+  const [editing, setEditing] = useState<ShownMarker | null>(null);
   return (
     <View style={styles.row}>
       {markers.map((m) => (
-        <Pressable key={m.id} onPress={() => setOpen(m.id)} style={styles.chip}>
-          <MaterialCommunityIcons name={SIR_KINDS[m.kind].icon} size={18} color={colors.primary} />
-          <Text style={[styles.chipLabel, rtlIfArabic(m.note ?? m.label)]} numberOfLines={1}>
-            {m.note ? `${m.label} · ${m.note}` : m.label}
-          </Text>
-        </Pressable>
+        <View key={m.id} style={styles.rowItem}>
+          <Pressable onPress={() => setOpen(open === m.id ? null : m.id)} style={styles.chip}>
+            <MaterialCommunityIcons name={SIR_KINDS[m.kind].icon} size={18} color={colors.primary} />
+            <Text style={[styles.chipLabel, rtlIfArabic(m.note ?? m.label)]} numberOfLines={1}>
+              {m.note ? `${m.label} · ${m.note}` : m.label}
+            </Text>
+          </Pressable>
+          {open === m.id && (
+            <View style={[styles.bubble, styles.bubbleInline]}>
+              <SirDetails
+                marker={m}
+                onEdit={() => {
+                  setOpen(null);
+                  setEditing(m);
+                }}
+              />
+            </View>
+          )}
+        </View>
       ))}
       <Pressable onPress={onAdd} style={[styles.chip, styles.chipAdd]}>
         <MaterialCommunityIcons name="plus" size={18} color={colors.slate} />
         <Text style={[styles.chipLabel, { color: colors.slate }]}>Mark this day</Text>
       </Pressable>
       <SirWindow
-        marker={active}
-        onClose={() => setOpen(null)}
-        onSave={(note) => active && onNote(active, note)}
-        onRemove={() => active && onRemove(active)}
+        marker={editing}
+        onClose={() => setEditing(null)}
+        onSave={(note) => editing && onNote(editing, note)}
+        onRemove={() => editing && onRemove(editing)}
       />
     </View>
   );
@@ -398,6 +449,38 @@ const styles = StyleSheet.create({
   },
   // Tapped: the colours swap back, so it reads as selected.
   iconOpen: { backgroundColor: colors.white, borderColor: colors.primary },
+  bubble: {
+    position: 'absolute',
+    // Above every card, including one that was just moved to the top.
+    zIndex: 2000,
+    width: 210,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E1E7E8',
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    gap: 4,
+  },
+  // On the day screen the details open under the chip, in the flow.
+  bubbleInline: { position: 'relative', zIndex: 0, width: 230 },
+  bubbleNote: { color: colors.ink, fontFamily: fonts.regular, fontSize: 13, lineHeight: 18 },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+    backgroundColor: '#EEF3F3',
+    borderRadius: 999,
+    paddingVertical: 5,
+    paddingHorizontal: 11,
+  },
+  editText: { fontFamily: fonts.medium, fontSize: 12, color: colors.primary },
   bubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   windowWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, backgroundColor: 'rgba(8,17,18,0.25)' },
   window: {
