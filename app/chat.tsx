@@ -1,7 +1,8 @@
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUserProfile } from '../src/userProfile';
 import { localFile } from '../src/memoryLog';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
+import { PAUSE_MS, messageTimes, sameDay, threadDateLabel } from '../src/threadDates';
 import {
   Alert,
   Animated,
@@ -56,6 +57,8 @@ type Message = {
   sources?: Source[];
   error?: boolean;
   spoken?: boolean; // asked by voice — shows a small mic mark on the bubble
+  /** When it was sent (ISO). Older chats have none; see messageTimes. */
+  at?: string;
   // Tap-to-answer replies for the AI's clarifying question ("Yes, that's
   // him") — shown only while this is the latest message.
   suggestions?: string[];
@@ -420,6 +423,7 @@ function Chat() {
       .catch(() => {});
   }, []);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const times = messageTimes(messages, sessionId);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [input, setInput] = useState('');
@@ -546,7 +550,7 @@ function Chat() {
   const ask = async (text: string, spoken = false) => {
     stopSpeaking();
     setSpeakingIdx(null);
-    setMessages((prev) => [...prev, { role: 'user', text, spoken }]);
+    setMessages((prev) => [...prev, { role: 'user', text, spoken, at: new Date().toISOString() }]);
     setThinking(true);
 
     const result = await askMemory(text, historyRef.current);
@@ -562,6 +566,7 @@ function Chat() {
         ...prev,
         {
           role: 'ai',
+          at: new Date().toISOString(),
           text: result.answer,
           reference: result.reference,
           sources: result.sources,
@@ -571,7 +576,7 @@ function Chat() {
       // Asked out loud → answered out loud, like a real conversation.
       if (spoken) speakAnswer(aiIdx, result.answer);
     } else {
-      setMessages((prev) => [...prev, { role: 'ai', text: errorText(result.reason), error: true }]);
+      setMessages((prev) => [...prev, { role: 'ai', text: errorText(result.reason), error: true, at: new Date().toISOString() }]);
     }
   };
 
@@ -622,7 +627,7 @@ function Chat() {
     } else {
       setMessages((prev) => [
         ...prev,
-        { role: 'ai', text: 'I couldn’t make that out — try asking again.', error: true },
+        { role: 'ai', text: 'I couldn’t make that out — try asking again.', error: true, at: new Date().toISOString() },
       ]);
     }
   };
@@ -673,9 +678,18 @@ function Chat() {
               contentContainerStyle={styles.thread}
               showsVerticalScrollIndicator={false}
             >
-              {messages.map((m, i) =>
-                m.role === 'ai' ? (
-                  <MessageAppear key={i}>
+              {messages.map((m, i) => (
+                <Fragment key={i}>
+                {/* When the chat started, and where it picks up again. */}
+                {times[i] &&
+                  (i === 0 ||
+                    !times[i - 1] ||
+                    !sameDay(times[i]!, times[i - 1]!) ||
+                    times[i]!.getTime() - times[i - 1]!.getTime() >= PAUSE_MS) && (
+                    <Text style={styles.threadDate}>{threadDateLabel(times[i]!)}</Text>
+                  )}
+                {m.role === 'ai' ? (
+                  <MessageAppear>
                     <View style={styles.aiRow}>
                       <BrainAvatar />
                       <View
@@ -732,7 +746,7 @@ function Chat() {
                       )}
                   </MessageAppear>
                 ) : (
-                  <MessageAppear key={i}>
+                  <MessageAppear>
                     <View style={styles.userRow}>
                       <View style={styles.userBubble}>
                         {m.spoken && (
@@ -746,8 +760,9 @@ function Chat() {
                       <UserAvatar photo={me.photo} name={me.name} />
                     </View>
                   </MessageAppear>
-                ),
-              )}
+                )}
+                </Fragment>
+              ))}
               {thinking && (
                 <MessageAppear>
                   <View style={styles.aiRow}>
@@ -886,6 +901,14 @@ const styles = StyleSheet.create({
   sourceRowKind: { fontFamily: fonts.regular, color: 'rgba(255,255,255,0.55)' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
+  threadDate: {
+    alignSelf: 'center',
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 4,
+    marginBottom: -6,
+  },
   disclaimer: {
     fontFamily: fonts.regular,
     fontSize: 11,

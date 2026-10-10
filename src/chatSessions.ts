@@ -32,6 +32,8 @@ export type ChatMessage = {
   error?: boolean;
   spoken?: boolean;
   suggestions?: string[];
+  /** When it was sent (ISO). Absent on messages saved before Oct 2026. */
+  at?: string;
 };
 
 // The lightweight row shown in the sidebar. Kept apart from the messages so
