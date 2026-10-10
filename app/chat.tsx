@@ -1,4 +1,4 @@
-import { withAppNav } from '../src/components/AppNav';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUserProfile } from '../src/userProfile';
 import { localFile } from '../src/memoryLog';
 import { useEffect, useRef, useState } from 'react';
@@ -389,6 +389,7 @@ function SourceList({ sources }: { sources: Source[] }) {
 type VoiceState = 'idle' | 'recording' | 'transcribing';
 
 function Chat() {
+  const insets = useSafeAreaInsets();
   // Dark teal screen: white top bar while it shows (src/statusBar.ts).
   useLightStatusBar();
   const router = useRouter();
@@ -407,7 +408,9 @@ function Chat() {
       hide.remove();
     };
   }, []);
-  const fieldLift = { marginBottom: keyboardH > 0 ? keyboardH + 10 : 150 };
+  // No bottom menu here (Nour tried it: too heavy for this screen), so the
+  // field sits low, with one quiet line under it.
+  const fieldLift = { marginBottom: keyboardH > 0 ? keyboardH + 10 : 6 };
 
   // The user's own face beside their messages, from their profile.
   const [me, setMe] = useState<{ photo?: string; name?: string }>({});
@@ -822,6 +825,11 @@ function Chat() {
               )}
             </View>
           )}
+          {keyboardH === 0 && (
+            <Text style={[styles.disclaimer, { marginBottom: Math.max(insets.bottom, 12) }]}>
+              Recall answers from your memories and its own reading of them — it can be wrong. Check what matters.
+            </Text>
+          )}
         </KeyboardAvoidingView>
         <ChatSidebar
           visible={sidebarOpen}
@@ -878,6 +886,15 @@ const styles = StyleSheet.create({
   sourceRowKind: { fontFamily: fonts.regular, color: 'rgba(255,255,255,0.55)' },
 
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
+  disclaimer: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    lineHeight: 15,
+    color: 'rgba(255,255,255,0.45)',
+    textAlign: 'center',
+    marginHorizontal: 32,
+    marginTop: 8,
+  },
   voiceHint: {
     fontFamily: fonts.regular,
     fontSize: 12,
@@ -1000,7 +1017,6 @@ const styles = StyleSheet.create({
     borderColor: colors.white,
     borderRadius: 18,
     marginHorizontal: 20,
-    marginBottom: 110,
     paddingVertical: 8,
     paddingHorizontal: 14,
     // Solid, so the words stay readable over the brain behind it.
@@ -1045,7 +1061,4 @@ const styles = StyleSheet.create({
   },
   miniWaveBar: { width: 3, borderRadius: 2, backgroundColor: colors.accent },
 });
-
-// The app's bottom menu here too (Nour, Oct 2026): the field already sits
-// above where it goes.
-export default withAppNav(Chat);
+export default Chat;

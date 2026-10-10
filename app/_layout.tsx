@@ -1,3 +1,8 @@
+import { LogBox } from 'react-native';
+// The simulator copy is built unsigned, so it has no keychain and Expo's
+// push-registration read fails on every launch. A real phone has one; the
+// warning only hid the bottom of the screen during simulator checks.
+if (__DEV__) LogBox.ignoreLogs(['[expo-notifications] Error reading persisted server registration']);
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
