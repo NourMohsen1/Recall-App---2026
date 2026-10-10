@@ -355,6 +355,19 @@ Each of these cost real time once.
   Local builds need `SENTRY_DISABLE_AUTO_UPLOAD=true` until there is an
   auth token for symbol upload.
 
+## Shipping changes after release
+
+- **JS and assets** (screens, prompts, logic — most of what we change) go
+  out as an EAS Update: `npx eas-cli update --channel production -m "…"`.
+  Phones download it in the background and use it on the next launch;
+  no App Store review. `expo-updates` with `runtimeVersion` policy
+  `fingerprint`: an update only reaches builds with the same native code.
+- **Native changes** (a new native module, an `app.json` plugin or
+  permission, the Swift modules) need a new build through App Store review.
+- Cloud builds don't see `.env`: the server address is in `eas.json`
+  (`EXPO_PUBLIC_RECALL_API_URL`). The dev token must never go there.
+- Listing texts and privacy answers: `docs/APP_STORE.md`.
+
 ## Before TestFlight
 
 - Hard spend caps on the OpenAI and DeepSeek dashboards (Nour's to do). The

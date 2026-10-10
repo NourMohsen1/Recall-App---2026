@@ -11,7 +11,7 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.nourwalid.recall",
       "usesAppleSignIn": true,
       "config": {
@@ -130,6 +130,12 @@
       "eas": {
         "projectId": "36bac704-e0b1-4624-8c7d-7c5198f4dfe8"
       }
+    },
+    "updates": {
+      "url": "https://u.expo.dev/36bac704-e0b1-4624-8c7d-7c5198f4dfe8"
+    },
+    "runtimeVersion": {
+      "policy": "fingerprint"
     }
   }
 }

@@ -16,14 +16,18 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_SENTRY_DSN": "https://8e1b44936d190cd732e4411f404702f4@o4512173813792768.ingest.us.sentry.io/4512173818773504"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://8e1b44936d190cd732e4411f404702f4@o4512173813792768.ingest.us.sentry.io/4512173818773504",
+        "EXPO_PUBLIC_RECALL_API_URL": "https://recall-keys.nourmohsen-recall.workers.dev",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
       "autoIncrement": true,
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_SENTRY_DSN": "https://8e1b44936d190cd732e4411f404702f4@o4512173813792768.ingest.us.sentry.io/4512173818773504"
+        "EXPO_PUBLIC_SENTRY_DSN": "https://8e1b44936d190cd732e4411f404702f4@o4512173813792768.ingest.us.sentry.io/4512173818773504",
+        "EXPO_PUBLIC_RECALL_API_URL": "https://recall-keys.nourmohsen-recall.workers.dev",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
