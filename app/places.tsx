@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,11 +24,14 @@ import {
   mergePlaces,
   onPlacesChanged,
   relativeDay,
+  startPlaceIndexing,
   type PlaceKind,
   type PlaceSummary,
 } from '../src/places';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
+import { syncPhotosWithLibrary } from '../src/photoGuard';
+import { syncNewPhotosIfOn } from '../src/photoImport';
 
 // Every place the user has been, from their own photos and their own words
 // (src/places.ts). Most visited first: the places someone goes to are the
@@ -74,6 +78,23 @@ function Places() {
   }, []);
   useFocusEffect(load);
   useEffect(() => onPlacesChanged(load), [load]);
+
+  // Pull down: new photos brought in and filed, deleted ones taken out,
+  // then the list. Filing older photos carries on quietly after.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await syncPhotosWithLibrary();
+      await syncNewPhotosIfOn();
+      startPlaceIndexing();
+    } catch (e) {
+      console.warn('[places] refresh failed:', e);
+    } finally {
+      load();
+      setRefreshing(false);
+    }
+  }, [load]);
 
 
   // Every year at once: the year menu gave way to "Add".
@@ -164,7 +185,11 @@ function Places() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader title={selecting ? 'Select places' : 'Places'} />
-      <ScrollView style={styles.body} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+      >
         <View style={styles.filterRow}>
           <FilterPill
             label={kind === 'all' ? 'All' : PLACE_KINDS[kind].label}

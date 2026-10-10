@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { noticePeople } from '../src/facePeople';
+import { syncPhotosWithLibrary } from '../src/photoGuard';
+import { syncNewPhotosIfOn } from '../src/photoImport';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -182,8 +185,8 @@ function People() {
   // Three faces a row, as in the design.
   const tileSize = Math.min(104, Math.floor((screenW - 40 - 2 * 18) / 3) - 12);
 
-  useFocusEffect(
-    useCallback(() => {
+  const loadAll = useCallback(
+    () =>
       Promise.all([
         getPeopleSummaries(),
         getMemoriesByDay(),
@@ -197,9 +200,31 @@ function People() {
         setMeta(personMeta);
         setRejected(rejects);
         setLoaded(true);
-      });
-    }, []),
+      }),
+    [],
   );
+  useFocusEffect(
+    useCallback(() => {
+      loadAll();
+    }, [loadAll]),
+  );
+
+  // Pull down: new photos brought in, faces looked for again, then the
+  // list — what the app otherwise does on its own, now.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await syncPhotosWithLibrary();
+      await syncNewPhotosIfOn();
+      await noticePeople();
+    } catch (e) {
+      console.warn('[people] refresh failed:', e);
+    } finally {
+      await loadAll();
+      setRefreshing(false);
+    }
+  }, [loadAll]);
 
   // The recap details for each person's most recent day together.
   const lastPlaceOf = (p: PersonSummary) =>
@@ -332,7 +357,13 @@ function People() {
           </View>
         </View>
       )}
-      <ScrollView style={styles.body} contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+      <ScrollView
+        style={styles.body}
+        contentContainerStyle={styles.scroll}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+      >
         {loaded && people.length === 0 && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="account-heart-outline" size={40} color="#AEB6B7" />

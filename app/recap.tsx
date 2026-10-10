@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import ReorderableList from '../src/components/ReorderableList';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -13,7 +13,7 @@ import ScreenHeader from '../src/components/ScreenHeader';
 import type { RecapKind, RecapUnit } from '../src/recap';
 import { MONTHS_SHORT } from '../src/data';
 import PhotoImage from '../src/components/PhotoImage';
-import { useMemoryPolish } from '../src/memoryIntake';
+import { polishPendingMemories, useMemoryPolish } from '../src/memoryIntake';
 import {
   LoggedMemory,
   dateKey,
@@ -185,6 +185,23 @@ function Recap() {
 
   const analyzing = useMemoryPolish(useCallback(() => getLoggedMemories().then((all) => setMemories(shownMemories(all))), []));
 
+  // Pull down: anything not written up yet is, then the recap is drawn
+  // again from what's there now (people, places and stories included).
+  const [refreshing, setRefreshing] = useState(false);
+  const [round, setRound] = useState(0);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await polishPendingMemories();
+    } catch (e) {
+      console.warn('[recap] refresh failed:', e);
+    } finally {
+      setMemories(shownMemories(await getLoggedMemories()));
+      setRound((r) => r + 1);
+      setRefreshing(false);
+    }
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       {/* Inside one week, month or year, back returns to the list of them. */}
@@ -195,6 +212,7 @@ function Recap() {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!dragging}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
         >
           {analyzing && <AnalyzingBanner />}
 
@@ -223,11 +241,11 @@ function Recap() {
               onReordered={() => getLoggedMemories().then((all) => setMemories(shownMemories(all)))}
             />
           )}
-          {period !== 'Today' && offset === null && <RecapOverview kind={KIND[period]} onOpen={setOffset} />}
+          {period !== 'Today' && offset === null && (
+            <RecapOverview key={`o${round}`} kind={KIND[period]} onOpen={setOffset} />
+          )}
           {period !== 'Today' && offset !== null && (
-            <>
-              <RecapView kind={KIND[period]} offset={offset} onOffset={setOffset} onOpenUnit={openUnit} />
-            </>
+            <RecapView key={`v${round}`} kind={KIND[period]} offset={offset} onOffset={setOffset} onOpenUnit={openUnit} />
           )}
         </ScrollView>
         </GestureHandlerRootView>
