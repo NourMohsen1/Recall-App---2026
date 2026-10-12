@@ -20,15 +20,15 @@ matches what the app does today; when that changes, this file and
 
 ## Promotional text (170 max — can be changed any time without review)
 
-Talk, type or snap — Recall files your day into people, places and tasks, and answers "when did I last see Omar?" in seconds.
+Recall brings your days back to you — so you remember them yourself. Talk, type or snap; Recall files it and reminds you.
 
 ## Description
 
-Recall is a journal that remembers for you.
+Recall keeps your memory up to date — not by remembering for you, but by bringing your days back to you, again and again, so you remember them yourself.
 
-Say how your day went, type a line, or let Recall read the photos you took. It writes it up as a clean memory and files everything in its place: who you were with, where you went, what you need to do next.
+Say how your day went, type a line, or let Recall read the photos you took. It writes it up as a clean memory and files everything in its place: who you were with, where you went, what you need to do next. Then it shows it back to you — in a morning recap, on your timeline, beside the people and places — so the last few weeks stay fresh in your own head.
 
-ASK YOUR MEMORY
+ASK WHEN YOU NEED TO
 "When did I go to the pyramids?" "What did I do on Eid?" "When was the last time I saw Sara?" Ask in English or Arabic, by text or by voice, and Recall answers from your own memories — with the days it used, one tap away.
 
 A TIMELINE YOU CAN MOVE AROUND
@@ -55,6 +55,14 @@ journal,diary,memory,voice journal,photo diary,life log,daily recap,reminders,ai
 ## What's New (1.0)
 
 The first version of Recall.
+
+## TestFlight test information
+
+Beta App Description:
+
+Recall keeps your own memory fresh. Talk, type or snap your day; Recall files it into people, places and tasks, then brings it back to you — in recaps, on your timeline, and whenever you ask — so you remember your days yourself instead of relying on the app. Please try: logging a day by voice or text, asking a question in Ask, the Timeline, and the weekly recap. Tell us anything that feels confusing or wrong.
+
+Feedback email: recallsupport10@gmail.com · Privacy Policy URL: as above · Sign-in required: no · Review notes: the App Review notes below. Contact: Nour's name and phone, recallsupport10@gmail.com — private to Apple's reviewers.
 
 ## App Review notes
 
