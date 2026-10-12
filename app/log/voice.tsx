@@ -107,13 +107,27 @@ export default function LogVoice() {
     console.log(`[ear] mic ${recorderState.metering?.toFixed(1) ?? 'none'} dB → ${micLevel.toFixed(2)}`);
   }, [phase, recorderState.metering, micLevel]);
 
+  // Which recording's words are on screen. A transcription is a request
+  // that can come back after the user deleted that recording and made a
+  // new one; its words must never land on the new one. Nour hit exactly
+  // this: the deleted first take was saved, the real one lost.
+  const currentRun = useRef(0);
+  const transcriptFor = useRef<string | null>(null);
+
   const runTranscription = async (uri: string, lang: SpeechLanguage) => {
     if (!canTranscribe) return;
+    const run = ++currentRun.current;
+    transcriptFor.current = null;
     setTranscribing(true);
     setTranscribeError(null);
     const result = await transcribeAudio(uri, lang);
+    if (run !== currentRun.current) {
+      console.log('[voice] a transcription came back for a recording that was replaced — ignored');
+      return;
+    }
     setTranscribing(false);
     if (result.ok) {
+      transcriptFor.current = uri;
       setTranscript(result.text);
       setWords(result.words);
     } else if (result.reason === 'no-credits') {
@@ -154,6 +168,10 @@ export default function LogVoice() {
   };
 
   const discard = () => {
+    // Anything still on its way back belongs to this take: drop it.
+    currentRun.current += 1;
+    transcriptFor.current = null;
+    setTranscribing(false);
     setRecordedUri(null);
     setTranscript('');
     setWords([]);
@@ -170,11 +188,17 @@ export default function LogVoice() {
     // this must be awaited, or the memory can end up pointing at a file
     // that gets evicted later and silently stops playing.
     const permanentUri = await persistFile(recordedUri, 'voice');
+    // Only words written out from THIS recording. Saved before they
+    // arrived, the note is kept without words and the background pass
+    // writes them out from the saved audio (transcribePendingMemories).
+    const ownWords = transcriptFor.current === recordedUri ? transcript.trim() : '';
+    if (!ownWords) console.log('[voice] saved before its words arrived — they will be written out in the background');
+    currentRun.current += 1;
     const saved = await saveMemory({
       kind: 'voice',
       audioUri: permanentUri,
-      text: transcript.trim() || undefined,
-      words: words.length > 0 ? words : undefined,
+      text: ownWords || undefined,
+      words: ownWords && words.length > 0 ? words : undefined,
       note: note.trim() || undefined,
       durationMillis: playerStatus?.duration
         ? playerStatus.duration * 1000
@@ -184,8 +208,11 @@ export default function LogVoice() {
     // The intake brain reads the transcript (plus any typed note) and routes
     // everything: polished memory → Timeline, commitments → Tasks, people
     // met → People, places mentioned → Places. Works in any language.
-    const spokenText = [transcript.trim(), note.trim()].filter(Boolean).join(' — ');
-    if (spokenText) processMemoryIntake(saved.id, spokenText, logDayKey()).catch(() => {});
+    const spokenText = [ownWords, note.trim()].filter(Boolean).join(' — ');
+    // Without its words yet, it's written up after the background pass
+    // writes them out — running it now on the typed note alone would mark
+    // it done before the recording itself was read.
+    if (ownWords && spokenText) processMemoryIntake(saved.id, spokenText, logDayKey()).catch(() => {});
     returnTo();
   };
 
