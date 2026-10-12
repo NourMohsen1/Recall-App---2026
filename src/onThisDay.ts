@@ -370,6 +370,14 @@ async function newsSearch(query: string, from: string, to: string, max: number):
 /** Articles for one topic around a date: one search per thing the user
  *  follows (most relevant by far — one combined query brought back noise),
  *  or one general search for a topic they don't follow anything in. */
+/** Does an article name this follow? Every word of it longer than two
+ *  letters, anywhere in the title or text, any case. */
+function mentions(h: Hit, follow: string): boolean {
+  const hay = `${h.title} ${h.content}`.toLowerCase();
+  const words = follow.toLowerCase().split(/\s+/).filter((w) => w.length > 2);
+  return words.length === 0 || words.every((w) => hay.includes(w));
+}
+
 async function topicHits(date: Date, t: Topic, taste: string | undefined, perFollow: number, maxFollows: number): Promise<Hit[] | null> {
   const follows = (taste ?? '').split(',').map((f) => f.trim()).filter(Boolean).slice(0, maxFollows);
   // That day, and the next — when most reports about it are published.
@@ -377,16 +385,24 @@ async function topicHits(date: Date, t: Topic, taste: string | undefined, perFol
   // same match three days running.
   const from = dateKey(date);
   const to = shift(date, 1);
-  const queries = follows.length ? follows.map((f) => `${f} news`) : [`${t.label} news`];
+  // A followed name is searched on its own. "Al Ahly news" brought back
+  // Liverpool and Man City (the search leaned on "news"), so a derby Al
+  // Ahly won on that day showed as a quiet day; "Al Ahly" alone found it 5/5.
+  const queries = follows.length ? follows : [`${t.label} news`];
   const lists = await Promise.all(queries.map((q) => newsSearch(q, from, to, perFollow)));
   if (lists.every((l) => l === null)) return null;
   const seen = new Set<string>();
   const hits: Hit[] = [];
-  for (const h of lists.flatMap((l) => l ?? [])) {
-    if (!h.url || seen.has(h.url)) continue;
-    seen.add(h.url);
-    hits.push(h);
-  }
+  lists.forEach((list, i) => {
+    for (const h of list ?? []) {
+      if (!h.url || seen.has(h.url)) continue;
+      // For something followed, only stories that name it — never general
+      // news standing in for it.
+      if (follows.length && !mentions(h, follows[i])) continue;
+      seen.add(h.url);
+      hits.push(h);
+    }
+  });
   return hits;
 }
 
@@ -659,7 +675,9 @@ const CACHE_PREFIX = 'otdFeed-';
 // per-topic taste text. A cache from a different signature is stale.
 // v3: same-day events only, never repeated across days (Oct 2026) — feeds
 // cached by the earlier rules are fetched again.
-const FEED_VERSION = 3;
+// v4: followed names searched on their own (Oct 2026) — days saved as quiet
+// under the old search are searched again.
+const FEED_VERSION = 4;
 function feedSignature(topics: Topic[], interests: Partial<Record<TopicKey, string>>): string {
   return tinyHash(`${FEED_VERSION}|` + topics.map((t) => `${t.key}:${interests[t.key] ?? ''}`).join('|'));
 }

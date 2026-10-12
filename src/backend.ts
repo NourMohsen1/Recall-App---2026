@@ -36,11 +36,17 @@ export function setAiAllowed(allowed: boolean): void {
   aiAllowed = allowed;
 }
 
+/** Recall's server. Not a secret: it answers nothing without a pass. Kept
+ *  here as the fallback because an over-the-air update once shipped without
+ *  the setting (eas update with --environment ignores .env), which turned
+ *  off every AI feature on phones until the next update. */
+const DEFAULT_API_URL = 'https://recall-keys.nourmohsen-recall.workers.dev';
+
 /** e.g. https://recall-keys.nourmohsen-recall.workers.dev */
 export function backendUrl(path: string): string | undefined {
   // Signing in and getting an install pass send nothing about the user.
   if (!aiAllowed && !path.startsWith('/auth/') && !path.startsWith('/attest/')) return undefined;
-  const base = trimmed(process.env.EXPO_PUBLIC_RECALL_API_URL);
+  const base = trimmed(process.env.EXPO_PUBLIC_RECALL_API_URL) || DEFAULT_API_URL;
   return base ? `${base.replace(/\/+$/, '')}${path}` : undefined;
 }
 
