@@ -118,10 +118,7 @@ export default function LogText() {
         <Pressable onPress={returnTo} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.white} />
         </Pressable>
-        <View style={{ alignItems: 'center' }}>
-          <Text style={styles.headerTitle}>New Memory</Text>
-          {dayTitle && <Text style={styles.headerDay}>{dayTitle}</Text>}
-        </View>
+        <Text style={styles.headerTitle}>New Memory</Text>
       </View>
 
       <View style={[styles.body, { paddingBottom: keyboard }]} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
@@ -134,7 +131,7 @@ export default function LogText() {
         />
 
         <View style={styles.writing}>
-          <Text style={styles.date}>{todayLabel()}</Text>
+          <Text style={styles.date}>{dayTitle ?? todayLabel()}</Text>
           <View style={styles.inputCard}>
             <TextInput
               style={styles.input}
@@ -142,7 +139,7 @@ export default function LogText() {
               onChangeText={onChange}
               onFocus={() => setTyping(true)}
               onBlur={() => setTyping(false)}
-              placeholder="What happened today?"
+              placeholder={forDay ? 'What happened that day?' : 'What happened today?'}
               placeholderTextColor="rgba(255,255,255,0.4)"
               selectionColor={colors.accent}
               multiline
@@ -167,7 +164,6 @@ const styles = StyleSheet.create({
   header: { paddingTop: 12, paddingBottom: 14, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 14 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: colors.white },
-  headerDay: { fontFamily: fonts.regular, fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
   body: { flex: 1 },
   ear: { alignSelf: 'stretch' },

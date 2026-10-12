@@ -51,7 +51,8 @@ export default function About() {
               <View style={styles.credit}>
                 <Text style={styles.creditWhat}>{c.what}</Text>
                 <Text style={styles.creditText}>
-                  {c.title} by {c.by} ({c.where}), {c.licence}
+                  {/* Non-breaking spaces: the licence never splits across lines. */}
+                  {c.title} by {c.by} ({c.where}), {c.licence.replace(/ /g, '\u00A0')}
                 </Text>
               </View>
             </View>
