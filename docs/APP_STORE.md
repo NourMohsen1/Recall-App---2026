@@ -82,13 +82,35 @@ Third parties that receive content, for the review form: OpenAI, DeepSeek, Tavil
 
 Answer "None" to every content question: there is no user-to-user content, no web browsing, and news shown in On This Day is filtered for sexual content (`src/contentSafety.ts`). Expected result: 4+. If Apple's form asks about AI-generated content, answer yes — summaries and answers are written by AI.
 
-## Screenshots
+## Screenshots (approved by Nour, 11 Oct 2026)
 
-Required: 6.9" iPhone (1320 × 2868), 3 to 10. Made on the iPhone 17 Pro Max simulator with test data, in this order:
+Required: 6.9" iPhone, 1320 × 2868. Upload these seven, in this order,
+from `docs/app-store-screenshots/`:
 
-1. Home — the week, the Ask pill, yesterday's summary
-2. Ask — a question answered, with its source day
-3. Timeline — a day's canvas with people, places and moment icons
-4. People — the faces grid
-5. Weekly recap — days with their people and places
-6. Tasks — the reminder wheel
+| # | File | Screen | Headline | Line under it |
+|---|---|---|---|---|
+| 1 | `1-home.png` | Home | Your Days, **Remembered** | Talk, type or snap — Recall files the rest |
+| 2 | `2-ask-brain.png` | Ask — the 3D brain | Ask Your **Memory** | Speak or type, in any language |
+| 3 | `3-ask.png` | Ask — an answer with its days | Find Details **Fast** | Real answers from your own days |
+| 4 | `4-timeline.png` | A day | Remember With **Context** | Linked to who, when and where |
+| 5 | `5-people.png` | People | Everyone You **Love** | People fill in from what you log |
+| 6 | `6-recap.png` | Weekly recap | Your Week, **At a Glance** | A short recap, day by day |
+| 7 | `7-tasks.png` | Tasks | Keep Life **Organized** | Tasks from what you say |
+
+Style (after a reference Nour chose): light pale and teal slides
+alternating, Poppins Bold headlines with one word in a pill or the accent
+colour, the real screen in a black phone frame with a soft glow, a few
+hand-drawn touches. Only the app's own fonts and colours.
+
+The content is real app output, not arranged by hand: a made-up user
+(Layla) logged a week of notes, filed by the app's own intake with the
+real AI (`tools/app-store-screenshots/demo-week.ts`), loaded into a
+Release build on an iPhone 17 Pro Max simulator (`load-demo.py`). One
+edit: on the brain screen, the line "Recall's AI is off" — shown only
+because a simulator can't pass App Attest — was removed from the
+background above the field.
+
+To redo them after screens change: capture the seven screens again into
+`tools/app-store-screenshots/captures/` (same names), then
+`python tools/app-store-screenshots/frame.py tools/app-store-screenshots/captures docs/app-store-screenshots`
+(needs Pillow).
