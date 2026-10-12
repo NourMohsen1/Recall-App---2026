@@ -82,15 +82,35 @@ Tracking: **No** — Recall does not track users across apps or websites, and ha
 | Photos or Videos | Yes | App Functionality | No | Only with "Reading your photos" on: a day's photos go to DeepSeek to write that day's story. |
 | Audio Data | Yes | App Functionality | No | With Recall's AI on: voice notes go to OpenAI to be written out; live voice conversation goes to OpenAI. |
 | Other User Content | Yes | App Functionality | No | With Recall's AI on: the words of notes, questions in Ask and the memories needed to answer them go to OpenAI or DeepSeek. |
+| Name | Yes | App Functionality | No | With Recall's AI on: the first name given in setup goes with questions in Ask and live voice, so answers can tell "I" from the user's own name. |
 | User ID | Yes | App Functionality | Yes | Sign in with Apple, if used: the server receives Apple's user id and keeps only a one-way hash of it, to sign sessions. |
 | Crash Data | Yes | App Functionality | No | Sentry: the error and phone model — no memories, screenshots or breadcrumbs. |
-| Everything else (location, contacts, health, name, email, browsing, purchases) | No | — | — | Location and contacts are used only on the phone. A place's street or landmark name comes from Apple. |
+| Everything else (location, contacts, health, email, browsing, purchases) | No | — | — | Location and contacts are used only on the phone. A place's street or landmark name comes from Apple. |
 
 Third parties that receive content, for the review form: OpenAI, DeepSeek, Tavily (On This Day searches — topics and dates, not memories), Sentry.
 
 ## Age rating
 
-Answer "None" to every content question: there is no user-to-user content, no web browsing, and news shown in On This Day is filtered for sexual content (`src/contentSafety.ts`). Expected result: 4+. If Apple's form asks about AI-generated content, answer yes — summaries and answers are written by AI.
+Entered 12 Oct 2026, result **13+** (12+ on older iOS). Everything "None"
+or "No" except Realistic Violence and Guns/Weapons: **Infrequent**,
+because On This Day has a News / World events topic whose headlines and
+photos can show war or crime. Sexual content stays "None": it is
+filtered (`src/contentSafety.ts`).
+
+## Entered in App Store Connect (12 Oct 2026)
+
+- Price: Free. Availability: 174 countries, every one except mainland
+  China (AI apps there need a government licence). Manual release.
+- Copyright: 2026 Nour Mohsen.
+- App Privacy: the 8 types in the table above, all App Functionality,
+  none used for tracking. Linked to the user: Name, Audio, Other User
+  Content, Search History (Ask questions), User ID; the name travels
+  with notes and questions, so those are linked. Not linked: Photos,
+  Device ID (App Attest install id, seen only in server logs), Crash
+  Data.
+- Left for Nour (legal statements only he can make): Content Rights,
+  the "Publish" confirmation on App Privacy, and the Digital Services
+  Act trader status for the EU.
 
 ## Screenshots (approved by Nour, 11 Oct 2026)
 
