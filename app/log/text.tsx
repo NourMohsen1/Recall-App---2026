@@ -1,3 +1,4 @@
+import { useLocalSearchParams } from 'expo-router';
 import { logDayKey } from '../../src/logicalDay';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -44,6 +45,15 @@ export default function LogText() {
   // Dark screen: white top bar while it shows (src/statusBar.ts).
   useLightStatusBar();
   const returnTo = useReturnTo();
+  // Opened for a past day (the Timeline's "+" → "Write about this day"):
+  // the note goes on that day, not today.
+  const { day } = useLocalSearchParams<{ day?: string }>();
+  const forDay = day && /^\d{4}-\d{2}-\d{2}$/.test(day) && day !== logDayKey() ? day : undefined;
+  const dayTitle = (() => {
+    if (!forDay) return undefined;
+    const [y, m, d] = forDay.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  })();
   const { height } = useWindowDimensions();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
@@ -81,13 +91,23 @@ export default function LogText() {
     // closes once it's in (~0.9 s), while saving carries on underneath.
     ear.current?.saved();
     const closing = new Promise((r) => setTimeout(r, 900));
-    const saved = await saveMemory({ kind: 'text', text: trimmed });
-    // Tag where this happened — best-effort, never blocks saving the memory.
-    recordCurrentLocationForDay(logDayKey()).catch(() => {});
+    // A past day's note sits at midday of it; the intake moves it to the
+    // time it states ("in the evening…").
+    const takenAt = forDay
+      ? (() => {
+          const [y, m, d] = forDay.split('-').map(Number);
+          return new Date(y, m - 1, d, 12, 0);
+        })()
+      : undefined;
+    const saved = await saveMemory({ kind: 'text', text: trimmed, takenAt });
+    // Tag where this happened — only for today: where the phone is now says
+    // nothing about a day gone by. Best-effort, never blocks saving.
+    if (!forDay) recordCurrentLocationForDay(logDayKey()).catch(() => {});
     // The intake brain reads the entry and routes everything to its place:
     // polished memory → Timeline, commitments → Tasks, people → People,
     // mentioned places → Places.
-    processMemoryIntake(saved.id, trimmed, logDayKey()).catch(() => {});
+    processMemoryIntake(saved.id, trimmed, forDay ?? logDayKey()).catch(() => {});
+    if (forDay) console.log(`[log] note added to ${forDay}`);
     await closing;
     returnTo();
   };
@@ -98,7 +118,10 @@ export default function LogText() {
         <Pressable onPress={returnTo} hitSlop={12} style={styles.back}>
           <Ionicons name="close" size={26} color={colors.white} />
         </Pressable>
-        <Text style={styles.headerTitle}>New Memory</Text>
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.headerTitle}>New Memory</Text>
+          {dayTitle && <Text style={styles.headerDay}>{dayTitle}</Text>}
+        </View>
       </View>
 
       <View style={[styles.body, { paddingBottom: keyboard }]} onLayout={(e) => setBodyH(e.nativeEvent.layout.height)}>
@@ -144,6 +167,7 @@ const styles = StyleSheet.create({
   header: { paddingTop: 12, paddingBottom: 14, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 14 },
   headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: colors.white },
+  headerDay: { fontFamily: fonts.regular, fontSize: 13, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
 
   body: { flex: 1 },
   ear: { alignSelf: 'stretch' },

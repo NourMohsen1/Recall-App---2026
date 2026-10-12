@@ -301,16 +301,18 @@ export default function Profile() {
             </View>
           ))}
         </View>
-        {/* Licences that ask to be credited. */}
-        <Text style={styles.credit}>Brain animation model: “Human Brain” by agher08 (Sketchfab), CC BY 4.0</Text>
-        <Text style={styles.credit}>Ear animation model: “Human Ear Model” by ssavish274 (Sketchfab), CC BY 4.0</Text>
+        {/* Version, privacy, support and the models' credits (app/about.tsx). */}
+        <Pressable onPress={() => router.push('/about')} hitSlop={8} style={styles.aboutLink}>
+          <Text style={styles.aboutText}>About Recall</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  credit: { fontFamily: fonts.regular, fontSize: 11, color: '#A3ABAC', textAlign: 'center', marginTop: 28 },
+  aboutLink: { alignSelf: 'center', marginTop: 28, paddingVertical: 6 },
+  aboutText: { fontFamily: fonts.medium, fontSize: 13, color: '#8B9394', textDecorationLine: 'underline' },
   devLink: { marginTop: 12, paddingVertical: 10, alignItems: 'center' },
   devLinkText: { fontFamily: fonts.medium, fontSize: 12, color: '#8B9394', textDecorationLine: 'underline' },
   rowHint: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },

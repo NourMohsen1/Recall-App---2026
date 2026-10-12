@@ -397,19 +397,35 @@ export function SirPicker({
   visible,
   onPick,
   onClose,
+  onWrite,
 }: {
   visible: boolean;
   onPick: (kind: SirKind) => void;
   onClose: () => void;
+  /** When given, the first choice is writing about the day itself — a day
+   *  with nothing logged needs a note before it needs an icon. */
+  onWrite?: () => void;
 }) {
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
-        <Text style={styles.sheetTitle}>Mark this day</Text>
+        <Text style={styles.sheetTitle}>{onWrite ? 'Add to this day' : 'Mark this day'}</Text>
+        {onWrite && (
+          <Pressable onPress={onWrite} style={styles.writeRow}>
+            <View style={styles.writeIcon}>
+              <MaterialCommunityIcons name="pencil-outline" size={22} color={colors.white} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.writeTitle}>Write about this day</Text>
+              <Text style={styles.writeHint}>A note, filed on this date</Text>
+            </View>
+            <MaterialCommunityIcons name="chevron-right" size={22} color={colors.slate} />
+          </Pressable>
+        )}
         <Text style={styles.sheetHint}>
-          Birthdays and anniversaries come back on this date every year.
+          {onWrite ? 'Or mark it — b' : 'B'}irthdays and anniversaries come back on this date every year.
         </Text>
         <ScrollView contentContainerStyle={styles.grid}>
           {SIR_KIND_LIST.map((kind) => (
@@ -565,6 +581,25 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sheetTitle: { color: colors.ink, fontFamily: fonts.semiBold, fontSize: 18 },
+  writeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 16,
+    backgroundColor: '#EEF3F3',
+  },
+  writeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  writeTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.ink },
+  writeHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.slate, marginTop: 1 },
   sheetHint: {
     color: colors.slate,
     fontFamily: fonts.regular,

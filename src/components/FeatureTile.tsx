@@ -10,8 +10,9 @@ import { getPlaces } from '../places';
 import { colors, fonts } from '../theme';
 
 // Home's three shortcuts — Places, People, Recap — each showing a photo
-// from inside the feature itself, picked again every time Home comes back
-// into view, so the row keeps reminding the user what's in there. A new
+// from inside the feature itself. One photo per day: the same all day, a
+// different one tomorrow. (Picking again on every return to Home looked
+// noisy — Nour.) A new
 // user has none yet: the tile is the feature's icon on teal instead,
 // never a stock picture.
 
@@ -28,18 +29,27 @@ const HREF: Record<Feature, Href> = { places: '/places', people: '/people', reca
 /** How far back the Recap tile looks for a photo. */
 const RECAP_DAYS = 14;
 
-const pick = <T,>(list: T[]): T | undefined => list[Math.floor(Math.random() * list.length)];
+/** The day's choice: the same for every visit today, another tomorrow. */
+function pick(list: string[], feature: Feature): string | undefined {
+  if (list.length === 0) return undefined;
+  const sorted = [...new Set(list)].sort();
+  const seed = `${dateKey(new Date())}|${feature}`;
+  let h = 5381;
+  for (let i = 0; i < seed.length; i++) h = ((h << 5) + h + seed.charCodeAt(i)) | 0;
+  return sorted[Math.abs(h) % sorted.length];
+}
 
 /** One photo from inside the feature, or none yet. */
 async function photoFor(feature: Feature): Promise<string | undefined> {
   if (feature === 'places') {
-    return pick((await getPlaces()).map((p) => p.cover).filter((c): c is string => !!c));
+    return pick((await getPlaces()).map((p) => p.cover).filter((c): c is string => !!c), feature);
   }
   if (feature === 'people') {
     return pick(
       Object.values(await getAllPersonMeta())
         .map((m) => m.photoUri)
         .filter((u): u is string => !!u),
+      feature,
     );
   }
   // Recap: a photo from the last two weeks — what a recap is about. Never
@@ -56,7 +66,7 @@ async function photoFor(feature: Feature): Promise<string | undefined> {
       for (const uri of m.photoUris ?? []) if (!sources[uri]) recent.push(uri);
     }
   }
-  return pick(recent);
+  return pick(recent, feature);
 }
 
 export default function FeatureTile({ feature, size }: { feature: Feature; size: number }) {

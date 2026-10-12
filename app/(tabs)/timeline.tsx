@@ -1308,7 +1308,7 @@ export default function Timeline() {
             style={styles.markDay}
             onPress={() => setPickerOpen(true)}
             hitSlop={8}
-            accessibilityLabel="Mark this day"
+            accessibilityLabel="Add to this day"
           >
             <Ionicons name="add" size={24} color={colors.white} />
           </Pressable>
@@ -1321,7 +1321,20 @@ export default function Timeline() {
         />
       </View>
 
-      <SirPicker visible={pickerOpen} onPick={addSir} onClose={() => setPickerOpen(false)} />
+      <SirPicker
+        visible={pickerOpen}
+        onPick={addSir}
+        onClose={() => setPickerOpen(false)}
+        // A note for the day on screen — a past day included.
+        onWrite={
+          selected <= 0
+            ? () => {
+                setPickerOpen(false);
+                router.push({ pathname: '/log/text', params: { day: dateKey(dateWithOffset(selected)), from: '/timeline' } });
+              }
+            : undefined
+        }
+      />
 
       <TopicSwapSheet
         visible={!!otdSwapTarget}
