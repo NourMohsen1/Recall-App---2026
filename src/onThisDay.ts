@@ -196,82 +196,28 @@ function tinyHash(s: string): string {
   return Math.abs(h).toString(36);
 }
 
-// ---- Seeded fallback content (used when the internet fetch is unavailable) ----
+// ---- When there's no news to show ----
+//
+// There used to be stock headlines here ("Arsenal vs Newcastle 2-1"…),
+// shown on any date the search couldn't run — offline, AI off, a
+// simulator. On a day of the user's life that read as what happened then:
+// a made-up fact, the one thing Recall never shows. Now a topic that
+// didn't load says so, and one the search found nothing for is a quiet day.
 
-const FALLBACKS: Record<string, { headline: string; summary: string }[]> = {
-  sports: [
-    {
-      headline: 'Arsenal vs Newcastle United 2 - 1 For Arsenal',
-      summary: 'The game ended with a late 2–1 comeback victory for Arsenal.',
-    },
-    {
-      headline: 'West Ham United draw 1-1 at Everton',
-      summary:
-        'A solid start for new boss Nuno Espirito Santo with Jarrod Bowen scoring the equalizer.',
-    },
-  ],
-  music: [
-    {
-      headline: 'Cardi B’s ‘Am I The Drama?’ Earns Double Platinum',
-      summary: 'Certification arrives 10 days after dropping.',
-    },
-    {
-      headline: 'Vic Spencer dropped his album Trees Are Undefeated',
-      summary: 'A sharp, gritty hip-hop release from the Chicago veteran.',
-    },
-  ],
-  news: [
-    {
-      headline: 'NYC Mayor Eric Adams ends re-election campaign',
-      summary: 'The announcement reshapes the New York City mayoral race.',
-    },
-    {
-      headline: 'US federal government edged closer to a shutdown',
-      summary:
-        'Congressional leaders failed to reach agreement during a high-level White House meeting.',
-    },
-  ],
-  movies: [
-    {
-      headline: 'A24’s latest tops the weekend box office',
-      summary: 'The indie hit beat two franchise sequels on its opening weekend.',
-    },
-  ],
-  design: [
-    {
-      headline: 'Serpentine Pavilion unveils this year’s design',
-      summary: 'The annual commission spotlights sustainable materials.',
-    },
-  ],
-  travel: [
-    {
-      headline: 'New high-speed rail route opens for booking',
-      summary: 'The line cuts the intercity trip to under three hours.',
-    },
-  ],
-  books: [
-    {
-      headline: 'This week’s surprise bestseller',
-      summary: 'A debut novel climbs the charts after a viral review.',
-    },
-  ],
-};
-
-// Topics without seeded items say what they are waiting for, rather than
-// borrowing another topic's demo headline.
-function fallbackFor(t: Topic): { headline: string; summary: string }[] {
-  return (
-    FALLBACKS[t.key] ?? [{ headline: `${t.label} news didn’t load`, summary: 'Recall will try again the next time you open this day.' }]
-  );
+function fallbackFeed(_date: Date, topics: Topic[]): TopicItem[] {
+  return topics.map((t) => notLoadedItem(t));
 }
 
-function fallbackFeed(date: Date, topics: Topic[]): TopicItem[] {
-  const variant = date.getDate() % 2;
-  return topics.map((t) => {
-    const options = fallbackFor(t);
-    const pick = options[variant % options.length];
-    return { topic: t.key, label: t.label, ...pick, live: false };
-  });
+/** The search ran and found nothing for this topic on this date. */
+function quietDay(t: Topic): TopicItem {
+  return {
+    topic: t.key,
+    label: t.label,
+    headline: 'A quiet day',
+    summary: `Nothing notable in ${t.label} on this date.`,
+    live: true,
+    quiet: true,
+  };
 }
 
 import { backendToken, backendUrl, ENDPOINTS } from './backend';
@@ -679,7 +625,7 @@ async function fetchFromInternet(
       }
       // A topic with follows and nothing about them near this day says so,
       // rather than showing another topic's demo headline.
-      return interests[t.key] ? { ...quietItem(t, interests[t.key]!), source: undefined } : { ...fallbackFeed(date, [t])[0], source: undefined };
+      return interests[t.key] ? { ...quietItem(t, interests[t.key]!), source: undefined } : quietDay(t);
     });
     return withImages(mapped);
   } catch {
@@ -849,13 +795,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
     }
   }
 
-  // Offline or no credits: a followed topic says it hasn't loaded; others
-  // show their seeded items.
-  if (taste) return [notLoadedItem(topic)];
-  return fallbackFor(topic).map((f) => ({
-    topic: topic.key,
-    label: topic.label,
-    ...f,
-    live: false,
-  }));
+  // Offline or no credits: the topic says it hasn't loaded — never a stand-in
+  // headline that would read as that day's news.
+  return [notLoadedItem(topic)];
 }
