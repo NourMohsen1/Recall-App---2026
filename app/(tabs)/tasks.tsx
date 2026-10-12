@@ -1,5 +1,6 @@
+import { polishPendingMemories, transcribePendingMemories } from '../../src/memoryIntake';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LayoutAnimation, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { LayoutAnimation, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -295,6 +296,22 @@ export default function Tasks() {
     }, [reload]),
   );
 
+  // Pull down: tasks come out of what the user logs, so first anything not
+  // written up yet is (transcribed, then read by the intake), then the list.
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await transcribePendingMemories();
+      await polishPendingMemories();
+    } catch (e) {
+      console.warn('[tasks] refresh failed:', e);
+    } finally {
+      reload();
+      setRefreshing(false);
+    }
+  }, [reload]);
+
   // Swipe to delete, with a few seconds to take it back.
   const { width: screenW } = useWindowDimensions();
   const [undo, setUndo] = useState<StoredTask | null>(null);
@@ -431,7 +448,12 @@ export default function Tasks() {
         </Pressable>
       </View>
 
-      <ScrollView ref={scrollRef} style={styles.body} contentContainerStyle={styles.scroll}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.body}
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+      >
         {loaded && tasks.length === 0 && (
           <View style={styles.empty}>
             <MaterialCommunityIcons name="checkbox-marked-circle-plus-outline" size={40} color="#AEB6B7" />
