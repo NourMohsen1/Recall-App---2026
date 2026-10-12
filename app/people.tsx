@@ -184,6 +184,9 @@ function People() {
   const { width: screenW } = useWindowDimensions();
   // Three faces a row, as in the design.
   const tileSize = Math.min(104, Math.floor((screenW - 40 - 2 * 18) / 3) - 12);
+  // Three across, the same gap between every column: a short last row
+  // fills from the left instead of flinging its second face to the edge.
+  const tileGap = Math.floor((screenW - 40 - 3 * (tileSize + 12)) / 2);
 
   const loadAll = useCallback(
     () =>
@@ -398,7 +401,7 @@ function People() {
         ))}
 
         {view === 'grid' ? (
-          <View style={styles.grid}>
+          <View style={[styles.grid, { columnGap: tileGap }]}>
             {shown.map((p) => (
               <PersonTile key={p.name} person={p} meta={meta[p.name]} size={tileSize} query={query.trim()} />
             ))}
@@ -509,7 +512,7 @@ const styles = StyleSheet.create({
   viewBtnOn: { backgroundColor: colors.primary },
   matchBold: { fontFamily: fonts.bold, color: colors.primary },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 18 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 },
   tile: { alignItems: 'center' },
   tileRing: {
     backgroundColor: colors.white,
