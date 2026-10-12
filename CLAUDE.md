@@ -213,6 +213,29 @@ ones — with no question asked; the intake is told it's still that day
 ("tomorrow" = the date the clock shows), and the Timeline and Recap's
 Today open on it. A log that names its day ("yesterday morning…") goes
 there as before. Measured at a faked 1:30 am, 4/4 placed right.
+**Photos follow the same rule** (Oct 2026): a photo taken before 4 am is
+filed on the night before, on import and in Add Photos (`logDayKey` /
+`logTakenAt`), and the photo-reading AI is told "after midnight, the same
+night". Before this, a night out's last photos landed on the next day and
+its story and On This Day were paired with the wrong date.
+`src/lateNightPhotos.ts` repaired existing photos once per install
+(`lateNightPhotosFiled:v1`), moving the face index and guesses with them
+and dropping the changed days' stories to be rewritten. Anything that
+files a photo on a day must use the night's day, never `dateKey` of the
+capture time.
+
+**The top bar has one owner** (`StatusBarKeeper`, `src/statusBar.ts`).
+Dark screens call `useLightStatusBar()`, which only claims white while
+focused; never mount a `<StatusBar>` or call `setStatusBarStyle` anywhere
+else. Two writers (the root and per-screen focus/blur) made it white on
+white and dark on dark across the app.
+
+**The day page edits in place** (`app/day/[offset]/index.tsx`): "Add a
+note" is always there and a tap on a note edits it; the pencil turns
+places into a list to drag into order or take off the day
+(`setDayPlaceOrder`, `hidePlaceOnDay` in `dayPlaceEdits`). Taking a place
+off a day also beats a visit the photos prove; adding it back by hand
+undoes that, the intake never does.
 
 **Polishing never rewrites** (`src/memoryIntake.ts`, Oct 2026). Voice notes
 are always polished as transcripts (misheard words worked out from the

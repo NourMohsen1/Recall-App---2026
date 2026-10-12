@@ -201,6 +201,12 @@ export async function removePhotosFromMemories(uris: Set<string>): Promise<strin
   return [...days];
 }
 
+/** Writes the whole list at once — for a repair that moves many memories
+ *  (src/lateNightPhotos.ts), so it is one write rather than hundreds. */
+export async function replaceMemories(list: LoggedMemory[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+}
+
 export async function updateMemory(id: string, patch: Partial<LoggedMemory>): Promise<void> {
   const existing = await getLoggedMemories();
   const next = existing.map((m) => (m.id === id ? { ...m, ...patch } : m));

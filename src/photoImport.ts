@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // and it binds to the module that does have a web shim.
 import * as MediaLibrary from 'expo-media-library/legacy';
 import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
+import { logDayKey, logTakenAt } from './logicalDay';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
 import { classifyAssets, photoGuardAvailable } from './photoGuard';
@@ -306,7 +307,9 @@ export async function importRecentPhotos(
         privateSkipped += 1;
         continue;
       }
-      const key = dateKey(new Date(item.creationTime));
+      // After midnight it is still the night before (src/logicalDay.ts),
+      // so a night out stays on one day.
+      const key = logDayKey(new Date(item.creationTime));
       const bucket = pageByDay.get(key);
       if (bucket) bucket.push(item);
       else pageByDay.set(key, [item]);
@@ -389,7 +392,7 @@ async function fileDayPhotos(
       await saveMemory({
         kind: 'photo',
         photoUris: uris,
-        takenAt: new Date(earliest.creationTime),
+        takenAt: logTakenAt(new Date(earliest.creationTime)),
       });
     }
     count += uris.length;

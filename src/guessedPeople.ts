@@ -111,6 +111,35 @@ export async function dropGuessesFromPhotos(uris: Set<string>): Promise<number> 
   return dropped;
 }
 
+/** Photos refiled to another day (src/lateNightPhotos.ts): a guess made
+ *  from one of them moves too, unless that day already has the person —
+ *  guessed, confirmed or turned down. */
+export async function moveGuessesWithPhotos(moves: Map<string, string>): Promise<number> {
+  const all = await readJSON<GuessesByDay>(GUESS_KEY, {});
+  const rejected = await readJSON<RejectedByDay>(REJECTED_KEY, {});
+  // Built fresh: what stays first, then what moves, so a guess moved onto a
+  // day is never overwritten when that day's own list is copied.
+  const out: GuessesByDay = {};
+  const moving: [string, Guess][] = [];
+  for (const [day, list] of Object.entries(all)) {
+    for (const g of list) {
+      const to = g.photoUri ? moves.get(g.photoUri) : undefined;
+      if (to && to !== day) moving.push([to, g]);
+      else (out[day] ??= []).push(g);
+    }
+  }
+  for (const [to, g] of moving) {
+    const there = out[to] ?? [];
+    const settled =
+      there.some((x) => sameName(x.name, g.name)) ||
+      (rejected[to] ?? []).some((n) => sameName(n, g.name)) ||
+      (await getPeopleForDay(to)).some((n) => sameName(n, g.name));
+    if (!settled) out[to] = [...there, g];
+  }
+  if (moving.length > 0) await AsyncStorage.setItem(GUESS_KEY, JSON.stringify(out));
+  return moving.length;
+}
+
 async function dropGuess(day: string, name: string): Promise<void> {
   const all = await readJSON<GuessesByDay>(GUESS_KEY, {});
   const forDay = all[day] ?? [];

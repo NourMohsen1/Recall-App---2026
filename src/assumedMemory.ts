@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { LoggedMemory, dateKey, getLoggedMemories } from './memoryLog';
+import { LATE_NIGHT_ENDS } from './logicalDay';
 import { getAllPhotoSources, getAllPhotoTimestamps } from './photoMeta';
 import { chatCompletion, textProviders, visionAvailable, visionProviders } from './aiProviders';
 import { resolvePhotoUri } from './photoUri';
@@ -152,7 +153,10 @@ function clockLabel(ms: number): string {
   const m = String(d.getMinutes()).padStart(2, '0');
   const ap = h >= 12 ? 'PM' : 'AM';
   h = h % 12 || 12;
-  return `${h}:${m} ${ap}`;
+  // A photo from the small hours belongs to the night before (logicalDay.ts)
+  // and is sent with that day; said so, or "1:10 AM" reads as the morning.
+  const night = d.getHours() < LATE_NIGHT_ENDS ? ', after midnight, the same night' : '';
+  return `${h}:${m} ${ap}${night}`;
 }
 
 // A cheap fingerprint of exactly which photos — and which logged text —

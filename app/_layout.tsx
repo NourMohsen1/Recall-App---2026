@@ -17,6 +17,7 @@ import {
   Poppins_700Bold,
 } from '@expo-google-fonts/poppins';
 import { startPhotoAnalysis } from '../src/photoAnalysisQueue';
+import { fileLateNightPhotos } from '../src/lateNightPhotos';
 import { installFaceEmbedder } from '../src/faceEmbedderTflite';
 import { learnMyFaceIfMissing } from '../src/myFace';
 import { startBackgroundIndexing } from '../src/faceIndexing';
@@ -43,8 +44,12 @@ function AppRoot() {
 
   // Photo analysis runs as a background job from app start — never
   // triggered by, or waited on by, any screen the user is looking at.
+  //
+  // After photos from after midnight are back on the night they belong to
+  // (src/lateNightPhotos.ts, once per install), so no story is written from
+  // photos about to move.
   useEffect(() => {
-    startPhotoAnalysis();
+    fileLateNightPhotos().finally(() => startPhotoAnalysis());
   }, []);
 
   // Face recognition, switched on.
@@ -93,7 +98,8 @@ function AppRoot() {
   useEffect(() => {
     // Then, when Sync photos is on, bring in anything new (photoImport.ts).
     const sync = () =>
-      syncPhotosWithLibrary()
+      fileLateNightPhotos()
+        .then(() => syncPhotosWithLibrary())
         .then(() => recoverWronglyRemovedPhotos())
         .then(() => syncNewPhotosIfOn());
     sync();
@@ -109,6 +115,7 @@ function AppRoot() {
       // before this existed is learned quietly, so the photo stories stop
       // calling other people "you".
       .then(() => learnMyFaceIfMissing())
+      .then(() => fileLateNightPhotos())
       .then(() => startBackgroundIndexing())
       .catch((e) => console.warn('[faces] not available:', e));
   }, []);

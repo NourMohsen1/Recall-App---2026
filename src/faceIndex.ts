@@ -187,6 +187,19 @@ export async function recordPhotoFaces(
   });
 }
 
+/** Photos refiled to another day (src/lateNightPhotos.ts): their faces
+ *  go with them, so a person found in one is found on the right day. */
+export async function moveFacesToDays(moves: Map<string, string>): Promise<void> {
+  if (moves.size === 0) return;
+  const handle = await db();
+  await handle.withTransactionAsync(async () => {
+    for (const [uri, day] of moves) {
+      await handle.runAsync('UPDATE faces SET day = ? WHERE photo_uri = ?', day, uri);
+      await handle.runAsync('UPDATE read_photos SET day = ? WHERE photo_uri = ?', day, uri);
+    }
+  });
+}
+
 export async function readPhotoUris(): Promise<Set<string>> {
   const handle = await db();
   const rows = await handle.getAllAsync<{ photo_uri: string }>(

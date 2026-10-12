@@ -17,6 +17,7 @@ import PillButton from '../../src/components/PillButton';
 import { ICONS } from '../../src/images';
 import { processMemoryIntake } from '../../src/memoryIntake';
 import { dateKey, persistFile, saveMemory } from '../../src/memoryLog';
+import { logDayKey, logTakenAt, logicalToday } from '../../src/logicalDay';
 import { setPhotoMetaBatch, PhotoMeta } from '../../src/photoMeta';
 import { detectPhotoSource } from '../../src/photoSource';
 import { classifyFile, photoGuardAvailable } from '../../src/photoGuard';
@@ -78,8 +79,7 @@ function takenAtFromAsset(asset: ImagePicker.ImagePickerAsset): Date {
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function dayLabel(d: Date) {
-  const today = dateKey(new Date());
-  if (dateKey(d) === today) return 'Today';
+  if (dateKey(d) === logDayKey()) return 'Today';
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
@@ -159,7 +159,8 @@ export default function LogPhoto() {
         continue;
       }
       const permanent = { ...p, uri: await persistFile(p.uri, 'photo') };
-      const key = dateKey(p.takenAt);
+      // A photo from after midnight goes with the night before (logicalDay.ts).
+      const key = logDayKey(p.takenAt);
       const bucket = groups.get(key);
       if (bucket) bucket.push(permanent);
       else groups.set(key, [permanent]);
@@ -188,7 +189,7 @@ export default function LogPhoto() {
     }
     await setPhotoMetaBatch(photoMetaEntries);
     await notePhotoLocations(locations);
-    const today = dateKey(new Date());
+    const today = logDayKey();
     for (const [key, group] of groups) {
       const earliest = group.reduce((a, b) => (a.takenAt <= b.takenAt ? a : b));
       const saved = await saveMemory({
@@ -196,7 +197,7 @@ export default function LogPhoto() {
         photoUris: group.map((g) => g.uri),
         manual: true,
         text: caption.trim() || undefined,
-        takenAt: earliest.takenAt,
+        takenAt: logTakenAt(earliest.takenAt),
       });
       // Only tag live location for photos taken today — an old picked photo
       // doesn't mean the user is standing where it was taken right now.
@@ -211,10 +212,10 @@ export default function LogPhoto() {
   // Preview of where the photos will land, grouped by day taken.
   const dayCounts = new Map<string, { label: string; count: number }>();
   for (const p of picked) {
-    const key = dateKey(p.takenAt);
+    const key = logDayKey(p.takenAt);
     const existing = dayCounts.get(key);
     if (existing) existing.count += 1;
-    else dayCounts.set(key, { label: dayLabel(p.takenAt), count: 1 });
+    else dayCounts.set(key, { label: dayLabel(logicalToday(p.takenAt)), count: 1 });
   }
 
   return (
@@ -264,7 +265,7 @@ export default function LogPhoto() {
                 <View key={p.uri + i} style={styles.thumbWrap}>
                   <Image source={{ uri: p.uri }} style={styles.thumb} resizeMode="cover" />
                   <View style={styles.thumbDate}>
-                    <Text style={styles.thumbDateText}>{dayLabel(p.takenAt)}</Text>
+                    <Text style={styles.thumbDateText}>{dayLabel(logicalToday(p.takenAt))}</Text>
                   </View>
                   <Pressable style={styles.removeBtn} onPress={() => removeAt(i)}>
                     <Ionicons name="close" size={14} color={colors.white} />
