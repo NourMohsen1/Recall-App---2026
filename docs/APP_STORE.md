@@ -18,30 +18,32 @@ matches what the app does today; when that changes, this file and
 | Devices | iPhone only for 1.0 (`supportsTablet: false`) |
 | Encryption | Standard HTTPS only — exempt (`usesNonExemptEncryption: false`, so the question doesn't come up per build) |
 
-## Promotional text (170 max — can be changed any time without review)
+## Promotional text (170 max, can be changed any time without review)
 
-Recall brings your days back to you — so you remember them yourself. Talk, type or snap; Recall files it and reminds you.
+No dashes in anything a reader sees (Nour: they read as written by AI).
+
+Recall brings your days back to you, so you remember them yourself. Talk, type or snap a photo, and Recall keeps it for you.
 
 ## Description
 
-Recall keeps your memory up to date — not by remembering for you, but by bringing your days back to you, again and again, so you remember them yourself.
+Recall keeps your memory up to date. It doesn't remember for you. It brings your days back to you, again and again, so you remember them yourself.
 
-Say how your day went, type a line, or let Recall read the photos you took. It writes it up as a clean memory and files everything in its place: who you were with, where you went, what you need to do next. Then it shows it back to you — in a morning recap, on your timeline, beside the people and places — so the last few weeks stay fresh in your own head.
+Say how your day went, type a line, or let Recall read the photos you took. It writes it up as a clean memory and files everything in its place: who you were with, where you went, what you need to do next. Then it shows it back to you in a morning recap, on your timeline and next to the people and places, so the last few weeks stay fresh in your own head.
 
 ASK WHEN YOU NEED TO
-"When did I go to the pyramids?" "What did I do on Eid?" "When was the last time I saw Sara?" Ask in English or Arabic, by text or by voice, and Recall answers from your own memories — with the days it used, one tap away.
+"When did I go to the pyramids?" "What did I do on Eid?" "When was the last time I saw Sara?" Ask in English or Arabic, by text or by voice, and Recall answers from your own memories, with the days it used one tap away.
 
 A TIMELINE YOU CAN MOVE AROUND
-Every day is a canvas: your notes, photos, people, places and small icons for the moments that matter — paydays, medicine, birthdays. Hold a card to move it, zoom out to see the shape of a week.
+Every day is a canvas: your notes, photos, people, places and small icons for the moments that matter, like paydays, medicine and birthdays. Hold a card to move it, zoom out to see the shape of a week.
 
 PEOPLE AND PLACES, FILLED IN FOR YOU
-Add a photo to someone once and Recall notices them in your other photos, on your phone — always as a suggestion you confirm. Places come from where your photos were taken, never from a map service tracking you.
+Add a photo to someone once and Recall notices them in your other photos, on your phone, always as a suggestion you confirm. Places come from where your photos were taken, never from a map service tracking you.
 
 TASKS FROM WHAT YOU SAY
-"Dentist Thursday at 2" becomes a task with a reminder an hour before — or whenever you choose. Save a ticket or an appointment screenshot and Recall turns it into a task with the details.
+"Dentist Thursday at 2" becomes a task with a reminder an hour before, or whenever you choose. Save a ticket or an appointment screenshot and Recall turns it into a task with the details.
 
 RECAPS
-A short recap of yesterday, last week or last month — with Positive Focus, which leaves out painful moments if you want it to.
+A short recap of yesterday, last week or last month. Turn on Positive Focus and it leaves out the painful moments.
 
 PRIVATE BY DESIGN
 Your memories live on your iPhone and come back with your iCloud Backup. Faces are matched on the phone and never leave it. The AI only runs if you allow it, and Recall's own server keeps none of your words or photos. No ads, no tracking, nothing sold.
@@ -60,7 +62,7 @@ The first version of Recall.
 
 Beta App Description:
 
-Recall keeps your own memory fresh. Talk, type or snap your day; Recall files it into people, places and tasks, then brings it back to you — in recaps, on your timeline, and whenever you ask — so you remember your days yourself instead of relying on the app. Please try: logging a day by voice or text, asking a question in Ask, the Timeline, and the weekly recap. Tell us anything that feels confusing or wrong.
+Recall keeps your own memory fresh. Talk, type or snap a photo of your day, and Recall files it into people, places and tasks, then brings it back to you in recaps, on your timeline and whenever you ask. The idea is that you remember your days yourself, not that you rely on the app. Please try: logging a day by voice or text, asking a question in Ask, the Timeline, and the weekly recap. Tell us anything that feels confusing or wrong.
 
 Feedback email: recallsupport10@gmail.com · Privacy Policy URL: as above · Sign-in required: no · Review notes: the App Review notes below. Contact: Nour's name and phone, recallsupport10@gmail.com — private to Apple's reviewers.
 
@@ -97,7 +99,7 @@ from `docs/app-store-screenshots/`:
 
 | # | File | Screen | Headline | Line under it |
 |---|---|---|---|---|
-| 1 | `1-home.png` | Home | Your Days, **Remembered** | Talk, type or snap — Recall files the rest |
+| 1 | `1-home.png` | Home | Your Days, **Remembered** | Talk, type or snap. Recall files the rest. |
 | 2 | `2-ask-brain.png` | Ask — the 3D brain | Ask Your **Memory** | Speak or type, in any language |
 | 3 | `3-ask.png` | Ask — an answer with its days | Find Details **Fast** | Real answers from your own days |
 | 4 | `4-timeline.png` | A day | Remember With **Context** | Linked to who, when and where |

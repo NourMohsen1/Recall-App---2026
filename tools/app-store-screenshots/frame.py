@@ -130,7 +130,7 @@ def phone(img, shot_path, top, dark):
 # ── the slides ──────────────────────────────────────────────────────────
 
 SLIDES = [
-    ('1-home', False, [[('Your Days,', 'plain')], [('Remembered', 'pill')]], 'Talk, type or snap — Recall files the rest', 'home'),
+    ('1-home', False, [[('Your Days,', 'plain')], [('Remembered', 'pill')]], 'Talk, type or snap. Recall files the rest.', 'home'),
     ('8-ask-brain', True, [[('Ask Your', 'plain')], [('Memory', 'accent')]], 'Speak or type, in any language', 'ask'),
     ('2-ask', False, [[('Find Details', 'plain')], [('Fast', 'pill')]], 'Real answers from your own days', 'fast'),
     ('3-timeline', True, [[('Remember With', 'plain')], [('Context', 'accent')]], 'Linked to who, when and where', 'context'),
