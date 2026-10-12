@@ -127,3 +127,15 @@ To redo them after screens change: capture the seven screens again into
 `tools/app-store-screenshots/captures/` (same names), then
 `python tools/app-store-screenshots/frame.py tools/app-store-screenshots/captures docs/app-store-screenshots`
 (needs Pillow).
+
+## App Preview (video)
+
+`docs/app-store-preview/recall-preview.mp4`: upload it in the 6.9" slot, above
+the screenshots. 886 × 1920, 30 fps, H.264 High 4.0 at 11 Mbps, 16.4 seconds,
+silent stereo AAC (Apple's spec: 15 to 30 s, 10 to 12 Mbps). Real app footage
+from the simulator, framed like the screenshots: the brain, asking "When did I
+last see Omar?", the answer with its days, dragging a card on the canvas, the
+weekly recap; it fades back into its first frame so it loops cleanly. The
+simulator-only "Recall's AI is off" line is covered with the background above
+it. Remake with `tools/app-store-preview/make.py` from new recordings
+(`xcrun simctl io <device> recordVideo`).
