@@ -372,8 +372,16 @@ Each of these cost real time once.
   `fingerprint`: an update only reaches builds with the same native code.
 - **Native changes** (a new native module, an `app.json` plugin or
   permission, the Swift modules) need a new build through App Store review.
-- Cloud builds don't see `.env`: the server address is in `eas.json`
-  (`EXPO_PUBLIC_RECALL_API_URL`). The dev token must never go there.
+- **Neither cloud builds nor `eas update --environment` read `.env`**
+  (the update sets `EXPO_NO_DOTENV`). The 12 Oct update shipped with no
+  server address and turned off every AI feature on testers' phones. The
+  address now has a fallback in `src/backend.ts`, and it and the Sentry DSN
+  are EAS environment variables (production). Publish updates the checked
+  way: `EXPO_NO_DOTENV=1 npx expo export --platform ios --output-dir dist`,
+  confirm with `strings` that the .hbc holds the server address and not
+  the dev token, then `eas update --skip-bundler --input-dir dist
+  --environment production --channel production`. The dev token must never
+  go into eas.json or EAS variables.
 - Listing texts and privacy answers: `docs/APP_STORE.md`.
 
 ## Before TestFlight
