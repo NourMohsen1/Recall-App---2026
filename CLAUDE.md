@@ -148,6 +148,14 @@ field. The best days always reach the answer with what they matched, and
 the answer never dead-ends: it offers the closest day and asks "is this
 it?". `[ask] looking for / found` logs both halves. Measured on a 300-day
 test phone: museum/pyramids/beach questions 0/4 → 6/6 with the right day.
+Nicknames are resolved before searching: the planner gets every person
+with their nicknames and returns who the question means in any script
+("الكتش" = Ketch = Omar Khaled), a name written as saved is also caught
+in code, the search adds the real name and every nickname, and the
+answer is told "the same person" in a WHO THE QUESTION MEANS block.
+Without that block it called Ketch's wedding and Omar's wedding two
+different events. `[ask] people:` logs it. Ask's answers never use the
+long dash.
 
 **Places** (`src/places.ts`) are private by design — Nour chose this over
 Google Places. Every photo keeps its own GPS on the device; photos within

@@ -80,24 +80,30 @@ type DayFacts = {
   logged: string[];
   assumed?: string;
   people: string[];
+  /** Those people's nicknames — searched, not spoken. */
+  nicknames: string[];
   places: string[];
   /** What's in that day's photos and notes, in English and Arabic. */
   tags: string[];
 };
 
 async function collectDays(): Promise<Map<string, DayFacts>> {
-  const [byDay, assumed, places, summaries, noteTags] = await Promise.all([
+  const [byDay, assumed, places, summaries, noteTags, meta] = await Promise.all([
     getMemoriesByDay(),
     getAllAssumedMemories(),
     getAllDayPlaces(),
     getPeopleSummaries(),
     getAllDayTags(),
+    getAllPersonMeta(),
   ]);
 
   const peopleByDay = new Map<string, string[]>();
+  // Nicknames too, searched with the names: "Ketch" finds Omar Khaled's days.
+  const nicknamesByDay = new Map<string, string[]>();
   for (const person of summaries) {
     for (const day of person.days) {
       peopleByDay.set(day, [...(peopleByDay.get(day) ?? []), person.name]);
+      nicknamesByDay.set(day, [...(nicknamesByDay.get(day) ?? []), ...(meta[person.name]?.aliases ?? [])]);
     }
   }
 
@@ -117,6 +123,7 @@ async function collectDays(): Promise<Map<string, DayFacts>> {
       logged: memories.map(memoryDisplayText).filter((t): t is string => !!t),
       assumed: assumed[key]?.summary,
       people: peopleByDay.get(key) ?? [],
+      nicknames: nicknamesByDay.get(key) ?? [],
       places: (places[key] ?? []).map((p) => p.label),
       tags: [...new Set([...(assumed[key]?.anchors ?? []), ...(noteTags[key] ?? [])])],
     });
@@ -143,7 +150,7 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
       fields: [
         { text: d.logged.join(' \n '), weight: 3 },
         { text: d.places.join(' \n '), weight: 3 },
-        { text: d.people.join(' \n '), weight: 3 },
+        { text: [...d.people, ...d.nicknames].join(' \n '), weight: 3 },
         { text: d.tags.join(' \n '), weight: 2.5 },
         { text: d.assumed ?? '', weight: 1.5 },
       ],

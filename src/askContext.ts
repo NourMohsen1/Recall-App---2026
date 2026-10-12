@@ -47,6 +47,9 @@ export type QueryPlan = {
   // Passed through so the answer can say that honestly instead of quietly
   // answering a question it never actually resolved.
   unresolved?: string[];
+  /** Known people the question means, by whatever it called them —
+   *  "الكتش" for Omar Khaled. Worked out by the planner (askAI.ts). */
+  people?: { name: string; said: string }[];
 };
 
 // How many keyword-matched days get written out in full.
@@ -87,6 +90,8 @@ type DayRecord = {
   logged: string[];
   assumed?: string;
   people: string[];
+  /** The nicknames of those people, so a search for one finds the day. */
+  peopleAlso: string[];
   /** People the app RECOGNISED in that day's photos but the user has not
    *  confirmed. Kept apart from `people` all the way to the prompt: spoken
    *  aloud or written down, a guess and a fact read identically, and being
@@ -115,6 +120,7 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
     const fresh: DayRecord = {
       logged: [],
       people: [],
+      peopleAlso: [],
       guessed: [],
       places: [],
       markers: [],
@@ -150,8 +156,13 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
     rec.tags.push(...tags.filter((t) => !rec.tags.includes(t)));
   }
 
+  const personMeta = await getAllPersonMeta();
   for (const person of await getPeopleSummaries()) {
-    for (const day of person.days) get(day).people.push(person.name);
+    const also = personMeta[person.name]?.aliases ?? [];
+    for (const day of person.days) {
+      get(day).people.push(person.name);
+      get(day).peopleAlso.push(...also);
+    }
   }
 
   // Faces the app matched, which the user has not agreed to yet.
@@ -324,7 +335,7 @@ function searchDoc(key: string, rec: DayRecord): SearchDoc {
     fields: [
       { text: rec.logged.join(' \n '), weight: 3 },
       { text: rec.places.join(' \n '), weight: 3 },
-      { text: rec.people.join(' \n '), weight: 3 },
+      { text: [...rec.people, ...rec.peopleAlso].join(' \n '), weight: 3 },
       { text: rec.tags.join(' \n '), weight: 2.5 },
       { text: rec.markers.join(' \n '), weight: 2 },
       { text: rec.assumed ?? '', weight: 1.5 },
@@ -456,6 +467,19 @@ export async function buildMemoryContext(
   // because it's the thing that makes the rest of the retrieval make sense.
   if ((plan?.events?.length ?? 0) > 0) {
     sections.push(eventSection(plan!.events!, days));
+  }
+
+  // Who the question means. A nickname is the same person, and the model
+  // was not making that link on its own: asked about "فرح الكتش", it said
+  // it had no date for Ketch's wedding and then listed Omar Khaled's
+  // wedding as a different one. Said first and flatly.
+  if ((plan?.people?.length ?? 0) > 0) {
+    const lines = plan!.people!.map((p) =>
+      p.said && p.said.toLowerCase() !== p.name.toLowerCase()
+        ? `- "${p.said}" in the question is ${p.name}: the same person, by a nickname. Anything about "${p.said}" (their wedding, birthday, house, a day with them) is about ${p.name} and appears in the log under ${p.name}.`
+        : `- ${p.name}`,
+    );
+    sections.push(`WHO THE QUESTION MEANS:\n${lines.join('\n')}`);
   }
 
   if ((plan?.unresolved?.length ?? 0) > 0) {

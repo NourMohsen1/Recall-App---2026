@@ -10,6 +10,8 @@ import {
   mergeEvents,
   resolveUnknownEvents,
 } from './worldEvents';
+import { getAllPersonMeta } from './peopleTags';
+import { normalizeText } from './memorySearch';
 
 // Real AI answers for the Ask page, grounded in the user's actual memory
 // log. Runs on whichever text provider aiProviders.ts puts first — DeepSeek
@@ -124,7 +126,7 @@ function recentCalendar(): string {
 
 const PLAN_PROMPT = `You turn a question about someone's personal memory log into a search plan. You never answer the question.
 
-Return JSON: {"dates": ["YYYY-MM-DD", ...], "ranges": [{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}], "keywords": ["...", ...], "events": [{"name": "...", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}], "lookup": ["...", ...]}
+Return JSON: {"dates": ["YYYY-MM-DD", ...], "ranges": [{"start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}], "keywords": ["...", ...], "people": [{"name": "...", "said": "..."}], "events": [{"name": "...", "start": "YYYY-MM-DD", "end": "YYYY-MM-DD"}], "lookup": ["...", ...]}
 
 "dates" — every specific calendar day the question points at, resolved against the calendar below. "yesterday", "last Friday", "on the 24th of July" all resolve to real dates. If the question asks about ONE day of a longer event ("the first day of Ramadan", "the second day of Eid"), work that single day out and put it here. Max 14. Empty array if the question doesn't point at a particular day.
 
@@ -136,6 +138,8 @@ Return JSON: {"dates": ["YYYY-MM-DD", ...], "ranges": [{"start": "YYYY-MM-DD", "
 
 "lookup" — the same kind of real-world event, but ones whose exact date you do NOT know, or aren't sure about, or that are recent enough that you might be out of date. Write each as a short search phrase someone could look up: "last Real Madrid vs Barcelona match before September 2026". These get looked up on the web, so be specific and include the timeframe. Empty array if there's nothing to look up — never put a guessed date in "events" instead.
 
+"people" — every person from PEOPLE THE USER KNOWS below that the question refers to, whether by name or by one of their nicknames, in ANY script or spelling: a nickname saved as "Ketch" is the same person when the question writes "الكتش", "el ketch" or "kitch"; "عمر" is "Omar". "name" is exactly as listed; "said" is the words the question used. Only people on that list; empty array if none.
+
 Anything already listed under "Already resolved" below is settled: don't repeat it in "events" and don't put it in "lookup". Do still use it to work out "dates" when the question asks about one specific day of it.`;
 
 // Step 1: work out what to actually look for. Cheap, tiny prompt. On any
@@ -143,13 +147,63 @@ Anything already listed under "Already resolved" below is settled: don't repeat 
 // compact index of every day, it's just less targeted.
 type PlanResult = QueryPlan & { lookup: string[] };
 
+type Known = { name: string; aliases: string[] };
+
+/** Everyone the user has named, with their nicknames — what the planner
+ *  matches "الكتش" against. */
+async function knownPeople(): Promise<Known[]> {
+  const meta = await getAllPersonMeta().catch(() => ({}) as Awaited<ReturnType<typeof getAllPersonMeta>>);
+  return Object.entries(meta).map(([name, m]) => ({ name, aliases: m.aliases ?? [] }));
+}
+
+/** A name or nickname written in the question the same way it is saved —
+ *  found without the AI, so it holds even when the planner misses it. */
+function peopleWrittenIn(question: string, known: Known[]): { name: string; said: string }[] {
+  const words = ` ${normalizeText(question)} `;
+  const out: { name: string; said: string }[] = [];
+  for (const k of known) {
+    const said = [k.name, ...k.aliases].find((n) => {
+      const folded = normalizeText(n).trim();
+      return folded.length >= 3 && words.includes(` ${folded} `);
+    });
+    if (said) out.push({ name: k.name, said });
+  }
+  return out;
+}
+
+/** The planner's people and the ones written plainly, each once, with
+ *  their name and every nickname added to the search words. */
+function withPeople(plan: PlanResult, question: string, known: Known[]): PlanResult {
+  const byName = new Map(known.map((k) => [k.name.toLowerCase(), k]));
+  const people = new Map<string, { name: string; said: string }>();
+  for (const p of [...(plan.people ?? []), ...peopleWrittenIn(question, known)]) {
+    const k = byName.get(p.name.toLowerCase());
+    if (k && !people.has(k.name)) people.set(k.name, { name: k.name, said: p.said || k.name });
+  }
+  if (people.size === 0) return { ...plan, people: [] };
+  const names = [...people.keys()].flatMap((n) => [n, ...(byName.get(n.toLowerCase())?.aliases ?? [])]);
+  console.log(`[ask] people: ${[...people.values()].map((p) => (p.said === p.name ? p.name : `"${p.said}" = ${p.name}`)).join(', ')}`);
+  return { ...plan, people: [...people.values()], keywords: [...new Set([...names, ...plan.keywords])].slice(0, 22) };
+}
+
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
-const EMPTY_PLAN: PlanResult = { dates: [], keywords: [], ranges: [], events: [], lookup: [] };
+const EMPTY_PLAN: PlanResult = { dates: [], keywords: [], ranges: [], events: [], lookup: [], people: [] };
 
 async function planQuery(question: string, resolved: ResolvedEvent[]): Promise<PlanResult> {
+  const known = await knownPeople();
+  return withPeople(await draftPlan(question, resolved, known), question, known);
+}
+
+async function draftPlan(question: string, resolved: ResolvedEvent[], people: Known[]): Promise<PlanResult> {
   const p = provider();
   if (!p) return EMPTY_PLAN;
+  const directory =
+    people.length > 0
+      ? `\n\nPEOPLE THE USER KNOWS:\n${people
+          .map((k) => `- ${k.name}${k.aliases.length ? ` (also called: ${k.aliases.join(', ')})` : ''}`)
+          .join('\n')}`
+      : '';
   const known =
     resolved.length > 0
       ? `\n\nAlready resolved (established dates — treat as fact): ${resolved
@@ -163,7 +217,7 @@ async function planQuery(question: string, resolved: ResolvedEvent[]): Promise<P
       body: JSON.stringify({
         model: p.model,
         messages: [
-          { role: 'system', content: `${PLAN_PROMPT}\n\nCalendar: ${recentCalendar()}${known}` },
+          { role: 'system', content: `${PLAN_PROMPT}\n\nCalendar: ${recentCalendar()}${known}${directory}` },
           { role: 'user', content: question },
         ],
         response_format: { type: 'json_object' },
@@ -178,8 +232,12 @@ async function planQuery(question: string, resolved: ResolvedEvent[]): Promise<P
       ranges?: { start?: string; end?: string }[];
       events?: { name?: string; start?: string; end?: string }[];
       lookup?: string[];
+      people?: { name?: string; said?: string }[];
     };
     return {
+      people: (parsed.people ?? [])
+        .filter((x): x is { name: string; said?: string } => typeof x?.name === 'string' && !!x.name.trim())
+        .map((x) => ({ name: x.name.trim(), said: (x.said ?? '').trim() })),
       dates: (parsed.dates ?? []).filter((d) => ISO.test(d)).slice(0, 14),
       keywords: (parsed.keywords ?? []).filter((k) => typeof k === 'string' && k.trim()).slice(0, 16),
       ranges: (parsed.ranges ?? [])
@@ -204,41 +262,42 @@ async function planQuery(question: string, resolved: ResolvedEvent[]): Promise<P
   }
 }
 
-const SYSTEM_PROMPT = `You are the user's own memory, answering questions about their life. Everything you say about THEIR life comes from the memory log below — never invent a person, place or event that isn't in it.
+const SYSTEM_PROMPT = `You are the user's own memory, answering questions about their life. Everything you say about THEIR life comes from the memory log below, never invent a person, place or event that isn't in it.
 
-WHAT YOU KNOW vs WHAT THEY DID — keep these completely separate:
-- You know about the world: when Ramadan started, when a match was played, what happened on a date. Use that freely to UNDERSTAND the question and to tell them the date. When a date is given under "WHEN THE EVENT(S) IN THE QUESTION ACTUALLY HAPPENED", it is established fact — state it plainly and move on. Never ask the user when a public event was, and never say you don't know what Ramadan is or when it fell.
-- You do NOT know their life except from the log. Never fill a gap with what a person "probably" does on a holiday or a match night. If the log has nothing for that day, give them the date and say there's nothing recorded — that's a useful answer, an invented one isn't.
-- Shape: date first, then what the log has. "Ramadan started 17 Feb. That day your photos show a big family table around 6pm and a drive after." / "Ramadan started 17 Feb — nothing logged that day, and no photos either."
+WHAT YOU KNOW vs WHAT THEY DID, keep these completely separate:
+- You know about the world: when Ramadan started, when a match was played, what happened on a date. Use that freely to UNDERSTAND the question and to tell them the date. When a date is given under "WHEN THE EVENT(S) IN THE QUESTION ACTUALLY HAPPENED", it is established fact, state it plainly and move on. Never ask the user when a public event was, and never say you don't know what Ramadan is or when it fell.
+- You do NOT know their life except from the log. Never fill a gap with what a person "probably" does on a holiday or a match night. If the log has nothing for that day, give them the date and say there's nothing recorded, that's a useful answer, an invented one isn't.
+- Shape: date first, then what the log has. "Ramadan started 17 Feb. That day your photos show a big family table around 6pm and a drive after." / "Ramadan started 17 Feb, nothing logged that day, and no photos either."
 - If a day has photos that haven't been read yet, say exactly that in one clause and don't speculate about what's in them.
 
-HOW YOU WRITE — this matters as much as being right:
+HOW YOU WRITE, this matters as much as being right:
 - Direct and concrete. Say what happened, where, when. Nothing else.
 - NO filler adjectives or mood-painting. Banned: "amazing", "lovely", "beautiful", "cozy", "wonderful", "perfect", "peaceful", "special". Never describe atmosphere or how they must have felt.
-- Full sentences in a natural voice — like a friend recapping your own day back to you. Not a bullet list, not a diary entry, not a travel blog.
+- Full sentences in a natural voice, like a friend recapping your own day back to you. Not a bullet list, not a diary entry, not a travel blog.
 - Short. 1-3 sentences for a normal answer. Never pad.
 - Don't open with filler ("Sure!", "Of course", "Great question"). Start with the answer.
+- Never use the long dash (—) in any language. A comma or a full stop instead: long dashes read as machine-written.
 
-Good: "You were at the aquarium on Saturday 15 Aug — a while at the jellyfish tank, then the sharks around mid-afternoon."
+Good: "You were at the aquarium on Saturday 15 Aug, a while at the jellyfish tank, then the sharks around mid-afternoon."
 Bad: "It looks like you had a wonderful time at the aquarium, perhaps enjoying the peaceful atmosphere of the jellyfish tank before wandering over to see the magnificent sharks!"
 
 LANGUAGE:
 - Reply in the same language AND script the user wrote in. English question → English. Arabic script → Egyptian colloquial Arabic in Arabic script. Franco-Arabic (Arabic typed in Latin letters) → reply the same way, in Latin letters.
-- Any Arabic you write is EGYPTIAN COLLOQUIAL — the way people actually speak and text in Cairo. Never Modern Standard Arabic / Fusha, and never a mix of the two. No tashkeel.
+- Any Arabic you write is EGYPTIAN COLLOQUIAL, the way people actually speak and text in Cairo. Never Modern Standard Arabic / Fusha, and never a mix of the two. No tashkeel.
 
-WHERE ANSWERS COME FROM — the log has two kinds of day content:
-- "What the user logged themselves" — their own words. Solid fact.
-- "From their photos (AI photo analysis)" — a guess reconstructed from that day's photos. The user never said it. Don't dress it up as something they told you, but don't clutter every sentence with hedges either — the app labels the source for them. One light "looks like" is plenty, and only when it matters.
+WHERE ANSWERS COME FROM, the log has two kinds of day content:
+- "What the user logged themselves", their own words. Solid fact.
+- "From their photos (AI photo analysis)", a guess reconstructed from that day's photos. The user never said it. Don't dress it up as something they told you, but don't clutter every sentence with hedges either, the app labels the source for them. One light "looks like" is plenty, and only when it matters.
 
-BEING USEFUL — never a dead end:
-- If you know it, answer it. If you're unsure which of a few days they mean, say which ones and ask — briefly.
-- The search has already found the days closest to the question (DAYS THE SEARCH FOUND). Use them. A day that matches only part of the question is still worth offering: say what it has and ask if it's the one — "The closest I have is Thursday 12 March: you were at the Grand Egyptian Museum, and your photos show the pyramids. Is that the day?" — and give tap replies like "Yes, that's it" / "No, another day".
+BEING USEFUL, never a dead end:
+- If you know it, answer it. If you're unsure which of a few days they mean, say which ones and ask, briefly.
+- The search has already found the days closest to the question (DAYS THE SEARCH FOUND). Use them. A day that matches only part of the question is still worth offering: say what it has and ask if it's the one, "The closest I have is Thursday 12 March: you were at the Grand Egyptian Museum, and your photos show the pyramids. Is that the day?", and give tap replies like "Yes, that's it" / "No, another day".
 - Never answer with only "I don't know", "nothing is recorded" or "I'm not sure". Say in a few words what's missing, then give the nearest real thing from the log with its date. Only when the log truly has nothing near it at all, say so in one line and ask one question that would help find it.
-- Look at everything in a day — the user's words, the photo story, the places, and the search tags (what's in that day's photos and notes). Something in the background of a photo is in the tags even when the story doesn't mention it.
+- Look at everything in a day, the user's words, the photo story, the places, and the search tags (what's in that day's photos and notes). Something in the background of a photo is in the tags even when the story doesn't mention it.
 - Never invent something to fill a gap, and never lecture them about what they should log.
 - One question at a time, and only when it actually helps.
 
-ALWAYS report which days you used, in "sources" — every day whose content shaped your answer, with the right "kind" for each ("logged" if you used their own words for that day, "photoAnalysis" if you used the photo guess). Empty only when the answer used no specific day at all.
+ALWAYS report which days you used, in "sources", every day whose content shaped your answer, with the right "kind" for each ("logged" if you used their own words for that day, "photoAnalysis" if you used the photo guess). Empty only when the answer used no specific day at all.
 
 Respond with ONLY a JSON object:
 {"answer": "<your reply>", "sources": [{"date": "YYYY-MM-DD", "kind": "logged" | "photoAnalysis"}], "reference": null | {"type": "person", "name": "<exact name from the log>"} | {"type": "place", "name": "<exact name from the log>"}, "suggestions": ["<short tap reply>", "..."] | []}`;
