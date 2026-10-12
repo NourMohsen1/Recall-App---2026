@@ -21,6 +21,7 @@ import {
 } from '../dayMarkers';
 import { rtlIfArabic } from '../transcription';
 import { colors, fonts } from '../theme';
+import { HOLD_MS } from './CanvasCards';
 
 // Smart Icon Reminders, drawn on the Timeline canvas. See src/dayMarkers.ts
 // for what they are and where they come from.
@@ -211,7 +212,7 @@ function SirIcon({
     if (ok) runOnJS(onPress)();
   });
   const drag = Gesture.Pan()
-    .activateAfterLongPress(320)
+    .activateAfterLongPress(HOLD_MS)
     .onStart(() => {
       lift.value = withSpring(1, { damping: 16, stiffness: 260 });
       runOnJS(tick)();
@@ -298,6 +299,10 @@ export function SirRow({
   );
 }
 
+// The picker's choices as columns of two, top row then bottom.
+const COLUMNS: SirKind[][] = [];
+for (let i = 0; i < SIR_KIND_LIST.length; i += 2) COLUMNS.push(SIR_KIND_LIST.slice(i, i + 2));
+
 // What the note field asks, by kind — a nudge toward the one detail that
 // makes the icon worth having ("Payday" alone could be any money).
 const NOTE_HINT: Partial<Record<SirKind, string>> = {
@@ -314,6 +319,7 @@ const NOTE_HINT: Partial<Record<SirKind, string>> = {
   study: 'Which exam or subject?',
   work: 'What happened?',
   workout: 'What did you do?',
+  football: 'Who did you play or watch with?',
   celebration: 'What were you celebrating?',
   car: 'What happened with the car?',
   pet: 'What happened?',
@@ -425,18 +431,30 @@ export function SirPicker({
           </Pressable>
         )}
         <Text style={styles.sheetHint}>
-          {onWrite ? 'Or mark it — b' : 'B'}irthdays and anniversaries come back on this date every year.
+          {onWrite ? 'Or mark it. B' : 'B'}irthdays and anniversaries come back on this date every year.
         </Text>
-        <ScrollView contentContainerStyle={styles.grid}>
-          {SIR_KIND_LIST.map((kind) => (
-            <Pressable key={kind} onPress={() => onPick(kind)} style={styles.choice}>
-              <View style={styles.choiceIcon}>
-                <MaterialCommunityIcons name={SIR_KINDS[kind].icon} size={24} color={colors.primary} />
-              </View>
-              <Text style={styles.choiceLabel} numberOfLines={2}>
-                {SIR_KINDS[kind].label}
-              </Text>
-            </Pressable>
+        {/* Two rows that scroll sideways: every choice in reach without a
+            tall wall of icons (Nour). The next column peeks in at the edge,
+            which is what says "there's more this way". */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.strip}
+          contentContainerStyle={styles.stripContent}
+        >
+          {COLUMNS.map((column) => (
+            <View key={column.join()} style={styles.column}>
+              {column.map((kind) => (
+                <Pressable key={kind} onPress={() => onPick(kind)} style={styles.choice}>
+                  <View style={styles.choiceIcon}>
+                    <MaterialCommunityIcons name={SIR_KINDS[kind].icon} size={24} color={colors.primary} />
+                  </View>
+                  <Text style={styles.choiceLabel} numberOfLines={2}>
+                    {SIR_KINDS[kind].label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
           ))}
         </ScrollView>
       </View>
@@ -607,8 +625,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginBottom: 16,
   },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 12 },
-  choice: { width: 76, alignItems: 'center', gap: 6 },
+  // Edge to edge, so icons scroll out under the sheet's sides.
+  strip: { marginHorizontal: -20, flexGrow: 0 },
+  stripContent: { paddingHorizontal: 20, gap: 6, paddingBottom: 8 },
+  column: { gap: 14 },
+  // 74 wide with a 6 gap: five and a bit columns on a phone, so the next
+  // one peeks; wide enough that "Achievement" stays one word.
+  choice: { width: 74, alignItems: 'center', gap: 6 },
   choiceIcon: {
     width: 52,
     height: 52,
@@ -617,10 +640,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Always two lines tall, so both rows line up whatever the labels say.
   choiceLabel: {
     color: colors.primary,
     fontFamily: fonts.regular,
     fontSize: 11,
+    lineHeight: 15,
+    height: 30,
     textAlign: 'center',
   },
 });

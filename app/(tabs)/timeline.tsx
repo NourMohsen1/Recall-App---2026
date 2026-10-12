@@ -69,6 +69,7 @@ import {
 import { Topic, TopicItem, TopicKey, getDayFeed, getInterestTopics, swapTopic } from '../../src/onThisDay';
 import {
   addPersonForDay,
+  getAllPersonMeta,
   getAllTaggedPeople,
   getPeopleForDay,
   removePersonForDay,
@@ -401,6 +402,16 @@ export default function Timeline() {
   const [places, setPlaces] = useState<DayPlace[]>([]);
   const [people, setPeople] = useState<string[]>([]);
   const [peopleSuggestions, setPeopleSuggestions] = useState<string[]>([]);
+  // Each person's profile photo, so the People card shows faces, not
+  // initials — the same as the day page.
+  const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
+  const loadPersonPhotos = useCallback(
+    () =>
+      getAllPersonMeta()
+        .then((all) => setPersonPhotos(Object.fromEntries(Object.entries(all).map(([n, m]) => [n, m.photoUri]))))
+        .catch((e) => console.warn('[timeline] no profile photos for People:', e)),
+    [],
+  );
   // Who the app thinks was there, from the faces in that day's photos.
   // Drawn beside the confirmed names with a dashed ring and a question
   // mark, so a guess never passes for something the user recorded.
@@ -415,9 +426,10 @@ export default function Timeline() {
     getMemoriesByDay().then(setByDay);
     getPlacesForDay(key).then(setPlaces);
     getPeopleForDay(key).then(setPeople);
+    loadPersonPhotos();
     getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
     getMarkersForDay(key).then(setMarkers);
-  }, [selected]);
+  }, [selected, loadPersonPhotos]);
 
   // Places fill in quietly in the background — a photo's location read, a
   // spot given its street name — so the card follows along rather than
@@ -435,6 +447,7 @@ export default function Timeline() {
       getPlacesForDay(key).then(setPlaces);
       getPeopleForDay(key).then(setPeople);
       getAllTaggedPeople().then(setPeopleSuggestions);
+      loadPersonPhotos();
       getGuessesForDay(key).then((g) => setGuessed(g.map((x) => ({ name: x.name }))));
       getMarkersForDay(key).then(setMarkers);
       // The Timeline stays mounted behind other tabs, so a picker left open
@@ -1017,6 +1030,7 @@ export default function Timeline() {
                           onAdd={addPerson}
                           onRemove={removePerson}
                           pinSize={48}
+                          photos={personPhotos}
                           suggested={guessed}
                           onConfirm={confirmGuess}
                           onDismiss={dismissGuess}

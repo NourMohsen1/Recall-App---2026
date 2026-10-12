@@ -41,7 +41,10 @@ export type Offset = {
 export type Offsets = Record<CardId, Offset>;
 export type Rect = { x: number; y: number; w: number; h?: number };
 
-const HOLD_MS = 320;
+/** How long a finger rests on a card or icon before it lifts to be moved.
+ *  320 ms let a slow scroll of the canvas pick a card up instead (Nour);
+ *  550 is past iOS's own long-press, so a drag is always meant. */
+export const HOLD_MS = 550;
 const KEY = 'timelineLayout';
 
 /** One pair of shared values per card — a fixed set, so hooks stay in order. */

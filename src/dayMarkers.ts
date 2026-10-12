@@ -31,6 +31,7 @@ export type SirKind =
   | 'payday'
   | 'medicine'
   | 'workout'
+  | 'football'
   | 'doctor'
   | 'sick'
   | 'travel'
@@ -59,6 +60,7 @@ export const SIR_KINDS: Record<SirKind, { icon: IconName; label: string }> = {
   payday: { icon: 'cash', label: 'Payday' },
   medicine: { icon: 'pill', label: 'Medicine' },
   workout: { icon: 'dumbbell', label: 'Workout' },
+  football: { icon: 'soccer', label: 'Football' },
   doctor: { icon: 'stethoscope', label: 'Doctor' },
   sick: { icon: 'thermometer', label: 'Sick day' },
   travel: { icon: 'airplane', label: 'Travel' },
