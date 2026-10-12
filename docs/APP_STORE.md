@@ -94,23 +94,26 @@ Answer "None" to every content question: there is no user-to-user content, no we
 
 ## Screenshots (approved by Nour, 11 Oct 2026)
 
-Required: 6.9" iPhone, 1320 × 2868. Upload these seven, in this order,
-from `docs/app-store-screenshots/`:
+Required: 6.9" iPhone, 1320 × 2868 (and the same set at 6.3", 1206 × 2622).
+Upload these eight, in this order, from `docs/app-store-screenshots/`:
 
 | # | File | Screen | Headline | Line under it |
 |---|---|---|---|---|
 | 1 | `1-home.png` | Home | Your Days, **Remembered** | Talk, type or snap. Recall files the rest. |
-| 2 | `2-ask-brain.png` | Ask — the 3D brain | Ask Your **Memory** | Speak or type, in any language |
-| 3 | `3-ask.png` | Ask — an answer with its days | Find Details **Fast** | Real answers from your own days |
+| 2 | `2-ask-brain.png` | Ask, the 3D brain | Ask Your **Memory** | Speak or type, in any language |
+| 3 | `3-ask.png` | Ask, an answer with its days | Find Details **Fast** | Real answers from your own days |
 | 4 | `4-timeline.png` | A day | Remember With **Context** | Linked to who, when and where |
-| 5 | `5-people.png` | People | Everyone You **Love** | People fill in from what you log |
-| 6 | `6-recap.png` | Weekly recap | Your Week, **At a Glance** | A short recap, day by day |
-| 7 | `7-tasks.png` | Tasks | Keep Life **Organized** | Tasks from what you say |
+| 5 | `5-canvas.png` | The Timeline canvas | Every Day, One **Canvas** | Move things around. It all stays linked. |
+| 6 | `6-people.png` | People | Everyone You **Love** | People fill in from what you log |
+| 7 | `7-recap.png` | Weekly recap | Your Week, **At a Glance** | A short recap, day by day |
+| 8 | `8-tasks.png` | Tasks | Keep Life **Organized** | Tasks from what you say |
 
 Style (after a reference Nour chose): light pale and teal slides
 alternating, Poppins Bold headlines with one word in a pill or the accent
 colour, the real screen in a black phone frame with a soft glow, a few
-hand-drawn touches. Only the app's own fonts and colours.
+hand-drawn touches. Only the app's own fonts and colours. On This Day on the
+canvas slide shows real headlines for 10 Oct 2026, fetched by the app's own
+search.
 
 The content is real app output, not arranged by hand: a made-up user
 (Layla) logged a week of notes, filed by the app's own intake with the

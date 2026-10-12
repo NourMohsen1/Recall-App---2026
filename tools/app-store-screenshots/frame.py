@@ -134,9 +134,10 @@ SLIDES = [
     ('8-ask-brain', True, [[('Ask Your', 'plain')], [('Memory', 'accent')]], 'Speak or type, in any language', 'ask'),
     ('2-ask', False, [[('Find Details', 'plain')], [('Fast', 'pill')]], 'Real answers from your own days', 'fast'),
     ('3-timeline', True, [[('Remember With', 'plain')], [('Context', 'accent')]], 'Linked to who, when and where', 'context'),
-    ('4-people', False, [[('Everyone', 'plain')], [('You', 'plain'), ('Love', 'pill')]], 'People fill in from what you log', 'people'),
-    ('5-recap', True, [[('Your Week,', 'plain')], [('At a Glance', 'pill')]], 'A short recap, day by day', 'recap'),
-    ('6-tasks', False, [[('Keep Life', 'plain')], [('Organized', 'accent')]], 'Tasks from what you say', 'tasks'),
+    ('9-canvas', False, [[('Every Day,', 'plain')], [('One', 'plain'), ('Canvas', 'pill')]], 'Move things around. It all stays linked.', 'canvas'),
+    ('4-people', True, [[('Everyone', 'plain')], [('You', 'plain'), ('Love', 'pill')]], 'People fill in from what you log', 'people'),
+    ('5-recap', False, [[('Your Week,', 'plain')], [('At a Glance', 'pill')]], 'A short recap, day by day', 'recap'),
+    ('6-tasks', True, [[('Keep Life', 'plain')], [('Organized', 'accent')]], 'Tasks from what you say', 'tasks'),
 ]
 
 def touches(img, kind, dark):
@@ -145,7 +146,7 @@ def touches(img, kind, dark):
     line = rgba(WHITE, 210) if dark else rgba(PRIMARY, 200)
     acc = rgba(ACCENT, 230)
     # big soft shapes behind the phone, different on every slide
-    seeds = {'home': 3, 'ask': 5, 'fast': 7, 'context': 11, 'people': 13, 'recap': 17, 'tasks': 19}
+    seeds = {'home': 3, 'ask': 5, 'fast': 7, 'context': 11, 'canvas': 23, 'people': 13, 'recap': 17, 'tasks': 19}
     s = seeds[kind]
     blob(lay, W * 0.08, H * 0.62, 240 * K, WHITE if dark else TEAL, 26 if dark else 30, s)
     blob(lay, W * 0.95, H * 0.36, 300 * K, WHITE if dark else TEAL, 22 if dark else 24, s + 1)
@@ -163,6 +164,9 @@ def touches(img, kind, dark):
     elif kind == 'context':
         sparkle(d, W * 0.88, 470 * K, 40 * K, acc); sparkle(d, W * 0.12, 160 * K, 26 * K, line)
         swoosh(d, W * 0.32, 545 * K, W * 0.36, acc)
+    elif kind == 'canvas':
+        curl_arrow(d, W * 0.84, 150 * K, line)
+        squiggle(d, W * 0.33, 520 * K, W * 0.34, line)
     elif kind == 'people':
         burst(d, W * 0.87, 300 * K, line, start=-20, spread=80)
         squiggle(d, W * 0.33, 520 * K, W * 0.34, line)
