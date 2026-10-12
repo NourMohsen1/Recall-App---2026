@@ -669,9 +669,7 @@ function Chat() {
           {messages.length === 0 ? (
             // Before the first question: only the brain, to be turned with a
             // finger, and the field to ask in. No words.
-            <View style={styles.empty} pointerEvents="box-none">
-              {!available && <Text style={styles.voiceHint}>Recall’s AI is off. Turn it on in Profile → Recall’s AI.</Text>}
-            </View>
+            <View style={styles.empty} pointerEvents="box-none" />
           ) : (
             <ScrollView
               ref={scrollRef}
@@ -776,6 +774,10 @@ function Chat() {
             </ScrollView>
           )}
 
+          {/* Said just above the field, never across the brain. */}
+          {!available && (
+            <Text style={styles.voiceHint}>Recall’s AI is off. Turn it on in Profile → Recall’s AI.</Text>
+          )}
           {/* Input bar — morphs into a live recording strip while speaking */}
           {voiceState === 'recording' ? (
             <View style={[styles.inputBar, styles.inputBarRec, fieldLift]}>
@@ -922,7 +924,8 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     color: 'rgba(255,255,255,0.5)',
-    marginTop: 18,
+    textAlign: 'center',
+    marginBottom: 10,
     fontStyle: 'italic',
   },
 
