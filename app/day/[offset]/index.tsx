@@ -61,11 +61,11 @@ import { approveGuess, getGuessesForDay, rejectGuess } from '../../../src/guesse
 import { ensureDayScanned, faceMatchingAvailable } from '../../../src/faceMatching';
 import { getAllPhotoSources, getPhotoTimestamps } from '../../../src/photoMeta';
 import { AttachmentThumb } from '../../../src/components/AttachmentViewer';
-import PlaceTile from '../../../src/components/PlaceTile';
+import PlaceTile, { PlaceCover } from '../../../src/components/PlaceTile';
 import ReadDayCard from '../../../src/components/ReadDayCard';
 import { mayReadDay, onPhotoReadingChanged } from '../../../src/photoReading';
 import { askToReadDay, offerAllIfTime } from '../../../src/readDayPrompt';
-import { DayPlace, getPlacesForDay } from '../../../src/places';
+import { DayPlace, getPlacesForDay, hidePlaceOnDay, setDayPlaceOrder } from '../../../src/places';
 import { rtlIfArabic } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
 import { withAppNav } from '../../../src/components/AppNav';
@@ -211,6 +211,18 @@ function DayDetailScreen() {
   const removePerson = async (name: string) => {
     await removePersonForDay(dayKey, name);
     setPeople(await getPeopleForDay(dayKey));
+  };
+
+  // The user's hand on the day's places: off this day, or into their order.
+  const removeDayPlace = async (place: DayPlace) => {
+    setPlaces((prev) => prev.filter((p) => p.placeId !== place.placeId));
+    await hidePlaceOnDay(place.placeId, dayKey);
+    reload();
+  };
+  const reorderPlaces = async (next: DayPlace[]) => {
+    setPlaces(next);
+    await setDayPlaceOrder(dayKey, next.map((p) => p.placeId));
+    reload();
   };
 
   // Assumed Memory — the same floating card from the Timeline canvas,
@@ -456,10 +468,13 @@ function DayDetailScreen() {
                     )}
                   </View>
 
+                  {/* A tap on the words opens them for editing; no mode needed. */}
                   {memoryDisplayText(m) && (
-                    <Text style={[styles.segmentText, rtlIfArabic(memoryDisplayText(m)!)]}>
-                      {memoryDisplayText(m)}
-                    </Text>
+                    <Pressable onPress={() => setEditTarget(m)} disabled={m.kind === 'photo'}>
+                      <Text style={[styles.segmentText, rtlIfArabic(memoryDisplayText(m)!)]}>
+                        {memoryDisplayText(m)}
+                      </Text>
+                    </Pressable>
                   )}
 
                   {m.note && <Text style={[styles.noteText, rtlIfArabic(m.note)]}>📝 {m.note}</Text>}
@@ -491,15 +506,12 @@ function DayDetailScreen() {
           </View>
         )}
 
-        {/* Adding to a past day. Offered whenever editing is on, and also on
-            an empty day — a day with nothing on it is exactly when you most
-            want to write something, and there'd otherwise be no way in. */}
-        {(editing || entries.length === 0) && (
-          <Pressable style={styles.addRow} onPress={() => setAdding(true)}>
-            <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
-            <Text style={styles.addText}>Add to this day</Text>
-          </Pressable>
-        )}
+        {/* Adding a note to the day, always in reach. It used to appear only
+            in edit mode, where Nour never found it. */}
+        <Pressable style={styles.addRow} onPress={() => setAdding(true)}>
+          <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
+          <Text style={styles.addText}>Add a note</Text>
+        </Pressable>
 
         {hasVoice && (
           <Pressable
@@ -541,8 +553,33 @@ function DayDetailScreen() {
           <>
             <View style={styles.divider} />
             <Text style={styles.placesTitle}>Places</Text>
+            {/* Editing: the places as a list, held and dragged into the
+                user's order, each with its way off the day. */}
+            {editing && places.length > 0 && (
+              <ReorderableList
+                items={places}
+                keyOf={(p) => p.placeId}
+                enabled={places.length > 1}
+                onDragging={(d) => setDragging(d)}
+                onReorder={(next) => reorderPlaces(next)}
+                renderItem={(place) => (
+                  <View style={styles.placeRow}>
+                    <PlaceCover cover={place.cover} kind={place.kind} size={52} radius={12} />
+                    <Text style={styles.placeRowName} numberOfLines={1}>
+                      {place.label}
+                    </Text>
+                    <Pressable onPress={() => removeDayPlace(place)} hitSlop={10} style={styles.placeRowBtn}>
+                      <Ionicons name="close-circle" size={24} color="#B24545" />
+                    </Pressable>
+                    {places.length > 1 && (
+                      <MaterialCommunityIcons name="drag-horizontal-variant" size={24} color="#A3ABAC" />
+                    )}
+                  </View>
+                )}
+              />
+            )}
             <View style={styles.placeGrid}>
-              {places.map((place) => (
+              {!editing && places.map((place) => (
                 <PlaceTile
                   key={place.placeId}
                   label={place.label}
@@ -554,7 +591,7 @@ function DayDetailScreen() {
                   }
                 />
               ))}
-              {offsetNum <= 0 && (
+              {offsetNum <= 0 && !editing && (
                 <Pressable style={{ width: 100, alignItems: 'center' }} onPress={() => setAddingPlace(true)}>
                   <View style={[styles.addPlaceTile, { width: 100, height: 100 }]}>
                     <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={colors.teal} />
@@ -563,6 +600,12 @@ function DayDetailScreen() {
                 </Pressable>
               )}
             </View>
+            {offsetNum <= 0 && editing && (
+              <Pressable style={styles.addRow} onPress={() => setAddingPlace(true)}>
+                <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
+                <Text style={styles.addText}>Add a place</Text>
+              </Pressable>
+            )}
           </>
         )}
 
@@ -798,6 +841,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#2B2B2B', marginTop: 6, textAlign: 'center' },
+  placeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    backgroundColor: colors.white,
+  },
+  placeRowName: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: colors.ink },
+  placeRowBtn: { padding: 2 },
   placeGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 12 },
 
   empty: { paddingTop: 80, alignItems: 'center' },

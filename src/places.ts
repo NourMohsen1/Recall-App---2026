@@ -153,6 +153,7 @@ type DayEntry = {
 
 const PLACES_KEY = 'places';
 const DAY_PLACES_KEY = 'dayPlaces';
+const DAY_PLACE_EDITS_KEY = 'dayPlaceEdits';
 const GEOCODE_CACHE_KEY = 'geocodeCache';
 
 /** Photos closer than this are the same place. Wide enough for GPS indoors,
@@ -174,6 +175,15 @@ const writePlaces = (p: Record<string, Place>) => AsyncStorage.setItem(PLACES_KE
 const readDays = () => readJSON<Record<string, DayEntry[]>>(DAY_PLACES_KEY, {});
 const writeDays = (d: Record<string, DayEntry[]>) =>
   AsyncStorage.setItem(DAY_PLACES_KEY, JSON.stringify(d));
+
+// The user's own hand on a day's places, from the day page: the order they
+// put them in, and places they took off the day. Kept apart from the day
+// entries because a visit the photos prove is rebuilt from the photos every
+// time; only a separate "not on this day" can outlast that.
+type DayPlaceEdit = { order?: string[]; hidden?: string[] };
+const readEdits = () => readJSON<Record<string, DayPlaceEdit>>(DAY_PLACE_EDITS_KEY, {});
+const writeEdits = (e: Record<string, DayPlaceEdit>) =>
+  AsyncStorage.setItem(DAY_PLACE_EDITS_KEY, JSON.stringify(e));
 
 // Every read-modify-write of places and day places goes through here, one at
 // a time. The sweep, a log being filed and the user renaming a place can all
@@ -416,11 +426,14 @@ export function addPlace(name: string, kind?: PlaceKind): Promise<string | null>
 export function recordNamedPlaceForDay(
   dayKey: string,
   said: { name: string; kind?: PlaceKind; moment?: string },
+  // Added on the day page by the user. It undoes their own earlier "not
+  // here"; a log read again by the intake never does.
+  byHand = false,
 ): Promise<string | null> {
   return locked(async () => {
     const name = said.name.trim();
     if (!name) return null;
-    const [places, days] = await Promise.all([readPlaces(), readDays()]);
+    const [places, days, edits] = await Promise.all([readPlaces(), readDays(), readEdits()]);
     let place = findByName(places, name);
     if (!place) {
       place = {
@@ -451,7 +464,12 @@ export function recordNamedPlaceForDay(
       list.push({ label: place.name, placeId: id, moment: said.moment || undefined, kind: said.kind });
     }
     days[dayKey] = list;
-    await Promise.all([writePlaces(places), writeDays(days)]);
+    const edit = edits[dayKey];
+    if (byHand && edit) {
+      edit.hidden = (edit.hidden ?? []).filter((h) => h !== id);
+      if (edit.order && !edit.order.includes(id)) edit.order.push(id);
+    }
+    await Promise.all([writePlaces(places), writeDays(days), byHand && edit ? writeEdits(edits) : null]);
     changed();
     return id;
   });
@@ -843,9 +861,10 @@ async function world(): Promise<World> {
 }
 
 async function buildWorld(): Promise<World> {
-  const [places, days, meta, memories, faces] = await Promise.all([
+  const [places, days, edits, meta, memories, faces] = await Promise.all([
     readPlaces(),
     readDays(),
+    readEdits(),
     getAllPhotoMeta(),
     getLoggedMemories(),
     getPhotoFaceCounts().catch((e) => {
@@ -903,12 +922,14 @@ async function buildWorld(): Promise<World> {
     return dp;
   };
 
+  const hiddenOn = (day: string, id: string) => !!edits[day]?.hidden?.includes(id);
+
   for (const [uri, day] of photoDay) {
     const m = meta[uri];
     if (!m) continue;
     for (const id of uniq([m.placeId, m.saidPlaceId].filter((x): x is string => !!x))) {
       const place = places[id];
-      if (!place) continue;
+      if (!place || hiddenOn(day, id)) continue;
       const t = m.takenAt ?? 0;
       const a = accFor(id);
       a.days.add(day);
@@ -921,7 +942,7 @@ async function buildWorld(): Promise<World> {
   for (const [day, list] of Object.entries(days)) {
     for (const e of list) {
       const place = e.placeId ? places[e.placeId] : undefined;
-      if (!place) continue;
+      if (!place || hiddenOn(day, place.id)) continue;
       const a = accFor(place.id);
       a.days.add(day);
       if (e.moment && !a.moments[day]) a.moments[day] = e.moment;
@@ -989,9 +1010,16 @@ async function buildWorld(): Promise<World> {
 
   const byDay = new Map<string, DayPlace[]>();
   for (const [day, map] of dayMaps) {
+    // The user's order first; anything they have not placed yet follows,
+    // earliest photo first.
+    const order = edits[day]?.order ?? [];
+    const rank = (id: string) => {
+      const i = order.indexOf(id);
+      return i < 0 ? order.length : i;
+    };
     const list = [...map.values()]
       .filter((dp) => summaries.has(dp.placeId))
-      .sort((a, b) => a.t - b.t)
+      .sort((a, b) => rank(a.placeId) - rank(b.placeId) || a.t - b.t)
       .map(({ t: _t, ...dp }) => ({ ...dp, cover: summaries.get(dp.placeId)?.cover }));
     if (list.length > 0) byDay.set(day, list);
   }
@@ -1156,6 +1184,37 @@ export function removeVisit(placeId: string, dayKey: string): Promise<boolean> {
     changed();
     console.log(`[places] removed a visit on ${dayKey}`);
     return true;
+  });
+}
+
+/** "I wasn't here that day", from the day page. Unlike removeVisit this
+ *  also covers a visit the photos put there (GPS can file a photo at the
+ *  café next door): the place stays off this day until the user adds it
+ *  back by hand. Its photos stay with the place. */
+export function hidePlaceOnDay(placeId: string, dayKey: string): Promise<void> {
+  return locked(async () => {
+    const [days, edits] = await Promise.all([readDays(), readEdits()]);
+    const list = days[dayKey] ?? [];
+    const keep = list.filter((e) => e.placeId !== placeId);
+    if (keep.length) days[dayKey] = keep;
+    else delete days[dayKey];
+    const edit = (edits[dayKey] ??= {});
+    edit.hidden = uniq([...(edit.hidden ?? []), placeId]);
+    if (edit.order) edit.order = edit.order.filter((id) => id !== placeId);
+    await Promise.all([writeDays(days), writeEdits(edits)]);
+    changed();
+    console.log(`[places] taken off ${dayKey} by the user`);
+  });
+}
+
+/** The order the user put a day's places in, first to last. */
+export function setDayPlaceOrder(dayKey: string, placeIds: string[]): Promise<void> {
+  return locked(async () => {
+    const edits = await readEdits();
+    (edits[dayKey] ??= {}).order = uniq(placeIds);
+    await writeEdits(edits);
+    changed();
+    console.log(`[places] ${dayKey} reordered by the user (${placeIds.length} places)`);
   });
 }
 

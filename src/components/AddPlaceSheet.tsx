@@ -47,7 +47,7 @@ export default function AddPlaceSheet({
     if (!clean || saving) return;
     setSaving(true);
     if (dayKey) {
-      await recordNamedPlaceForDay(dayKey, { name: clean });
+      await recordNamedPlaceForDay(dayKey, { name: clean }, true);
       console.log(`[places] added ${clean} to ${dayKey} by hand`);
     } else {
       await addPlace(clean, kind);
