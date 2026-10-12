@@ -844,7 +844,7 @@ function Chat() {
           )}
           {keyboardH === 0 && (
             <Text style={[styles.disclaimer, { marginBottom: Math.max(insets.bottom, 12) }]}>
-              Recall answers from your memories and its own reading of them — it can be wrong. Check what matters.
+              Recall answers from your memories and its own reading of them. It can be wrong, so check what matters.
             </Text>
           )}
         </KeyboardAvoidingView>

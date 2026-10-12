@@ -13,7 +13,8 @@ export default function OnboardingBackground({
   children: ReactNode;
   light?: boolean;
 }) {
-  useLightStatusBar();
+  // The light version is pale teal: the dark top bar reads better on it.
+  useLightStatusBar(!light);
   if (light) {
     return (
       <LinearGradient

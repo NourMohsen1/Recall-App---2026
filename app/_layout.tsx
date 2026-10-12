@@ -8,8 +8,7 @@ import { AppState } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
-import { StatusBar } from 'expo-status-bar';
-import { DEFAULT_STATUS_BAR } from '../src/statusBar';
+import { StatusBarKeeper } from '../src/statusBar';
 import {
   useFonts,
   Poppins_400Regular,
@@ -121,7 +120,7 @@ function AppRoot() {
   return (
     // Gestures anywhere in the app — the + button's hold-and-drag needs it.
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style={DEFAULT_STATUS_BAR} />
+      <StatusBarKeeper />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         {/* Presented as an ordinary pushed screen, like Ask and Day.

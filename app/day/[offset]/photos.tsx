@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PhotoSourceSheet from '../../../src/components/PhotoSourceSheet';
 import { dateWithOffset } from '../../../src/data';
-import { dateKey, getMemoriesByDay } from '../../../src/memoryLog';
+import { dateKey, formatClockTime, getMemoriesByDay } from '../../../src/memoryLog';
 import PhotoImage from '../../../src/components/PhotoImage';
 import { PhotoMeta, clearPhotoMeta, getAllPhotoMeta, setPhotoMeta } from '../../../src/photoMeta';
 import { SOURCE_LABEL_STYLES } from '../../../src/photoSource';
@@ -142,6 +142,8 @@ export default function PhotoViewer() {
         )}
       </View>
 
+      <TakenAt at={currentMeta?.takenAt} dayKey={dateKey(dateWithOffset(offsetNum))} />
+
       {/* Quick-nav strip — a dedicated footer, not an overlay, so it never
           covers any part of the photo above it. Only shown when there's
           more than one photo to jump between. */}
@@ -174,6 +176,29 @@ export default function PhotoViewer() {
         onClose={() => setSheetOpen(false)}
       />
     </SafeAreaView>
+  );
+}
+
+// When this photo was taken, from the photo itself. A photo from after
+// midnight belongs to the night before (src/logicalDay.ts), so it names
+// its own date too: "12:40 am, Sun 12 Oct" under Saturday is the truth,
+// not a mistake. Nothing is shown when the photo carries no time; the
+// memory's time is a group's, not this photo's.
+function TakenAt({ at, dayKey }: { at?: number; dayKey: string }) {
+  if (!at) return <View style={styles.takenRow} />;
+  const d = new Date(at);
+  const otherDay =
+    dateKey(d) === dayKey
+      ? ''
+      : `, ${d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })}`;
+  return (
+    <View style={styles.takenRow}>
+      <Ionicons name="time-outline" size={15} color="rgba(255,255,255,0.7)" />
+      <Text style={styles.takenText}>
+        {formatClockTime(d)}
+        {otherDay}
+      </Text>
+    </View>
   );
 }
 
@@ -210,6 +235,15 @@ const styles = StyleSheet.create({
   tagBtn: { padding: 4 },
   counter: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
   list: { flex: 1 },
+
+  takenRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    minHeight: 40,
+  },
+  takenText: { fontFamily: fonts.medium, fontSize: 14, color: 'rgba(255,255,255,0.85)' },
 
   pillRow: { alignItems: 'center', paddingBottom: 10 },
   pill: { borderRadius: 999, paddingVertical: 8, paddingHorizontal: 18 },
