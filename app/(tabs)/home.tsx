@@ -2,10 +2,9 @@ import { useCallback, useState } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
-import { BRAND, ICONS, MISC, placePhoto } from '../../src/images';
-import { PlaceThumb } from '../../src/components/PlaceTile';
+import { BRAND, ICONS, MISC } from '../../src/images';
+import FeatureTile from '../../src/components/FeatureTile';
 import { polishPendingMemories, useMemoryPolish } from '../../src/memoryIntake';
 import { syncPhotosWithLibrary } from '../../src/photoGuard';
 import { syncNewPhotosIfOn } from '../../src/photoImport';
@@ -272,32 +271,11 @@ export default function Home() {
           </Pressable>
         </Link>
 
-        {/* Places / People / Recap shortcuts */}
+        {/* Places / People / Recap — each with a photo from inside it */}
         <View style={styles.shortcutRow}>
-          <Link href="/places" asChild>
-            <Pressable style={styles.shortcut}>
-              <PlaceThumb style={styles.shortcutImage} />
-              <Text style={styles.shortcutLabel}>Places</Text>
-            </Pressable>
-          </Link>
-          <Link href="/people" asChild>
-            <Pressable style={styles.shortcut}>
-              <View style={[styles.shortcutImage, styles.peopleTile]}>
-                <MaterialCommunityIcons name="account-group" size={44} color={colors.white} />
-              </View>
-              <Text style={styles.shortcutLabel}>People</Text>
-            </Pressable>
-          </Link>
-          <Link href="/recap" asChild>
-            <Pressable style={styles.shortcut}>
-              <Image
-                source={placePhoto('Soccer Roof')}
-                style={styles.shortcutImage}
-                resizeMode="cover"
-              />
-              <Text style={styles.shortcutLabel}>Recap</Text>
-            </Pressable>
-          </Link>
+          <FeatureTile feature="places" size={110} />
+          <FeatureTile feature="people" size={110} />
+          <FeatureTile feature="recap" size={110} />
         </View>
 
         {/* On This Day */}
@@ -418,19 +396,4 @@ const styles = StyleSheet.create({
   summaryEmpty: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
 
   shortcutRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
-  shortcut: { alignItems: 'center', width: 110 },
-  shortcutImage: {
-    width: 110,
-    height: 110,
-    borderRadius: 18,
-    borderWidth: 3,
-    borderColor: colors.white,
-    overflow: 'hidden',
-  },
-  peopleTile: {
-    backgroundColor: colors.teal,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  shortcutLabel: { fontFamily: fonts.regular, fontSize: 14, color: colors.ink, marginTop: 8 },
 });
