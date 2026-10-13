@@ -301,9 +301,9 @@ export default function Profile() {
             </View>
           ))}
         </View>
-        {/* The walkthrough again, for anyone who skipped it (app/walkthrough.tsx). */}
+        {/* The Home tour again, for anyone who closed it (src/components/CoachTour.tsx). */}
         <Pressable
-          onPress={() => router.push({ pathname: '/walkthrough', params: { from: 'profile' } })}
+          onPress={() => router.navigate({ pathname: '/home', params: { tour: String(Date.now()) } })}
           hitSlop={8}
           style={styles.aboutLink}
         >

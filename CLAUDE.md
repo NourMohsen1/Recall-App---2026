@@ -159,9 +159,10 @@ long dash.
 
 **+ saves, Ask answers** (Oct 2026). A tester thought live voice would
 save what he said and make tasks. It never does: only the + (talk, type,
-photos) logs. The walkthrough (`app/walkthrough.tsx`, five pages, shown
+photos) logs. The Home tour (`src/components/CoachTour.tsx`, five tips on the real
+screen: the +, Ask, the week, Tasks, the tiles; shown
 once from Home after the AI and photo questions, again from Profile →
-How Recall works) says so on its own page, and Ask and live voice answer
+How Recall works) says so on its own step, and Ask and live voice answer
 "it isn't saved here, the plus button logs it" in one sentence when told
 something to keep. Merging the two is a future idea, not a decision.
 

@@ -140,8 +140,6 @@ function AppRoot() {
         {/* Ask's brain turns with a finger, so going back is the left-edge
             swipe only — iOS 26+ otherwise takes a swipe anywhere as "back". */}
         <Stack.Screen name="chat" options={{ fullScreenGestureEnabled: false }} />
-        {/* Swiped sideways through its pages, so a swipe must not mean "back". */}
-        <Stack.Screen name="walkthrough" options={{ animation: 'fade', gestureEnabled: false }} />
       </Stack>
     </GestureHandlerRootView>
   );

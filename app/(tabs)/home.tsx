@@ -1,6 +1,6 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Link, useFocusEffect, useRouter } from 'expo-router';
+import { Link, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AnalyzingBanner from '../../src/components/AnalyzingBanner';
 import { BRAND, ICONS, MISC } from '../../src/images';
@@ -17,7 +17,9 @@ import MyPhotoCard from '../../src/components/MyPhotoCard';
 import { getAiConsent } from '../../src/aiConsent';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
-import { walkthroughSeen } from '../../src/walkthrough';
+import { markWalkthroughSeen, walkthroughSeen } from '../../src/walkthrough';
+import CoachTour, { type TourStep } from '../../src/components/CoachTour';
+import { measureCoachTarget, measureView } from '../../src/coachTargets';
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -68,6 +70,83 @@ export default function Home() {
   const [nextTask, setNextTask] = useState<StoredTask | null>(null);
   const router = useRouter();
 
+  // The Home tour: tips on the real screen (src/components/CoachTour.tsx).
+  // Once on its own; again whenever Profile → How Recall works sends ?tour.
+  const { tour: tourParam } = useLocalSearchParams<{ tour?: string }>();
+  const [touring, setTouring] = useState(false);
+  const { height: screenH } = useWindowDimensions();
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const askRef = useRef<View>(null);
+  const weekRef = useRef<View>(null);
+  const tasksRef = useRef<View>(null);
+  const tilesRef = useRef<View>(null);
+  useEffect(() => {
+    if (!tourParam) return;
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
+    const t = setTimeout(() => setTouring(true), 500);
+    return () => clearTimeout(t);
+  }, [tourParam]);
+
+  // A part below the fold (a smaller phone) is scrolled up into view first,
+  // leaving room for the bubble and the tab bar.
+  const inView = (ref: { current: View | null }) => async () => {
+    let r = await measureView(ref.current);
+    if (!r) return null;
+    const bottomLimit = screenH - 110;
+    const topLimit = 110;
+    let dy = 0;
+    if (r.y + r.height > bottomLimit) dy = r.y + r.height - bottomLimit + 24;
+    else if (r.y < topLimit) dy = r.y - topLimit - 24;
+    if (dy !== 0) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + dy), animated: true });
+      await new Promise((done) => setTimeout(done, 380));
+      r = await measureView(ref.current);
+    }
+    return r;
+  };
+
+  const tourSteps: TourStep[] = [
+    {
+      key: 'fab',
+      title: 'Log your day',
+      body: 'Tap + to talk, type or add photos. This is the only way something gets saved.',
+      measure: () => measureCoachTarget('fab'),
+      round: true,
+    },
+    {
+      key: 'ask',
+      title: 'Ask your memory',
+      body: 'Type or talk to ask about any day. Ask answers, and never saves what you tell it.',
+      measure: inView(askRef),
+    },
+    {
+      key: 'week',
+      title: 'Your week',
+      body: 'Tap a day to open it on the Timeline. A green dot means you logged it.',
+      measure: inView(weekRef),
+    },
+    {
+      key: 'tasks',
+      title: 'Tasks fill in',
+      body: 'Say “dentist Thursday at 2” in a log and it lands here, with a reminder.',
+      measure: inView(tasksRef),
+    },
+    {
+      key: 'tiles',
+      title: 'People, places, recaps',
+      body: 'They fill in by themselves from what you log and the photos you take.',
+      measure: inView(tilesRef),
+    },
+  ];
+
+  const endTour = (finished: boolean) => {
+    setTouring(false);
+    scrollRef.current?.scrollTo({ y: 0, animated: true });
+    markWalkthroughSeen().catch((e) => console.warn('[tour] could not remember it was seen:', e));
+    console.log(`[tour] ${finished ? 'finished' : 'closed early'}`);
+  };
+
   // The user's own photo for the Profile button, when they've set one.
   const [myPhoto, setMyPhoto] = useState<string | undefined>();
 
@@ -96,7 +175,8 @@ export default function Home() {
       // once, for new users and for everyone who had Recall before it.
       const walkthroughNext = () =>
         walkthroughSeen().then((seen) => {
-          if (!seen) router.push({ pathname: '/walkthrough', params: { from: 'home' } });
+          // A moment after Home is drawn, so every part has its place.
+          if (!seen) setTimeout(() => setTouring(true), 800);
         });
       if (getAiConsent() === null) router.push({ pathname: '/ai-consent', params: { from: 'home' } });
       else if (getAiConsent() === 'on') {
@@ -147,6 +227,9 @@ export default function Home() {
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView
+        ref={scrollRef}
+        onScroll={(e) => (scrollY.current = e.nativeEvent.contentOffset.y)}
+        scrollEventThrottle={32}
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
@@ -178,7 +261,7 @@ export default function Home() {
         </View>
 
         {/* Week strip */}
-        <View style={styles.weekRow}>
+        <View ref={weekRef} collapsable={false} style={styles.weekRow}>
           {week.map((day, i) => (
             // Opens the Timeline on that day.
             <Pressable
@@ -212,8 +295,10 @@ export default function Home() {
         </View>
 
         {/* AI chat pill */}
+        <View style={styles.tourGap}>
+        <View ref={askRef} collapsable={false}>
         <Link href="/chat" asChild>
-          <Pressable style={styles.chatRow}>
+          <Pressable style={StyleSheet.flatten([styles.chatRow, styles.noTopGap])}>
             <View style={styles.chatAvatar}>
               <Image source={MISC.brainAvatar} style={styles.chatAvatarImg} resizeMode="cover" />
             </View>
@@ -222,6 +307,8 @@ export default function Home() {
             </View>
           </Pressable>
         </Link>
+        </View>
+        </View>
 
         {/* Once, until the app knows the user's face (src/myFace.ts). */}
         <MyPhotoCard />
@@ -263,8 +350,10 @@ export default function Home() {
         </Pressable>
 
         {/* Tasks — the next one due */}
+        <View style={styles.tourGap}>
+        <View ref={tasksRef} collapsable={false}>
         <Link href="/tasks" asChild>
-          <Pressable style={styles.card}>
+          <Pressable style={StyleSheet.flatten([styles.card, styles.noTopGap])}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Tasks</Text>
               {nextTask?.dueDate && (
@@ -278,9 +367,11 @@ export default function Home() {
             </Text>
           </Pressable>
         </Link>
+        </View>
+        </View>
 
         {/* Places / People / Recap — each with a photo from inside it */}
-        <View style={styles.shortcutRow}>
+        <View ref={tilesRef} collapsable={false} style={styles.shortcutRow}>
           <FeatureTile feature="places" size={110} />
           <FeatureTile feature="people" size={110} />
           <FeatureTile feature="recap" size={110} />
@@ -295,6 +386,7 @@ export default function Home() {
           </Pressable>
         </Link>
       </ScrollView>
+      <CoachTour steps={tourSteps} visible={touring} onDone={endTour} />
     </SafeAreaView>
   );
 }
@@ -404,4 +496,7 @@ const styles = StyleSheet.create({
   summaryEmpty: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
 
   shortcutRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
+  // The gap above a part the tour rings sits outside the ringed box.
+  tourGap: { marginTop: 24 },
+  noTopGap: { marginTop: 0 },
 });

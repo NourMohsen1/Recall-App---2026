@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { usePathname, useRouter } from 'expo-router';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { ICONS } from '../images';
+import { registerCoachTarget } from '../coachTargets';
 import { colors, fonts } from '../theme';
 
 // The + in the middle of the bar: the three ways to log a memory.
@@ -38,6 +39,8 @@ export default function MemoryFab() {
   const openAnim = useRef(new Animated.Value(0)).current;
   const litAnims = useRef(ACTIONS.map(() => new Animated.Value(0))).current;
   const fabRef = useRef<View>(null);
+  // The Home tour points at the + (src/components/CoachTour.tsx).
+  useEffect(() => registerCoachTarget('fab', fabRef), []);
   const centre = useRef({ x: 0, y: 0 });
   const litRef = useRef<number | null>(null);
 
