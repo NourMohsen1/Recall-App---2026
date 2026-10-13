@@ -76,7 +76,8 @@ function rangeLabel(from: Date, to: Date): string {
 type Section = { key: string; title: string; range?: string; past: boolean; tasks: StoredTask[] };
 
 // The design groups tasks by week: what is coming, this week, and what has
-// passed. Newest date first inside each week, like the design. Undated tasks
+// passed. Soonest first inside a week still to come, newest first in a
+// week that has passed. Undated tasks
 // sit together under "Anytime", after this week — until they're done: a
 // finished undated task moves to the week it was finished in (tasks done
 // before that was recorded use the day they were made), and "Anytime"
@@ -119,8 +120,11 @@ function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
   const when = (t: StoredTask) => `${placeDay(t) ?? ''} ${taskClock(t) ?? '00:00'}`;
   for (const s of sections) {
     // Open tasks first, finished ones after them: what is still to do
-    // leads every week.
-    s.tasks.sort((a, b) => Number(a.done) - Number(b.done) || when(b).localeCompare(when(a)));
+    // leads every week. Then soonest first in this week and the weeks
+    // ahead, as a to-do list reads; most recent first in weeks that have
+    // passed, as a history does.
+    const order = s.past ? -1 : 1;
+    s.tasks.sort((a, b) => Number(a.done) - Number(b.done) || order * when(a).localeCompare(when(b)));
     // Earlier covers everything before last week: its range is what is in it.
     if (s.key === 'earlier' && s.tasks.length > 0) {
       const days = s.tasks.map((t) => placeDay(t)!).sort();
