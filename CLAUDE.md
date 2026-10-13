@@ -157,6 +157,14 @@ Without that block it called Ketch's wedding and Omar's wedding two
 different events. `[ask] people:` logs it. Ask's answers never use the
 long dash.
 
+**+ saves, Ask answers** (Oct 2026). A tester thought live voice would
+save what he said and make tasks. It never does: only the + (talk, type,
+photos) logs. The walkthrough (`app/walkthrough.tsx`, five pages, shown
+once from Home after the AI and photo questions, again from Profile →
+How Recall works) says so on its own page, and Ask and live voice answer
+"it isn't saved here, the plus button logs it" in one sentence when told
+something to keep. Merging the two is a future idea, not a decision.
+
 **Places** (`src/places.ts`) are private by design — Nour chose this over
 Google Places. Every photo keeps its own GPS on the device; photos within
 70 m are one place; the cover is the user's best photo from there (no faces

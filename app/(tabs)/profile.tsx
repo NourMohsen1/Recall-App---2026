@@ -301,8 +301,16 @@ export default function Profile() {
             </View>
           ))}
         </View>
+        {/* The walkthrough again, for anyone who skipped it (app/walkthrough.tsx). */}
+        <Pressable
+          onPress={() => router.push({ pathname: '/walkthrough', params: { from: 'profile' } })}
+          hitSlop={8}
+          style={styles.aboutLink}
+        >
+          <Text style={styles.aboutText}>How Recall works</Text>
+        </Pressable>
         {/* Version, privacy, support and the models' credits (app/about.tsx). */}
-        <Pressable onPress={() => router.push('/about')} hitSlop={8} style={styles.aboutLink}>
+        <Pressable onPress={() => router.push('/about')} hitSlop={8} style={[styles.aboutLink, { marginTop: 8 }]}>
           <Text style={styles.aboutText}>About Recall</Text>
         </Pressable>
       </ScrollView>
