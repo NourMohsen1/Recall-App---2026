@@ -1097,14 +1097,6 @@ export default function Timeline() {
                         <Text style={styles.dayCardTitle}>
                           {weekday}, {shortDate(date)}
                         </Text>
-                        <View style={styles.playBtn}>
-                          <Ionicons
-                            name="play"
-                            size={18}
-                            color={colors.white}
-                            style={{ marginLeft: 2 }}
-                          />
-                        </View>
                       </View>
                       <View style={{ marginTop: 10 }}>
                         {bullets.map((line, i) => (
@@ -1467,14 +1459,6 @@ const styles = StyleSheet.create({
     padding: 18,
   },
   dayCardTitle: { fontFamily: fonts.medium, fontSize: 16, color: '#2B2B2B', flex: 1 },
-  playBtn: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8 },
   bulletDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal, marginTop: 7 },
   bulletText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#7C8586' },
