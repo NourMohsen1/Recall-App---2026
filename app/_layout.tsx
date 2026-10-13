@@ -140,6 +140,11 @@ function AppRoot() {
         {/* Ask's brain turns with a finger, so going back is the left-edge
             swipe only — iOS 26+ otherwise takes a swipe anywhere as "back". */}
         <Stack.Screen name="chat" options={{ fullScreenGestureEnabled: false }} />
+        {/* Opened from live voice's cards: a sheet over the call, swiped
+            down to get back to talking. */}
+        <Stack.Screen name="peek/day/[offset]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="peek/place/[name]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="peek/person/[name]" options={{ presentation: 'modal' }} />
       </Stack>
     </GestureHandlerRootView>
   );

@@ -3,7 +3,10 @@ import { Alert, Animated, Easing, Pressable, ScrollView, StyleSheet, Text, View 
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import PhotoImage from '../src/components/PhotoImage';
+import { cardsFromLookup, type LiveCard } from '../src/liveCards';
+import { offsetOfDay } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession, type ChatMessage } from '../src/chatSessions';
@@ -56,6 +59,11 @@ export default function LiveConversation() {
   const [phase, setPhase] = useState<Phase>('idle');
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
   const [lookedUp, setLookedUp] = useState<string[]>([]);
+  // What the answer is about, as cards over the brain (src/liveCards.ts).
+  // A new question starts a fresh set; more lookups for the same question
+  // add to it, up to three.
+  const [cards, setCards] = useState<LiveCard[]>([]);
+  const newQuestion = useRef(true);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<ScrollView | null>(null);
 
@@ -152,6 +160,20 @@ export default function LiveConversation() {
             break;
           case 'said':
             push({ role: e.role, text: e.text });
+            if (e.role === 'user') newQuestion.current = true;
+            break;
+          case 'found':
+            cardsFromLookup(e.tool, e.output).then((found) => {
+              if (found.length === 0) return;
+              const fresh = newQuestion.current;
+              newQuestion.current = false;
+              setCards((prev) =>
+                fresh
+                  ? found
+                  : [...prev, ...found.filter((c) => !prev.some((p) => p.key === c.key))].slice(0, 3),
+              );
+              console.log(`[live] cards: ${found.map((c) => c.key).join(', ')}`);
+            });
             break;
           case 'looked-up':
             // What it consulted, shown as it happens. Not decoration: it is
@@ -199,14 +221,27 @@ export default function LiveConversation() {
     }
   };
 
+  // A card opens as a sheet over the call, which keeps going underneath.
+  const openCard = (c: LiveCard) => {
+    console.log(`[live] opened ${c.key}`);
+    if (c.kind === 'day') {
+      router.push({ pathname: '/peek/day/[offset]', params: { offset: String(offsetOfDay(c.date)) } });
+    } else if (c.kind === 'place') {
+      router.push({ pathname: '/peek/place/[name]', params: { name: c.id } });
+    } else {
+      router.push({ pathname: '/peek/person/[name]', params: { name: c.name } });
+    }
+  };
+
   const scale = pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.12] });
   const glow = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] });
 
   return (
     <View style={styles.fill}>
-      {/* Inside the brain: it plays while the conversation is on, and
-          holds still when it isn't. */}
-      <BrainAnimation playing={phase !== 'idle'} style={StyleSheet.absoluteFill} />
+      {/* The brain, seen from outside and left calm. The flight inside it
+          used to play through the whole call and looped, which Nour found
+          noisy; the orb's pulse and the cards now carry what is happening. */}
+      <BrainAnimation playing={false} style={StyleSheet.absoluteFill} />
       {/* Darkens toward the bottom so the words and the orb stay readable. */}
       <LinearGradient
         colors={['rgba(2,20,22,0.55)', 'rgba(2,20,22,0)', 'rgba(2,20,22,0.25)', 'rgba(2,20,22,0.9)']}
@@ -236,6 +271,7 @@ export default function LiveConversation() {
             they read over the animation. The whole conversation is still
             saved, and is in Ask's history. */}
         <View style={{ flex: 1 }} />
+        {cards.length > 0 && <CardRow cards={cards} onOpen={openCard} />}
         {(recent.length > 0 || error || (lookedUp.length > 0 && phase !== 'listening')) && (
           <View style={styles.captions}>
             <ScrollView
@@ -297,6 +333,55 @@ export default function LiveConversation() {
   );
 }
 
+// The answer's days, place or person, sliding up over the brain. Tap one to
+// look at it while the conversation carries on.
+function CardRow({ cards, onOpen }: { cards: LiveCard[]; onOpen: (c: LiveCard) => void }) {
+  const rise = useRef(new Animated.Value(0)).current;
+  const signature = cards.map((c) => c.key).join('|');
+  useEffect(() => {
+    rise.setValue(0);
+    Animated.spring(rise, { toValue: 1, friction: 8, tension: 70, useNativeDriver: true }).start();
+  }, [signature, rise]);
+  return (
+    <Animated.View
+      style={{
+        opacity: rise,
+        transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) }],
+      }}
+    >
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.cardRow}
+      >
+        {cards.map((c) => (
+          <Pressable key={c.key} onPress={() => onOpen(c)} style={styles.card}>
+            {c.photo ? (
+              <PhotoImage uri={c.photo} style={c.kind === 'person' ? styles.cardFace : styles.cardPhoto} />
+            ) : (
+              <View style={[c.kind === 'person' ? styles.cardFace : styles.cardPhoto, styles.cardNoPhoto]}>
+                <MaterialCommunityIcons
+                  name={c.kind === 'day' ? 'calendar-blank' : c.kind === 'place' ? 'map-marker' : 'account'}
+                  size={30}
+                  color={colors.white}
+                />
+              </View>
+            )}
+            <Text numberOfLines={1} style={styles.cardTitle}>
+              {c.title}
+            </Text>
+            {c.line ? (
+              <Text numberOfLines={2} style={[styles.cardLine, rtlIfArabic(c.line)]}>
+                {c.line}
+              </Text>
+            ) : null}
+          </Pressable>
+        ))}
+      </ScrollView>
+    </Animated.View>
+  );
+}
+
 const ORB = 96;
 
 const styles = StyleSheet.create({
@@ -321,6 +406,29 @@ const styles = StyleSheet.create({
   },
   back: { position: 'absolute', left: 16, top: 6, padding: 4 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },
+  cardRow: { paddingHorizontal: 16, gap: 10, paddingBottom: 12 },
+  card: {
+    width: 156,
+    borderRadius: 18,
+    padding: 8,
+    backgroundColor: 'rgba(2,20,22,0.72)',
+    borderWidth: 1,
+    borderColor: 'rgba(111,245,230,0.22)',
+  },
+  cardPhoto: { width: '100%', height: 92, borderRadius: 12 },
+  // A person's card leads with their face, round, as everywhere else.
+  cardFace: { width: 72, height: 72, borderRadius: 36, alignSelf: 'center', marginVertical: 10 },
+  cardNoPhoto: { backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white, marginTop: 8, paddingHorizontal: 4 },
+  cardLine: {
+    fontFamily: fonts.regular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
   captions: {
     marginHorizontal: 16,
     marginBottom: 18,

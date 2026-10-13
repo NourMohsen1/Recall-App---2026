@@ -51,6 +51,8 @@ export type LiveEvent =
   | { type: 'speaking' }
   | { type: 'said'; role: 'user' | 'assistant'; text: string }
   | { type: 'looked-up'; label: string }
+  /** What a lookup found, for the cards on screen (src/liveCards.ts). */
+  | { type: 'found'; tool: string; output: unknown }
   | { type: 'ended'; reason: 'user' | 'time' | 'error'; detail?: string };
 
 export type LiveSession = {
@@ -326,6 +328,7 @@ async function handleEvent(
         // found.
         output = { error: e instanceof Error ? e.message : 'Lookup failed.' };
       }
+      onEvent({ type: 'found', tool: call.name, output });
 
       channel.send(
         JSON.stringify({

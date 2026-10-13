@@ -166,6 +166,15 @@ How Recall works) says so on its own step, and Ask and live voice answer
 "it isn't saved here, the plus button logs it" in one sentence when told
 something to keep. Merging the two is a future idea, not a decision.
 
+**Live voice shows what it is talking about** (`src/liveCards.ts`,
+`app/live.tsx`, Oct 2026). Each lookup the model already makes (a day, a
+search, a place, a person) becomes one to three cards over the brain,
+before the answer is spoken, so it costs no extra round trip. A tap opens
+the day, place or person as a sheet (`app/peek/…`, re-exports of the
+normal pages, no bottom menu) with the call still going underneath. The
+brain stays outside and calm; the flight inside it looped through the
+whole call and was noisy (Nour).
+
 **Places** (`src/places.ts`) are private by design — Nour chose this over
 Google Places. Every photo keeps its own GPS on the device; photos within
 70 m are one place; the cover is the user's best photo from there (no faces

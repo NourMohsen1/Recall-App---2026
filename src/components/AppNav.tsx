@@ -23,6 +23,9 @@ export const APP_NAV_HEIGHT = 84;
 export default function AppNav() {
   const router = useRouter();
   const path = usePathname();
+  // A sheet opened from a live voice card (app/peek/…) has no menu: every
+  // tab in it would leave the conversation that is still going underneath.
+  if (path.startsWith('/peek')) return null;
   return (
     <View style={styles.overlay} pointerEvents="box-none">
       <View style={styles.bar}>
