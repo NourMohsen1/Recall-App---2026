@@ -5,6 +5,8 @@ import {
   type MediaStream,
 } from 'react-native-webrtc';
 
+import { setAudioModeAsync } from 'expo-audio';
+
 import { backendToken, backendUrl } from './backend';
 import {
   REALTIME_TOOLS,
@@ -99,6 +101,30 @@ async function mintToken(): Promise<string> {
   return json.value;
 }
 
+// Out loud, through the phone's speaker. WebRTC sets the phone up for a
+// call, and a call plays through the earpiece at the top of the screen, so
+// Recall sounded like it was whispering unless the phone was held to the
+// ear (Nour). "Default to speaker" keeps recording on and still prefers
+// headphones or Bluetooth when they are connected; echo is still taken
+// care of by WebRTC's voice processing, which does not depend on this.
+//
+// Applied when the call connects and again when the voice starts: WebRTC
+// configures the audio session itself as the call comes up, and whatever
+// it set last would win.
+async function routeToSpeaker(when: string): Promise<void> {
+  try {
+    await setAudioModeAsync({
+      allowsRecording: true,
+      playsInSilentMode: true,
+      shouldRouteThroughEarpiece: false,
+      interruptionMode: 'doNotMix',
+    });
+    console.log(`[live] audio through the speaker (${when})`);
+  } catch (e) {
+    console.warn('[live] could not move the audio to the speaker:', e);
+  }
+}
+
 export async function startLiveVoice(
   onEvent: (e: LiveEvent) => void,
 ): Promise<LiveSession> {
@@ -127,6 +153,8 @@ export async function startLiveVoice(
     } catch {
       // Already closed.
     }
+    // Back to plain playback, so the next sound in the app isn't a call.
+    setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
     onEvent({ type: 'ended', reason, detail });
   };
 
@@ -138,8 +166,23 @@ export async function startLiveVoice(
 
     // The model's voice arrives as an ordinary remote track; react-native-webrtc
     // plays it through the phone's audio session without anything further.
+    let voiceRouted = false;
     (pc as unknown as { ontrack: (e: unknown) => void }).ontrack = () => {
+      if (!voiceRouted) {
+        voiceRouted = true;
+        void routeToSpeaker('voice arrived');
+      }
       onEvent({ type: 'speaking' });
+    };
+    (pc as unknown as { onconnectionstatechange: () => void }).onconnectionstatechange = () => {
+      if ((pc as unknown as { connectionState?: string }).connectionState === 'connected') {
+        void routeToSpeaker('connected');
+        // Once more after the audio has settled, in case WebRTC set the
+        // session again while starting the audio.
+        setTimeout(() => {
+          if (!ended) void routeToSpeaker('settled');
+        }, 1500);
+      }
     };
 
     const channel = pc.createDataChannel('oai-events');
