@@ -99,6 +99,12 @@ type DayRecord = {
    *  did. */
   guessed: string[];
   places: string[];
+  /** Ids of the places that day, to look up what the user does there. */
+  placeIds: string[];
+  /** What the user said they did at those places on OTHER days: "ملعب
+   *  جامايكا: لعبت كورة | لعبت كورة مع الشباب". A day that only says
+   *  "went to Jamaica pitch" is then still a likely football day. */
+  placeHabits: string[];
   /** Smart Icon Reminders on that day — "medicine: أخدت الدوا". Written
    *  from what the user logged or added themselves, so these are facts. */
   markers: string[];
@@ -123,6 +129,8 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
       peopleAlso: [],
       guessed: [],
       places: [],
+      placeIds: [],
+      placeHabits: [],
       markers: [],
       tags: [],
       photoCount: 0,
@@ -178,7 +186,10 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
   for (const [key, places] of Object.entries(await getAllDayPlaces())) {
     const rec = get(key);
     // What happened there, when the user said — "Dunkin (coffee with Omar)".
-    for (const p of places) rec.places.push(p.moment ? `${p.label} (${p.moment})` : p.label);
+    for (const p of places) {
+      rec.places.push(p.moment ? `${p.label} (${p.moment})` : p.label);
+      if (p.placeId) rec.placeIds.push(p.placeId);
+    }
   }
 
   // Moments marked on a day. Repeating ones (birthdays, paydays) are not
@@ -196,7 +207,37 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
     }
   }
 
+  // What each place is for, learned from the user's own words on the days
+  // they were there: the moment they gave it ("لعبت كورة"), or that day's
+  // notes. Nour's case: "روحت ملعب جامايكا" last Saturday said nothing about
+  // playing, so "when did I last play football?" skipped it, although every
+  // other visit to Jamaica pitch was football. Each day gets the habits of
+  // its places from the OTHER days, so it is found by the activity and the
+  // answer can call it a likely time, never a certain one.
+  const placesById = new Map((await getPlaces()).map((p) => [p.id, p]));
+  for (const [key, rec] of days) {
+    for (const id of new Set(rec.placeIds)) {
+      const place = placesById.get(id);
+      if (!place) continue;
+      const said = place.days
+        .filter((d) => d !== key)
+        .map((d) => place.moments[d] ?? days.get(d)?.logged.join(' '))
+        .filter((t): t is string => !!t && !!t.trim())
+        .slice(-4)
+        .map((t) => (t.length > 110 ? `${t.slice(0, 110)}…` : t));
+      if (said.length > 0) rec.placeHabits.push(`${place.label}: ${said.join(' | ')}`);
+    }
+  }
+
   return days;
+}
+
+/** Day → what the user does at that day's places, from their other days
+ *  there. Live voice uses the same reading (src/realtimeTools.ts). */
+export async function dayPlaceHabits(): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const [key, rec] of await buildDayIndex()) if (rec.placeHabits.length) out.set(key, rec.placeHabits);
+  return out;
 }
 
 // Dates that come back, stated once. This is what answers "when is Omar's
@@ -281,6 +322,11 @@ function fullDayBlock(key: string, rec: DayRecord, matched?: string[]): string {
     );
   }
   if (rec.places.length > 0) lines.push(`Places that day: ${rec.places.join(', ')}`);
+  if (rec.placeHabits.length > 0) {
+    lines.push(
+      `What the user did at those places on OTHER days (not said about this day; makes this day a LIKELY, not certain, time they did it again): ${rec.placeHabits.join(' / ')}`,
+    );
+  }
   if (rec.markers.length > 0) lines.push(`Marked that day: ${rec.markers.join(', ')}`);
   if (rec.tags.length > 0) {
     lines.push(`Also in that day's photos and notes (search tags): ${rec.tags.slice(0, 24).join(', ')}`);
@@ -336,6 +382,8 @@ function searchDoc(key: string, rec: DayRecord): SearchDoc {
       { text: rec.logged.join(' \n '), weight: 3 },
       { text: rec.places.join(' \n '), weight: 3 },
       { text: [...rec.people, ...rec.peopleAlso].join(' \n '), weight: 3 },
+      // Weaker than the day's own words: a likely activity, not a said one.
+      { text: rec.placeHabits.join(' \n '), weight: 1.5 },
       { text: rec.tags.join(' \n '), weight: 2.5 },
       { text: rec.markers.join(' \n '), weight: 2 },
       { text: rec.assumed ?? '', weight: 1.5 },

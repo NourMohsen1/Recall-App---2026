@@ -81,12 +81,32 @@ export default function Home() {
   const weekRef = useRef<View>(null);
   const tasksRef = useRef<View>(null);
   const tilesRef = useRef<View>(null);
+  // Only ever over Home itself: leaving Home closes it, and a tour waiting
+  // to start is called off if Home is no longer the screen showing (it once
+  // carried on over Ask, pointing at nothing).
+  const homeFocused = useRef(false);
+  const tourTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startTourSoon = useCallback((ms: number) => {
+    if (tourTimer.current) clearTimeout(tourTimer.current);
+    tourTimer.current = setTimeout(() => {
+      if (homeFocused.current) setTouring(true);
+    }, ms);
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      homeFocused.current = true;
+      return () => {
+        homeFocused.current = false;
+        if (tourTimer.current) clearTimeout(tourTimer.current);
+        setTouring(false);
+      };
+    }, []),
+  );
   useEffect(() => {
     if (!tourParam) return;
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-    const t = setTimeout(() => setTouring(true), 500);
-    return () => clearTimeout(t);
-  }, [tourParam]);
+    startTourSoon(500);
+  }, [tourParam, startTourSoon]);
 
   // A part below the fold (a smaller phone) is scrolled up into view first,
   // leaving room for the bubble and the tab bar.
@@ -176,7 +196,7 @@ export default function Home() {
       const walkthroughNext = () =>
         walkthroughSeen().then((seen) => {
           // A moment after Home is drawn, so every part has its place.
-          if (!seen) setTimeout(() => setTouring(true), 800);
+          if (!seen) startTourSoon(800);
         });
       if (getAiConsent() === null) router.push({ pathname: '/ai-consent', params: { from: 'home' } });
       else if (getAiConsent() === 'on') {

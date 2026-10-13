@@ -12,6 +12,7 @@ import {
 import { getTasks } from './tasks';
 import { getAllDayTags } from './dayTags';
 import { searchDays } from './memorySearch';
+import { dayPlaceHabits } from './askContext';
 import { getUserProfile, identityForPrompt, memoryCount } from './userProfile';
 
 // What a live conversation is allowed to look up.
@@ -82,19 +83,22 @@ type DayFacts = {
   people: string[];
   /** Those people's nicknames — searched, not spoken. */
   nicknames: string[];
+  /** What the user does at that day's places, from other days there. */
+  habits: string[];
   places: string[];
   /** What's in that day's photos and notes, in English and Arabic. */
   tags: string[];
 };
 
 async function collectDays(): Promise<Map<string, DayFacts>> {
-  const [byDay, assumed, places, summaries, noteTags, meta] = await Promise.all([
+  const [byDay, assumed, places, summaries, noteTags, meta, habits] = await Promise.all([
     getMemoriesByDay(),
     getAllAssumedMemories(),
     getAllDayPlaces(),
     getPeopleSummaries(),
     getAllDayTags(),
     getAllPersonMeta(),
+    dayPlaceHabits(),
   ]);
 
   const peopleByDay = new Map<string, string[]>();
@@ -124,6 +128,7 @@ async function collectDays(): Promise<Map<string, DayFacts>> {
       assumed: assumed[key]?.summary,
       people: peopleByDay.get(key) ?? [],
       nicknames: nicknamesByDay.get(key) ?? [],
+      habits: habits.get(key) ?? [],
       places: (places[key] ?? []).map((p) => p.label),
       tags: [...new Set([...(assumed[key]?.anchors ?? []), ...(noteTags[key] ?? [])])],
     });
@@ -151,6 +156,7 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
         { text: d.logged.join(' \n '), weight: 3 },
         { text: d.places.join(' \n '), weight: 3 },
         { text: [...d.people, ...d.nicknames].join(' \n '), weight: 3 },
+        { text: d.habits.join(' \n '), weight: 1.5 },
         { text: d.tags.join(' \n '), weight: 2.5 },
         { text: d.assumed ?? '', weight: 1.5 },
       ],
@@ -181,6 +187,9 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
       in_photos_and_notes: d.tags.slice(0, 20),
       people: d.people,
       places: d.places,
+      usually_done_at_these_places: d.habits.length
+        ? { from_other_days: d.habits, means: 'A likely time they did it again, not something they said about this day.' }
+        : undefined,
     })),
   };
 }
@@ -562,6 +571,8 @@ export async function buildVoiceBootstrap(): Promise<string> {
 export const VOICE_INSTRUCTIONS = `You are Recall, talking with someone about their own life. You are not a general assistant; you are the part of them that keeps track.
 
 YOUR JOB: help them remember. They may be circling something half-forgotten — a name, a day, where they were, who said what. Help them get to it.
+
+WHAT A PLACE MEANS: a day may say only where they went, with what they usually do there (from other days). That is a likely time they did it again. For "when did I last…", if it is the most recent, say it as likely: "Probably last Saturday, you went to Jamaica pitch, where you play." Never skip it because the note didn't name the activity.
 
 YOU CANNOT SAVE ANYTHING. This conversation is never written to their memories, and you cannot make tasks or reminders. If they tell you something to keep ("remember that…", "I met X today", "remind me to…"), say in one short sentence that it isn't saved here and that the plus button on the main screen logs it. Never pretend it was saved, and don't then search their memories for it or ask about it: that one sentence is the whole answer, unless they also asked a question.
 

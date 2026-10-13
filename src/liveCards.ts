@@ -1,4 +1,6 @@
 import { getAllAssumedMemories } from './assumedMemory';
+import type { ChatMessage } from './chatSessions';
+import type { VoiceTurn } from './voiceSession';
 import { MONTHS_SHORT, WEEKDAYS } from './data';
 import { getMemoriesByDay, memoryDisplayText } from './memoryLog';
 import { getAllPersonMeta } from './peopleTags';
@@ -93,4 +95,33 @@ export async function cardsFromLookup(tool: string, output: unknown): Promise<Li
     console.warn(`[live] no cards for ${tool}:`, e);
   }
   return out.filter((c): c is LiveCard => !!c).slice(0, MAX_CARDS);
+}
+
+/** A live conversation as Ask's history keeps it: each question's cards
+ *  on its last answer, as the days it used (sources) and the place or
+ *  person it was about (reference), the links a typed answer carries.
+ *  Questions are counted by the user's turns, from 1. */
+export function messagesWithCards(turns: VoiceTurn[], byQuestion: Record<number, LiveCard[]>): ChatMessage[] {
+  let q = 0;
+  return turns.map((t, i) => {
+    if (t.role === 'user') q += 1;
+    const base: ChatMessage = { role: t.role === 'assistant' ? 'ai' : 'user', text: t.text, spoken: true };
+    const lastAnswer = t.role === 'assistant' && turns[i + 1]?.role !== 'assistant';
+    const found = lastAnswer ? byQuestion[q] : undefined;
+    if (!found?.length) return base;
+    const sources = found
+      .filter((c): c is Extract<LiveCard, { kind: 'day' }> => c.kind === 'day')
+      .map((c) => ({ date: c.date, label: c.title, kind: 'logged' as const }));
+    const about = found.find((c) => c.kind !== 'day');
+    return {
+      ...base,
+      sources: sources.length ? sources : undefined,
+      reference:
+        about?.kind === 'place'
+          ? { type: 'place' as const, name: about.title }
+          : about?.kind === 'person'
+            ? { type: 'person' as const, name: about.name }
+            : undefined,
+    };
+  });
 }

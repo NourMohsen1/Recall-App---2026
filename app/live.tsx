@@ -5,11 +5,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from '../src/components/PhotoImage';
-import { cardsFromLookup, type LiveCard } from '../src/liveCards';
+import { cardsFromLookup, messagesWithCards, type LiveCard } from '../src/liveCards';
 import { offsetOfDay } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import type { VoiceTurn } from '../src/voiceSession';
-import { newSessionId, saveSession, type ChatMessage } from '../src/chatSessions';
+import { newSessionId, saveSession } from '../src/chatSessions';
 import { liveVoiceAvailable, startLiveVoice, type LiveSession } from '../src/realtimeVoice';
 import { colors, fonts } from '../src/theme';
 import BrainAnimation from '../src/components/BrainAnimation';
@@ -64,6 +64,11 @@ export default function LiveConversation() {
   // add to it, up to three.
   const [cards, setCards] = useState<LiveCard[]>([]);
   const newQuestion = useRef(true);
+  // The cards each question brought up, kept so the saved conversation in
+  // Ask's history has them too: question number → its cards.
+  const question = useRef(0);
+  const cardsByQuestion = useRef<Record<number, LiveCard[]>>({});
+  const [cardsSaved, setCardsSaved] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<ScrollView | null>(null);
 
@@ -125,13 +130,11 @@ export default function LiveConversation() {
   useEffect(() => {
     const id = sessionId.current;
     if (!id || turns.length === 0) return;
-    const messages: ChatMessage[] = turns.map((t) => ({
-      role: t.role === 'assistant' ? 'ai' : 'user',
-      text: t.text,
-      spoken: true,
-    }));
+    // Each question's cards go on its last answer (src/liveCards.ts), so
+    // they can be tapped in Ask's history later.
+    const messages = messagesWithCards(turns, cardsByQuestion.current);
     void saveSession(id, messages);
-  }, [turns]);
+  }, [turns, cardsSaved]);
 
   // Start talking. Everything after this is driven by events from the
   // model rather than by taps: it decides when the user has finished
@@ -143,6 +146,10 @@ export default function LiveConversation() {
     // a previous conversation left off is a different feature; this one
     // just has to not lose anything.
     sessionId.current = newSessionId();
+    question.current = 0;
+    cardsByQuestion.current = {};
+    newQuestion.current = true;
+    setCards([]);
     try {
       session.current = await startLiveVoice((e) => {
         switch (e.type) {
@@ -160,13 +167,20 @@ export default function LiveConversation() {
             break;
           case 'said':
             push({ role: e.role, text: e.text });
-            if (e.role === 'user') newQuestion.current = true;
+            if (e.role === 'user') {
+              newQuestion.current = true;
+              question.current += 1;
+            }
             break;
           case 'found':
             cardsFromLookup(e.tool, e.output).then((found) => {
               if (found.length === 0) return;
               const fresh = newQuestion.current;
               newQuestion.current = false;
+              const q = question.current;
+              const kept = cardsByQuestion.current[q] ?? [];
+              cardsByQuestion.current[q] = [...kept, ...found.filter((c) => !kept.some((k) => k.key === c.key))].slice(0, 3);
+              setCardsSaved((n) => n + 1);
               setCards((prev) =>
                 fresh
                   ? found

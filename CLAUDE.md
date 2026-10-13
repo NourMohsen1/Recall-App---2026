@@ -153,7 +153,12 @@ with their nicknames and returns who the question means in any script
 ("الكتش" = Ketch = Omar Khaled), a name written as saved is also caught
 in code, the search adds the real name and every nickname, and the
 answer is told "the same person" in a WHO THE QUESTION MEANS block.
-Without that block it called Ketch's wedding and Omar's wedding two
+**A place stands for what is done there**: each day carries what the
+user said they did at its places on OTHER days ("ملعب جامايكا: لعبت
+كورة"), searched at a lower weight and shown as likely, so "when did I
+last play football?" finds a day that only says "went to Jamaica pitch"
+and calls it "most likely", with the last day they said it. Measured:
+it skipped 10 Oct before, leads with it now. Without that block it called Ketch's wedding and Omar's wedding two
 different events. `[ask] people:` logs it. Ask's answers never use the
 long dash.
 
