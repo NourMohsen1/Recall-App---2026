@@ -62,6 +62,28 @@ export function liveVoiceAvailable(): boolean {
   return !!backendUrl('/') && !!backendToken();
 }
 
+// What the user is told when OpenAI says no. "OpenAI refused the
+// connection (429)" reached a tester and meant nothing to him: it was the
+// OpenAI account running out of credit. The code and OpenAI's own reason
+// go to the log; the screen gets a sentence.
+async function refusal(res: Response, step: string): Promise<Error> {
+  let code = '';
+  let message = '';
+  try {
+    const body = (await res.json()) as { error?: { code?: string; type?: string; message?: string } };
+    code = body.error?.code || body.error?.type || '';
+    message = body.error?.message ?? '';
+  } catch {
+    // Not JSON: the status is all there is.
+  }
+  console.warn(`[live] ${step} refused: HTTP ${res.status} ${code} ${message.slice(0, 160)}`);
+  if (code === 'insufficient_quota' || code === 'credit_balance_exhausted') {
+    return new Error('Live voice is unavailable right now. Please try again later.');
+  }
+  if (res.status === 429) return new Error('Live voice is busy right now. Try again in a minute.');
+  return new Error(`Could not start the conversation (${res.status}). Try again in a moment.`);
+}
+
 async function mintToken(): Promise<string> {
   const url = backendUrl('/realtime/token');
   const token = backendToken();
@@ -71,9 +93,7 @@ async function mintToken(): Promise<string> {
     method: 'POST',
     headers: { authorization: `Bearer ${token}` },
   });
-  if (!res.ok) {
-    throw new Error(`Could not start a conversation (${res.status}).`);
-  }
+  if (!res.ok) throw await refusal(res, 'key');
   const json = (await res.json()) as { value?: string };
   if (!json.value) throw new Error('No key came back for the conversation.');
   return json.value;
@@ -172,9 +192,7 @@ export async function startLiveVoice(
       headers: { authorization: `Bearer ${key}`, 'content-type': 'application/sdp' },
       body: offer.sdp,
     });
-    if (!answer.ok) {
-      throw new Error(`OpenAI refused the connection (${answer.status}).`);
-    }
+    if (!answer.ok) throw await refusal(answer, 'call');
     await pc.setRemoteDescription(
       new RTCSessionDescription({ type: 'answer', sdp: await answer.text() }),
     );
