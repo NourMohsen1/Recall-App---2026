@@ -111,7 +111,7 @@ function ImportPhotos() {
 
         <Text style={styles.title}>Bring in photos you already took</Text>
         <Text style={styles.body}>
-          Recall scans your photo library and places each photo on the day it was actually taken —
+          Recall scans your photo library and places each photo on the day it was actually taken,
           so your past days fill in automatically, without you logging them one by one.
         </Text>
 
@@ -119,7 +119,7 @@ function ImportPhotos() {
           <View style={{ flex: 1 }}>
             <Text style={styles.toggleTitle}>Sync photos</Text>
             <Text style={styles.toggleSubtitle}>
-              {syncOn ? 'On — new photos come in each time you open Recall' : 'Imports the last 12 months'}
+              {syncOn ? 'On: new photos come in each time you open Recall' : 'Imports the last 12 months'}
             </Text>
           </View>
           <Toggle value={syncOn} onChange={handleToggle} />
@@ -127,7 +127,7 @@ function ImportPhotos() {
 
         {phase === 'idle' && !syncOn && (
           <Text style={styles.hint}>
-            A full year the first time may take a moment — after that, only what's new comes in.
+            A full year the first time may take a moment. After that, only what's new comes in.
           </Text>
         )}
 

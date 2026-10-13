@@ -214,7 +214,7 @@ function TaskCard({
           {isNew && !muted && <View style={styles.newDot} />}
           <Text
             numberOfLines={2}
-            style={[styles.taskTitle, muted && styles.mutedText, rtlIfArabic(task.title)]}
+            style={[styles.taskTitle, muted && styles.mutedText, muted && styles.doneTitle, rtlIfArabic(task.title)]}
           >
             {task.title}
           </Text>
@@ -243,6 +243,15 @@ function TaskCard({
             </Text>
           ) : null}
           {overdue && <Text style={styles.overdueText}>Overdue</Text>}
+          {/* Said in words: the grey card and the switch alone read the
+              wrong way round to a tester, who took finished tasks for the
+              ones still to do. */}
+          {task.done && (
+            <View style={styles.doneBadge}>
+              <MaterialCommunityIcons name="check" size={13} color={colors.white} />
+              <Text style={styles.doneBadgeText}>Done</Text>
+            </View>
+          )}
         </View>
         {task.dueDate ? (
           <View style={[styles.dateChip, muted && styles.dateChipMuted]}>
@@ -459,7 +468,7 @@ export default function Tasks() {
             <MaterialCommunityIcons name="checkbox-marked-circle-plus-outline" size={40} color="#AEB6B7" />
             <Text style={styles.emptyTitle}>No tasks yet</Text>
             <Text style={styles.emptyText}>
-              Tap + to add one — or just log a memory like “I have to get some fruits tomorrow
+              Tap + to add one, or just log a memory like “I have to get some fruits tomorrow
               morning” and Recall will turn it into a task for you.
             </Text>
           </View>
@@ -533,7 +542,7 @@ export default function Tasks() {
               “{askTask?.title}”
             </Text>
             <Text style={styles.modalBody}>
-              You didn’t mention when — want to give it a due date so Recall can remind you?
+              You didn’t mention when. Want to give it a due date so Recall can remind you?
             </Text>
             <Pressable style={styles.modalPrimary} onPress={setDateFor}>
               <Text style={styles.modalPrimaryText}>Set due date</Text>
@@ -649,6 +658,20 @@ const styles = StyleSheet.create({
   taskTime: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.teal },
   overdueTime: { color: '#B24545' },
   overdueText: { fontFamily: fonts.medium, fontSize: 12, color: '#B24545', marginTop: 2 },
+  doneTitle: { textDecorationLine: 'line-through' },
+  doneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 3,
+    marginTop: 6,
+    backgroundColor: colors.teal,
+    borderRadius: 999,
+    paddingVertical: 3,
+    paddingLeft: 7,
+    paddingRight: 9,
+  },
+  doneBadgeText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.white },
 
   dateChip: {
     backgroundColor: '#DCE3E3',

@@ -36,7 +36,7 @@ type Phase = 'idle' | 'opening' | 'listening' | 'thinking' | 'speaking';
 const PHASE_LABEL: Record<Phase, string> = {
   idle: 'Tap to talk',
   opening: 'Connecting…',
-  listening: 'Listening — just talk',
+  listening: 'Listening, just talk',
   thinking: 'Looking something up…',
   speaking: 'Tap to cut in',
 };

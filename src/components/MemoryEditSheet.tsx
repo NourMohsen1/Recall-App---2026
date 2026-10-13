@@ -104,7 +104,7 @@ export default function MemoryEditSheet({
 
             {mode === 'add' ? (
               <Text style={styles.hint}>
-                Recall will read this and file anything in it — a task, someone you saw, a place
+                Recall will read this and file anything in it: a task, someone you saw, a place
                 you went.
               </Text>
             ) : (

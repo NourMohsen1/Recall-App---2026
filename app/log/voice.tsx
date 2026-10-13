@@ -283,12 +283,12 @@ export default function LogVoice() {
                   ) : transcribeError === 'rate-limited' ? (
                     <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
                       <Text style={styles.errorHint}>
-                        Sending requests a bit too fast — tap to try again in a moment.
+                        Sending requests a bit too fast. Tap to try again in a moment.
                       </Text>
                     </Pressable>
                   ) : transcribeError === 'failed' ? (
                     <Pressable onPress={() => recordedUri && runTranscription(recordedUri, language)}>
-                      <Text style={styles.errorHint}>Couldn’t transcribe — tap to try again.</Text>
+                      <Text style={styles.errorHint}>Couldn’t transcribe. Tap to try again.</Text>
                     </Pressable>
                   ) : (
                     <VoicePlayer
@@ -316,7 +316,7 @@ export default function LogVoice() {
                       style={styles.noteInput}
                       value={note}
                       onChangeText={setNote}
-                      placeholder="Add a note — clarify or correct something…"
+                      placeholder="Add a note to clarify or correct something…"
                       placeholderTextColor="rgba(255,255,255,0.4)"
                       multiline
                       autoFocus

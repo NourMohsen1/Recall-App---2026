@@ -111,7 +111,7 @@ export default function LogAttachment() {
         <View style={styles.intro}>
           <MaterialCommunityIcons name="shield-lock-outline" size={20} color={colors.teal} />
           <Text style={styles.introText}>
-            An appointment, a ticket, a bill — Recall reads it on your phone and puts anything
+            An appointment, a ticket, a bill. Recall reads it on your phone and puts anything
             coming up in Tasks, with its details and a reminder. The file never leaves your phone.
           </Text>
         </View>

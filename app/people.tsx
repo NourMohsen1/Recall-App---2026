@@ -12,7 +12,6 @@ import MergePeopleSheet from '../src/components/MergePeopleSheet';
 import PersonEditSheet from '../src/components/PersonEditSheet';
 import PersonAvatar from '../src/components/PersonAvatar';
 import ScreenHeader from '../src/components/ScreenHeader';
-import { LoggedMemory, getMemoriesByDay } from '../src/memoryLog';
 import {
   PersonMeta,
   PersonSummary,
@@ -22,13 +21,10 @@ import {
   getPeopleSummaries,
   getRejectedMerges,
   isRejectedMerge,
-  lastSeenLabel,
   rejectMerge,
 } from '../src/peopleTags';
 import { mergePersonEverywhere } from '../src/peopleMerge';
 import { DuplicateSuggestion, findDuplicatePeople } from '../src/personIdentity';
-import { DayPlace, getAllDayPlaces } from '../src/places';
-import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
 
@@ -102,23 +98,12 @@ function PersonTile({ person, meta, size, query }: { person: PersonSummary; meta
 function PersonCard({
   person,
   meta,
-  lastPlace,
-  lastNote,
   query = '',
 }: {
   person: PersonSummary;
   meta?: PersonMeta;
-  lastPlace?: string;
-  lastNote?: string;
   query?: string;
 }) {
-  // Someone added by hand hasn't been seen anywhere yet — saying "Last seen"
-  // about a day that doesn't exist would be a small lie.
-  const seenLine = person.lastSeenDay
-    ? [`Last seen ${lastSeenLabel(person.lastSeenDay)}`, lastPlace ? `at ${lastPlace}` : null]
-        .filter(Boolean)
-        .join(' ')
-    : 'Not on any day yet';
   const unverified = meta ? meta.verified === false : false;
 
   return (
@@ -131,7 +116,7 @@ function PersonCard({
             <Highlight text={person.name} query={query} style={styles.personName} boldStyle={styles.matchBold} />
             {unverified && (
               <View style={styles.newBadge}>
-                <Text style={styles.newBadgeText}>New — review</Text>
+                <Text style={styles.newBadgeText}>New</Text>
               </View>
             )}
           </View>
@@ -141,12 +126,6 @@ function PersonCard({
               Also called <Highlight text={aliasMatch(person, meta, query)!} query={query} style={styles.aliasLine} boldStyle={styles.matchBold} />
             </Text>
           )}
-          <Text style={styles.seenLine}>{seenLine}</Text>
-          {lastNote ? (
-            <Text numberOfLines={2} style={[styles.noteLine, rtlIfArabic(lastNote)]}>
-              “{lastNote}”
-            </Text>
-          ) : null}
           <View style={styles.metaRow}>
             <MaterialCommunityIcons name="calendar-heart" size={13} color={colors.teal} />
             <Text style={styles.metaText}>
@@ -163,8 +142,6 @@ function PersonCard({
 function People() {
   const router = useRouter();
   const [people, setPeople] = useState<PersonSummary[]>([]);
-  const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
-  const [dayPlaces, setDayPlaces] = useState<Record<string, DayPlace[]>>({});
   const [meta, setMeta] = useState<Record<string, PersonMeta>>({});
   const [rejected, setRejected] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
@@ -192,14 +169,10 @@ function People() {
     () =>
       Promise.all([
         getPeopleSummaries(),
-        getMemoriesByDay(),
-        getAllDayPlaces(),
         getAllPersonMeta(),
         getRejectedMerges(),
-      ]).then(([summaries, memories, places, personMeta, rejects]) => {
+      ]).then(([summaries, personMeta, rejects]) => {
         setPeople(summaries);
-        setByDay(memories);
-        setDayPlaces(places);
         setMeta(personMeta);
         setRejected(rejects);
         setLoaded(true);
@@ -228,13 +201,6 @@ function People() {
       setRefreshing(false);
     }
   }, [loadAll]);
-
-  // The recap details for each person's most recent day together.
-  const lastPlaceOf = (p: PersonSummary) =>
-    p.lastSeenDay ? dayPlaces[p.lastSeenDay]?.[0]?.label : undefined;
-  const lastNoteOf = (p: PersonSummary) =>
-    (p.lastSeenDay ? byDay.get(p.lastSeenDay)?.map((m) => m.text).find(Boolean) : undefined) ??
-    undefined;
 
   // Names that look like one person logged under two spellings. Suggested,
   // never applied on their own — see personIdentity.ts for why merging
@@ -372,7 +338,7 @@ function People() {
             <MaterialCommunityIcons name="account-heart-outline" size={40} color="#AEB6B7" />
             <Text style={styles.emptyTitle}>No people yet</Text>
             <Text style={styles.emptyText}>
-              Tag who you were with on any day in your Timeline — or add someone here with the
+              Tag who you were with on any day in your Timeline, or add someone here with the
               menu above. Everyone you add starts building their own story.
             </Text>
           </View>
@@ -412,8 +378,6 @@ function People() {
               key={p.name}
               person={p}
               meta={meta[p.name]}
-              lastPlace={lastPlaceOf(p)}
-              lastNote={lastNoteOf(p)}
               query={query.trim()}
             />
           ))
@@ -625,15 +589,6 @@ const styles = StyleSheet.create({
   },
   newBadgeText: { fontFamily: fonts.semiBold, fontSize: 10, color: colors.ink },
   descriptor: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal, marginTop: 1 },
-  seenLine: { fontFamily: fonts.regular, fontSize: 13, color: '#5B6364', marginTop: 2 },
-  noteLine: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    lineHeight: 18,
-    color: '#8B9394',
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
   metaText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
 });

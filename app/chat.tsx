@@ -81,7 +81,7 @@ function errorText(reason: Exclude<AskResult, { ok: true }>['reason']) {
     return 'Ask is resting for a moment. Try again a little later.';
   }
   if (reason === 'rate-limited') {
-    return 'Sending questions a bit too fast — give it a few seconds and try again.';
+    return 'Sending questions a bit too fast. Give it a few seconds and try again.';
   }
   return 'Something went wrong reaching your memory. Try again in a moment.';
 }
@@ -627,7 +627,7 @@ function Chat() {
     } else {
       setMessages((prev) => [
         ...prev,
-        { role: 'ai', text: 'I couldn’t make that out — try asking again.', error: true, at: new Date().toISOString() },
+        { role: 'ai', text: 'I couldn’t make that out. Try asking again.', error: true, at: new Date().toISOString() },
       ]);
     }
   };

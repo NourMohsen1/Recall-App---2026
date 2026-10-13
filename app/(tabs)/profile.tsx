@@ -85,7 +85,7 @@ export default function Profile() {
         onPress: () =>
           Alert.alert(
             'Delete your account?',
-            'Apple will ask you to confirm with Face ID. Your account and its link to Apple are removed. The memories on this phone stay — they are yours.',
+            'Apple will ask you to confirm with Face ID. Your account and its link to Apple are removed. The memories on this phone stay. They are yours.',
             [
               { text: 'Cancel', style: 'cancel' },
               {
@@ -208,7 +208,7 @@ export default function Profile() {
                   : photoReading === 'chosen'
                     ? `Only days you choose · read by ${PHOTO_READER.name}`
                     : photoReading === 'off'
-                      ? 'Off — no photos are sent'
+                      ? 'Off: no photos are sent'
                       : 'Not chosen yet'}
               </Text>
             </View>
@@ -272,7 +272,7 @@ export default function Profile() {
               ['daily', 'Daily recap', 'Each morning at 9, about yesterday'],
               ['weekly', 'Weekly recap', 'Mondays at 9, about last week'],
               ['monthly', 'Monthly recap', 'On the 1st at 9, about last month'],
-              ['nudges', 'Gentle nudges', 'Did you log today, this day last year — at most one a day'],
+              ['nudges', 'Gentle nudges', 'Did you log today, this day last year. At most one a day'],
             ] as const
           ).map(([cadence, label, when], i) => (
             <View key={cadence} style={[styles.toggleRow, i < 3 && styles.rowDivider]}>

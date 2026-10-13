@@ -301,7 +301,7 @@ function NewsCard({
     return (
       <View style={[styles.card, styles.quietCard, { width }]}>
         <MaterialCommunityIcons name="eye-off-outline" size={28} color={colors.soft} />
-        <Text style={styles.quietTitle}>Got it — no more {item.about}</Text>
+        <Text style={styles.quietTitle}>Got it, no more {item.about}</Text>
         <Text style={styles.quietText}>Recall won’t show stories about it again.</Text>
         <Pressable
           style={[styles.action, { marginTop: 18 }]}
@@ -349,7 +349,7 @@ function NewsCard({
               <Pressable
                 style={[styles.iconBtn, liked && styles.iconBtnOn]}
                 hitSlop={6}
-                accessibilityLabel={`More like this — follow ${item.about}`}
+                accessibilityLabel={`More like this: follow ${item.about}`}
                 onPress={async () => {
                   if (liked) return;
                   await likeSubject(topic.key, item.about!);
@@ -365,7 +365,7 @@ function NewsCard({
               <Pressable
                 style={styles.iconBtn}
                 hitSlop={6}
-                accessibilityLabel={`Not for me — hide ${item.about}`}
+                accessibilityLabel={`Not for me: hide ${item.about}`}
                 onPress={async () => {
                   await muteSubject(item.about!);
                   animate();
@@ -772,7 +772,7 @@ function OnThisDay() {
 
       {arranging && (
         <View style={styles.arrangeBar} pointerEvents="box-none">
-          <Text style={styles.arrangeHint}>Slide a topic — it moves on every day</Text>
+          <Text style={styles.arrangeHint}>Slide a topic. It moves on every day</Text>
           <Pressable style={styles.arrangeDone} onPress={() => setArranging(false)}>
             <Text style={styles.arrangeDoneText}>Done</Text>
           </Pressable>

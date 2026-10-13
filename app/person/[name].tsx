@@ -8,7 +8,6 @@ import * as ImagePicker from 'expo-image-picker';
 import PersonEditSheet from '../../src/components/PersonEditSheet';
 import PersonPhotoSheet from '../../src/components/PersonPhotoSheet';
 import PhotoImage from '../../src/components/PhotoImage';
-import { getAllAssumedMemories } from '../../src/assumedMemory';
 import { WEEKDAYS } from '../../src/data';
 import {
   getScanState,
@@ -64,7 +63,6 @@ import {
   addNickname,
   getPersonMeta,
   removeNickname,
-  lastSeenLabel,
   removePersonEverywhere,
   setPersonDescriptor,
   setPersonPhoto,
@@ -156,7 +154,7 @@ function PersonProfile() {
       Alert.alert(`${result.isPerson} is in People too`, `Is ${result.isPerson} the same person as ${name}?`, [
         { text: 'Different people', style: 'cancel' },
         {
-          text: 'Same person — join them',
+          text: 'Same person, join them',
           onPress: async () => {
             await mergePersonEverywhere(result.isPerson, name);
             setMeta(await getPersonMeta(name));
@@ -170,7 +168,6 @@ function PersonProfile() {
   };
   // Photo analysis per day, so the recap line can fall back to what the
   // photos showed when the user never wrote anything down themselves.
-  const [assumed, setAssumed] = useState<Record<string, string>>({});
   const [loaded, setLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
@@ -228,16 +225,12 @@ function PersonProfile() {
         getMemoriesByDay(),
         getAllDayPlaces(),
         name ? getPersonMeta(name) : Promise.resolve(null),
-        getAllAssumedMemories(),
         name ? guessedDaysAsSuggestions(name) : Promise.resolve([]),
-      ]).then(([summaries, memories, places, personMeta, assumedByDay, pending]) => {
+      ]).then(([summaries, memories, places, personMeta, pending]) => {
         setPerson(summaries.find((p) => p.name === name) ?? null);
         setByDay(memories);
         setDayPlaces(places);
         setMeta(personMeta);
-        setAssumed(
-          Object.fromEntries(Object.entries(assumedByDay).map(([day, rec]) => [day, rec.summary])),
-        );
         setSuggestions(pending);
         setLoaded(true);
       });
@@ -342,9 +335,9 @@ function PersonProfile() {
             : // Say what was actually covered. "No new matches" on its own
               // reads as a broken button, and gives no hint that running it
               // again goes further back through the library.
-              `Looked through ${outcome.searched} ${outcome.searched === 1 ? 'day' : 'days'} of photos — no sign of ${firstName}. Run it again to go further back.`
+              `Looked through ${outcome.searched} ${outcome.searched === 1 ? 'day' : 'days'} of photos, and no sign of ${firstName}. Run it again to go further back.`
           : outcome.status === 'busy'
-            ? `Still searching for ${scan.person} — that has to finish first.`
+            ? `Still searching for ${scan.person}. That has to finish first.`
             : outcome.status === 'no-photo'
               ? `Add a photo of ${firstName} first.`
               : outcome.status === 'nothing-to-search'
@@ -352,7 +345,7 @@ function PersonProfile() {
                 : 'Face matching is off while it is rebuilt on real face recognition.',
       );
     } catch {
-      setScanNote('That scan didn’t finish — try again in a moment.');
+      setScanNote('That scan didn’t finish. Try again in a moment.');
     }
   };
 
@@ -405,30 +398,10 @@ function PersonProfile() {
     setSheetOpen(false);
   };
 
-  // The single recap line under the name: the most recent thing the app
-  // knows about this person, from whichever source knew it last — a note
-  // the user logged, or the photo analysis of a day they were on.
-  const lastDay = person?.lastSeenDay;
-  const lastPlace = lastDay ? dayPlaces[lastDay]?.[0]?.label : undefined;
-  const latestNote =
-    // A note about this person on the most recent day together wins; then
-    // any note at all (mentions are stored newest-first); then what the
-    // photos of that day showed; then whatever was logged that day.
-    meta?.mentions.find((m) => m.day === lastDay)?.text ??
-    meta?.mentions[0]?.text ??
-    (lastDay ? assumed[lastDay] : undefined) ??
-    (lastDay ? byDay.get(lastDay)?.map((m) => m.text).find(Boolean) : undefined);
-  const recapLine = person?.lastSeenDay
-    ? [
-        `Last seen ${lastSeenLabel(person.lastSeenDay)}${lastPlace ? ` at ${lastPlace}` : ''}`,
-        // Notes are written as sentence fragments ("you both spoke about…"),
-        // so they need a capital to follow a full stop without reading as a
-        // typo.
-        latestNote && latestNote.charAt(0).toUpperCase() + latestNote.slice(1),
-      ]
-        .filter(Boolean)
-        .join('. ')
-    : '';
+  // No "Last seen … at …" line here (Nour, Oct 2026): it took the first
+  // place and note of the last day together, which often weren't about
+  // this person at all, so it read as wrong. The days themselves, below,
+  // are the honest record.
 
   // Chips: everywhere the user has been with this person, most recent first.
   const sharedPlaces = person
@@ -476,7 +449,7 @@ function PersonProfile() {
           <View style={styles.empty}>
             <MaterialCommunityIcons name="account-question-outline" size={40} color="#AEB6B7" />
             <Text style={styles.emptyText}>
-              No days tagged with {name ?? 'this person'} yet — open a day in your Timeline and
+              No days tagged with {name ?? 'this person'} yet. Open a day in your Timeline and
               add them under People.
             </Text>
           </View>
@@ -546,13 +519,6 @@ function PersonProfile() {
               )}
             </View>
 
-            {recapLine.length > 0 && (
-              <Pressable onPress={() => person.lastSeenDay && openDay(person.lastSeenDay)}>
-                <Text numberOfLines={2} style={[styles.recapLine, rtlIfArabic(latestNote)]}>
-                  {recapLine}
-                </Text>
-              </Pressable>
-            )}
 
 
             {sharedPlaces.length > 0 && (
@@ -581,7 +547,7 @@ function PersonProfile() {
               <View style={styles.verifyCard}>
                 <MaterialCommunityIcons name="auto-fix" size={18} color={colors.teal} />
                 <Text style={styles.verifyText}>
-                  Recall added {person.name} from something you logged — does this look right?
+                  Recall added {person.name} from something you logged. Does this look right?
                 </Text>
                 <View style={styles.verifyRow}>
                   <Pressable style={styles.verifyBtn} onPress={confirmPerson}>
@@ -868,13 +834,6 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
     color: '#1B1B1B',
-  },
-  recapLine: {
-    fontFamily: fonts.regular,
-    fontSize: 16,
-    lineHeight: 25,
-    color: '#3E4647',
-    marginTop: 14,
   },
 
   chipScroll: { marginTop: 16, marginHorizontal: -24 },

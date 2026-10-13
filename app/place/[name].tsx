@@ -337,7 +337,7 @@ function PlaceProfile() {
             <Text style={styles.askText}>
               {place.maybeNames.length > 0
                 ? 'You mentioned these on days you were here. Is it one of them?'
-                : "Give it the name you'd use — Recall will know it by that from now on."}
+                : "Give it the name you'd use. Recall will know it by that from now on."}
             </Text>
             <View style={styles.askChips}>
               {place.maybeNames.map((m) => (

@@ -1277,7 +1277,7 @@ export default function Timeline() {
                         <Text style={styles.assumedTitle}>Assumed Memory</Text>
                       </View>
                       <Text style={styles.assumedSub}>
-                        Couldn't analyze this day's photos yet — tap to try again
+                        Couldn't analyze this day's photos yet. Tap to try again
                       </Text>
                     </Pressable>
                     </DraggableCard>

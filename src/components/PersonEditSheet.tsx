@@ -96,7 +96,7 @@ export default function PersonEditSheet({
             />
             <Text style={styles.hint}>
               {mode === 'add'
-                ? 'You can add someone before they appear in any memory — give them a face now and Recall will start looking for them in your photos.'
+                ? 'You can add someone before they appear in any memory. Give them a face now and Recall will start looking for them in your photos.'
                 : mode === 'self'
                   ? 'Recall uses your name to understand who "I" and "me" mean in the things you log.'
                   : "Renaming moves everything you've logged with them. If you type the name of someone you already have, the two are joined into one person."}
@@ -117,7 +117,7 @@ export default function PersonEditSheet({
             />
             <Text style={styles.hint}>
               {mode === 'self'
-                ? 'Standing context for every answer Recall gives you — your work, your family, anything it should always know.'
+                ? 'Standing context for every answer Recall gives you: your work, your family, anything it should always know.'
                 : 'Shown under their name, and used when Recall answers questions about them.'}
             </Text>
             </ScrollView>

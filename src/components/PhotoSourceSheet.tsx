@@ -61,7 +61,7 @@ export default function PhotoSourceSheet({ visible, current, onSet, onClear, onC
             <View style={styles.grabber} />
             <Text style={styles.title}>Where's this photo from?</Text>
             <Text style={styles.subtitle}>
-              Apple doesn't let any app read this automatically — tag it once and Recall
+              Apple doesn't let any app read this automatically. Tag it once and Recall
               remembers it.
             </Text>
 
@@ -115,7 +115,7 @@ export default function PhotoSourceSheet({ visible, current, onSet, onClear, onC
                   onClose();
                 }}
               >
-                <Text style={styles.clearText}>Clear label — just a normal photo</Text>
+                <Text style={styles.clearText}>Clear label: just a normal photo</Text>
               </Pressable>
             )}
 

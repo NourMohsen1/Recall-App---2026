@@ -250,7 +250,7 @@ export default function LogPhoto() {
             <MaterialCommunityIcons name="file-document-outline" size={24} color={colors.teal} />
             <View style={{ flex: 1 }}>
               <Text style={styles.docTitle}>Screenshot or file to read</Text>
-              <Text style={styles.docHint}>Appointments, tickets, bills — anything coming up goes to Tasks</Text>
+              <Text style={styles.docHint}>Appointments, tickets, bills: anything coming up goes to Tasks</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.soft} />
           </Pressable>

@@ -149,7 +149,7 @@ function MyProfile() {
         ) : (
           <Pressable onPress={() => setEditOpen(true)}>
             <Text style={styles.bioPlaceholder}>
-              Tell Recall about yourself — it uses this to understand your days.
+              Tell Recall about yourself. It uses this to understand your days.
             </Text>
           </Pressable>
         )}

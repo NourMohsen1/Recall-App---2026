@@ -294,7 +294,7 @@ export default function Quiz() {
                     {face === 'checking'
                       ? 'Looking for your face…'
                       : face === 'learned'
-                        ? 'Got it — that’s you.'
+                        ? 'Got it, that’s you.'
                         : face === 'no-face'
                           ? 'Couldn’t see a clear face. Try another photo.'
                           : ' '}

@@ -70,7 +70,7 @@ export default function FaceIndexCard() {
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Reading your photos…</Text>
               <Text style={styles.hint}>
-                {indexing.done.toLocaleString()} of {indexing.total.toLocaleString()} — this
+                {indexing.done.toLocaleString()} of {indexing.total.toLocaleString()}. This
                 happens once, then never again.
               </Text>
             </View>

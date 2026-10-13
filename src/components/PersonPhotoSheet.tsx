@@ -95,7 +95,7 @@ export default function PersonPhotoSheet({
                 {hasPhoto ? 'Change photo' : 'Choose a photo'}
               </Text>
               <Text style={styles.actionHint}>
-                A clear, front-on face works best — it's what the search compares against.
+                A clear, front-on face works best. It's what the search compares against.
               </Text>
             </View>
           </Pressable>
@@ -119,7 +119,7 @@ export default function PersonPhotoSheet({
                 {!hasPhoto
                   ? `Add a photo of ${firstName} first`
                   : scanning
-                    ? 'You can close this — it keeps going in the background.'
+                    ? 'You can close this. It keeps going in the background.'
                     : `Search your photos for ${firstName}. Anything it finds is a suggestion you confirm.`}
               </Text>
             </View>

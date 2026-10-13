@@ -496,7 +496,7 @@ function DayDetailScreen() {
                       }
                     >
                       <MaterialCommunityIcons name="microphone-outline" size={14} color="#8B9394" />
-                      <Text style={styles.sourceLinkText}>Recorded by voice — tap to listen</Text>
+                      <Text style={styles.sourceLinkText}>Recorded by voice. Tap to listen</Text>
                     </Pressable>
                   )}
                 </View>
@@ -700,7 +700,7 @@ function DayDetailScreen() {
                 <Text style={styles.assumedTitle}>Assumed Memory</Text>
               </View>
               <Text style={styles.assumedSub}>
-                Couldn't analyze this day's photos yet — tap to try again
+                Couldn't analyze this day's photos yet. Tap to try again
               </Text>
             </Pressable>
           </>

@@ -149,8 +149,8 @@ function RealSource({
         <View style={styles.unavailableBox}>
           <Ionicons name="alert-circle-outline" size={28} color="#8B9394" />
           <Text style={styles.unavailableText}>
-            This recording isn’t on your device any more. The words are kept either way —
-            only the audio is gone.
+            This recording isn’t on your device any more. The words are kept either way.
+            Only the audio is gone.
           </Text>
           <Pressable style={styles.removeBtn} onPress={removeMemory}>
             <Text style={styles.removeBtnText}>Remove this memory</Text>
