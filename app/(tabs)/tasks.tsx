@@ -1,6 +1,7 @@
 import { polishPendingMemories, transcribePendingMemories } from '../../src/memoryIntake';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LayoutAnimation, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, LayoutAnimation, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { goBack } from '../../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -117,7 +118,9 @@ function groupByWeek(tasks: StoredTask[], now = new Date()): Section[] {
   }
   const when = (t: StoredTask) => `${placeDay(t) ?? ''} ${taskClock(t) ?? '00:00'}`;
   for (const s of sections) {
-    s.tasks.sort((a, b) => when(b).localeCompare(when(a)));
+    // Open tasks first, finished ones after them: what is still to do
+    // leads every week.
+    s.tasks.sort((a, b) => Number(a.done) - Number(b.done) || when(b).localeCompare(when(a)));
     // Earlier covers everything before last week: its range is what is in it.
     if (s.key === 'earlier' && s.tasks.length > 0) {
       const days = s.tasks.map((t) => placeDay(t)!).sort();
@@ -149,23 +152,33 @@ function nextUpId(tasks: StoredTask[], now: Date): string | null {
   return tasks.find((t) => !t.done && !t.dueDate)?.id ?? null;
 }
 
-// The switch in the design is ON for a task still to do and OFF once it is
-// done — done tasks turn grey, as the past weeks do in the design.
-function Toggle({ on, onPress }: { on: boolean; onPress: () => void }) {
+// The tick on the left of every task, as in Reminders and every other
+// to-do list: an empty ring is still to do, a filled teal circle with a
+// tick is done. It replaced a switch that was ON for "to do", which a
+// tester read the wrong way round.
+function CheckCircle({ done, onPress }: { done: boolean; onPress: () => void }) {
+  const pop = useRef(new Animated.Value(1)).current;
+  const press = () => {
+    if (!done) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      pop.setValue(0.6);
+      Animated.spring(pop, { toValue: 1, friction: 4, tension: 160, useNativeDriver: true }).start();
+    } else {
+      Haptics.selectionAsync().catch(() => {});
+    }
+    onPress();
+  };
   return (
     <Pressable
-      onPress={onPress}
-      hitSlop={8}
-      style={[styles.track, { backgroundColor: on ? '#D6E6E8' : '#E4E6E6' }]}
+      onPress={press}
+      hitSlop={12}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: done }}
+      accessibilityLabel={done ? 'Done. Tap to mark as not done' : 'Mark as done'}
     >
-      <View
-        style={[
-          styles.knob,
-          on
-            ? { alignSelf: 'flex-end', backgroundColor: colors.accent }
-            : { alignSelf: 'flex-start', backgroundColor: '#B4B8B8' },
-        ]}
-      />
+      <Animated.View style={[styles.check, done && styles.checkDone, { transform: [{ scale: pop }] }]}>
+        {done && <Ionicons name="checkmark" size={17} color={colors.white} />}
+      </Animated.View>
     </Pressable>
   );
 }
@@ -193,23 +206,27 @@ function TaskCard({
   // One short line of what it is: the details a document gave, or the words
   // it came from. Two lines at most — the full text is one tap away.
   const description = task.notes?.trim() || task.sourceText?.trim();
-  // The small icon after the title, as in the design: the original
-  // screenshot or file, else the memory it came from, else edit.
+  // A small icon after the title only when there is something behind it:
+  // the original screenshot or file, or the memory it came from. Editing is
+  // the whole card.
   const icon = task.attachment
     ? { name: 'paperclip' as const, onPress: () => setViewing(true) }
     : onOpenSource
       ? { name: 'link-variant' as const, onPress: onOpenSource }
-      : { name: 'pencil-outline' as const, onPress: onEdit };
+      : null;
+  const time = taskTimeLabel(task);
 
   return (
     <Pressable
       onPress={onEdit}
       onLayout={onLayoutY ? (e) => onLayoutY(e.nativeEvent.layout.y) : undefined}
-      style={[styles.card, isNext && styles.cardNext]}
+      style={[styles.card, isNext && styles.cardNext, muted && styles.cardDone]}
     >
-      <View style={styles.cardTop}>
+      <CheckCircle done={task.done} onPress={onToggle} />
+
+      <View style={styles.cardBody}>
         <View style={styles.titleRow}>
-          {/* Just added from a memory — a small dot until the page is seen.
+          {/* Just added from a memory: a small dot until the page is seen.
               The outline is kept for one meaning only: what is next. */}
           {isNew && !muted && <View style={styles.newDot} />}
           <Text
@@ -218,58 +235,58 @@ function TaskCard({
           >
             {task.title}
           </Text>
-          <Pressable onPress={icon.onPress} hitSlop={10}>
-            <MaterialCommunityIcons name={icon.name} size={14} color={muted ? '#C2C7C8' : '#9AA4A5'} />
-          </Pressable>
-        </View>
-        <Toggle on={!task.done} onPress={onToggle} />
-      </View>
-
-      {/* Description and time on the left, the date chip beside them on
-          the right — the design's layout, which keeps each card short. */}
-      <View style={styles.cardBottom}>
-        <View style={{ flex: 1 }}>
-          {description ? (
-            <Text
-              numberOfLines={2}
-              style={[styles.description, muted && styles.mutedText, rtlIfArabic(description)]}
-            >
-              {description}
-            </Text>
-          ) : null}
-          {taskTimeLabel(task) ? (
-            <Text style={[styles.taskTime, muted && styles.mutedText, overdue && styles.overdueTime]}>
-              {taskTimeLabel(task)}
-            </Text>
-          ) : null}
-          {overdue && <Text style={styles.overdueText}>Overdue</Text>}
-          {/* Said in words: the grey card and the switch alone read the
-              wrong way round to a tester, who took finished tasks for the
-              ones still to do. */}
-          {task.done && (
-            <View style={styles.doneBadge}>
-              <MaterialCommunityIcons name="check" size={13} color={colors.white} />
-              <Text style={styles.doneBadgeText}>Done</Text>
-            </View>
+          {icon && (
+            <Pressable onPress={icon.onPress} hitSlop={10}>
+              <MaterialCommunityIcons name={icon.name} size={15} color={muted ? '#C2C7C8' : '#9AA4A5'} />
+            </Pressable>
           )}
         </View>
-        {task.dueDate ? (
-          <View style={[styles.dateChip, muted && styles.dateChipMuted]}>
-            <Text style={[styles.dateMonth, muted && styles.mutedText]}>
-              {dueDateParts(task.dueDate).month}
-            </Text>
-            <Text style={[styles.dateDay, muted && styles.mutedText]}>
-              {dueDateParts(task.dueDate).day}
-            </Text>
+
+        {description ? (
+          <Text
+            numberOfLines={2}
+            style={[styles.description, muted && styles.mutedText, rtlIfArabic(description)]}
+          >
+            {description}
+          </Text>
+        ) : null}
+
+        {/* One line of status under the words: done, overdue, or when. */}
+        {task.done ? (
+          <View style={styles.doneBadge}>
+            <MaterialCommunityIcons name="check" size={13} color={colors.teal} />
+            <Text style={styles.doneBadgeText}>Done</Text>
           </View>
-        ) : task.needsDueDate && !task.done ? (
-          // The user never said when — a soft nudge to confirm a due date.
-          <View style={[styles.dateChip, styles.dateChipAsk]}>
-            <MaterialCommunityIcons name="calendar-question" size={20} color="#8A6D3B" />
-            <Text style={styles.dateAskText}>Set date</Text>
+        ) : overdue || time ? (
+          <View style={styles.metaRow}>
+            {time ? (
+              <Text style={[styles.taskTime, overdue && styles.overdueTime]}>{time}</Text>
+            ) : null}
+            {overdue && (
+              <View style={styles.overduePill}>
+                <Text style={styles.overdueText}>Overdue</Text>
+              </View>
+            )}
           </View>
         ) : null}
       </View>
+
+      {task.dueDate ? (
+        <View style={[styles.dateChip, muted && styles.dateChipMuted, overdue && styles.dateChipOverdue]}>
+          <Text style={[styles.dateMonth, muted && styles.mutedText, overdue && styles.overdueTime]}>
+            {dueDateParts(task.dueDate).month}
+          </Text>
+          <Text style={[styles.dateDay, muted && styles.mutedText, overdue && styles.overdueTime]}>
+            {dueDateParts(task.dueDate).day}
+          </Text>
+        </View>
+      ) : task.needsDueDate && !task.done ? (
+        // The user never said when: a soft nudge to give it a date.
+        <View style={[styles.dateChip, styles.dateChipAsk]}>
+          <MaterialCommunityIcons name="calendar-question" size={20} color="#8A6D3B" />
+          <Text style={styles.dateAskText}>Set date</Text>
+        </View>
+      ) : null}
 
       {task.attachment && (
         <AttachmentViewer attachment={viewing ? task.attachment : null} onClose={() => setViewing(false)} />
@@ -625,53 +642,64 @@ const styles = StyleSheet.create({
   },
   undoText: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
   undoAction: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.accent },
+  // Tick | words | date: the tick where the thumb is, the date where the
+  // eye lands to scan a week.
   card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
     backgroundColor: colors.white,
     borderRadius: 20,
     paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingLeft: 16,
+    paddingRight: 14,
     borderWidth: 2,
     borderColor: colors.white,
   },
+  // Finished: still readable, clearly stepped back.
+  cardDone: { backgroundColor: '#F7F9F9', borderColor: '#F7F9F9' },
+  cardBody: { flex: 1, gap: 4 },
+  check: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: colors.slate,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkDone: { backgroundColor: colors.teal, borderColor: colors.teal },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+  overduePill: { backgroundColor: '#F6E3E3', borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 },
+  dateChipOverdue: { backgroundColor: '#F6E3E3' },
   // What is next: the design's teal outline, on one task at a time.
   cardNext: { borderColor: colors.accent },
   newDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
-  cardTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   taskTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B', flexShrink: 1 },
-  track: {
-    width: 50,
-    height: 26,
-    borderRadius: 13,
-    padding: 3,
-    justifyContent: 'center',
-  },
-  knob: { width: 20, height: 20, borderRadius: 10 },
   description: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#3A4243',
-    marginBottom: 8,
+    color: '#5B6364',
   },
-  cardBottom: { flexDirection: 'row', alignItems: 'flex-end', marginTop: 6, gap: 14 },
   taskTime: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.teal },
   overdueTime: { color: '#B24545' },
-  overdueText: { fontFamily: fonts.medium, fontSize: 12, color: '#B24545', marginTop: 2 },
+  overdueText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#B24545' },
   doneTitle: { textDecorationLine: 'line-through' },
   doneBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 3,
-    marginTop: 6,
-    backgroundColor: colors.teal,
+    marginTop: 2,
+    backgroundColor: '#E2EDEE',
     borderRadius: 999,
     paddingVertical: 3,
     paddingLeft: 7,
     paddingRight: 9,
   },
-  doneBadgeText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.white },
+  doneBadgeText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.teal },
 
   dateChip: {
     backgroundColor: '#DCE3E3',
