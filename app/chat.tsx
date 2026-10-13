@@ -78,7 +78,7 @@ function errorText(reason: Exclude<AskResult, { ok: true }>['reason']) {
   }
   if (reason === 'no-credits') {
     // Recall's own provider balance ran out — the user can't fix that.
-    return 'Ask is resting for a moment. Try again a little later.';
+    return 'Ask can’t answer right now. Try again in a little while.';
   }
   if (reason === 'rate-limited') {
     return 'Sending questions a bit too fast. Give it a few seconds and try again.';

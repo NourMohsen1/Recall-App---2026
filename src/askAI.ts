@@ -388,7 +388,16 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
     const all = textProviders();
     const deepseek = all.find((x) => x.name === 'deepseek');
     const openai = all.find((x) => x.name === 'openai');
-    const attempts = [deepseek, deepseek, openai].filter((x): x is Provider => !!x);
+    // The second DeepSeek try sends the compact context: a blank reply came
+    // most often on the biggest prompts, and a smaller one usually answers.
+    // OpenAI is the last resort, not the first fallback.
+    const attempts = (
+      [
+        deepseek && { prov: deepseek, mode: 'full' as const },
+        deepseek && { prov: deepseek, mode: 'compact' as const },
+        openai && { prov: openai, mode: 'full' as const },
+      ] as ({ prov: Provider; mode: 'full' | 'compact' } | undefined | null)[]
+    ).filter((x): x is { prov: Provider; mode: 'full' | 'compact' } => !!x);
 
     const buildBody = async (prov: Provider, mode: 'full' | 'compact') => {
       const context = await buildMemoryContext(plan, mode);
@@ -410,11 +419,15 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
       });
     };
 
-    let lastReason: Exclude<AskResult, { ok: true }>['reason'] = 'failed';
+    // What to tell the user if nothing answers. "Out of credit" only when
+    // every provider said so: a tester was told Ask was "resting" because
+    // DeepSeek sent a blank reply and the last resort, OpenAI, had an
+    // empty balance. The question had simply failed, and a retry works.
+    const reasons: Exclude<AskResult, { ok: true }>['reason'][] = [];
 
-    for (const prov of attempts) {
+    for (const { prov, mode } of attempts) {
       const headers = { Authorization: `Bearer ${prov.key}`, 'Content-Type': 'application/json' };
-      let res = await fetch(prov.url, { method: 'POST', headers, body: await buildBody(prov, 'full') });
+      let res = await fetch(prov.url, { method: 'POST', headers, body: await buildBody(prov, mode) });
 
       // Rate limits here are on TOKENS per minute, not request count — so
       // resending the SAME oversized payload was never going to work, it
@@ -434,11 +447,13 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
       // "something went wrong", and while none of them was logged there was
       // no telling a refusal from a blank reply from a crash.
       if (res.status === 429) {
-        lastReason = await readErrorReason(res);
-        console.warn(`[ask] ${prov.name}: ${lastReason}`);
+        const reason = await readErrorReason(res);
+        reasons.push(reason);
+        console.warn(`[ask] ${prov.name}: ${reason}`);
         continue;
       }
       if (!res.ok) {
+        reasons.push('failed');
         console.warn(`[ask] ${prov.name} refused: HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
         continue;
       }
@@ -454,12 +469,14 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
       try {
         parsed = JSON.parse(content);
       } catch {
+        reasons.push('failed');
         console.warn(
-          `[ask] ${prov.name} sent ${content ? 'unreadable JSON' : 'a blank reply'} — trying again`,
+          `[ask] ${prov.name} (${mode}) sent ${content ? 'unreadable JSON' : 'a blank reply'}, trying again`,
         );
         continue;
       }
       if (!parsed.answer) {
+        reasons.push('failed');
         console.warn(`[ask] ${prov.name} returned no answer: ${content.slice(0, 200)}`);
         continue;
       }
@@ -486,7 +503,14 @@ export async function askMemory(question: string, history: ChatTurn[]): Promise<
       };
     }
 
-    return { ok: false, reason: lastReason };
+    const reason =
+      reasons.length > 0 && reasons.every((r) => r === 'no-credits')
+        ? 'no-credits'
+        : reasons.includes('rate-limited')
+          ? 'rate-limited'
+          : 'failed';
+    console.warn(`[ask] no answer: ${reasons.join(', ') || 'nothing tried'}`);
+    return { ok: false, reason };
   } catch (e) {
     console.warn(`[ask] failed: ${e instanceof Error ? e.message : String(e)}`);
     return { ok: false, reason: 'failed' };
