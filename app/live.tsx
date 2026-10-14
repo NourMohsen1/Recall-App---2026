@@ -10,7 +10,9 @@ import { offsetOfDay } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession } from '../src/chatSessions';
-import { liveVoiceAvailable, startLiveVoice, type LiveSession } from '../src/realtimeVoice';
+import { liveVoiceAvailable, startLiveVoice, type LiveLanguage, type LiveSession } from '../src/realtimeVoice';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '../src/theme';
 import BrainAnimation from '../src/components/BrainAnimation';
 import { useLightStatusBar } from '../src/statusBar';
@@ -70,6 +72,25 @@ export default function LiveConversation() {
   const cardsByQuestion = useRef<Record<number, LiveCard[]>>({});
   const [cardsSaved, setCardsSaved] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // The language it hears and speaks (top right). Remembered between calls;
+  // switching mid-call takes effect from the next thing said.
+  const [language, setLanguage] = useState<LiveLanguage>('auto');
+  const [langOpen, setLangOpen] = useState(false);
+  useEffect(() => {
+    AsyncStorage.getItem(LANGUAGE_KEY)
+      .then((v) => {
+        if (v === 'ar' || v === 'en' || v === 'auto') setLanguage(v);
+      })
+      .catch(() => {});
+  }, []);
+  const pickLanguage = (next: LiveLanguage) => {
+    Haptics.selectionAsync().catch(() => {});
+    setLangOpen(false);
+    setLanguage(next);
+    session.current?.setLanguage(next);
+    AsyncStorage.setItem(LANGUAGE_KEY, next).catch(() => {});
+    console.log(`[live] language picked: ${next}`);
+  };
   const scroller = useRef<ScrollView | null>(null);
 
   const available = liveVoiceAvailable();
@@ -205,7 +226,7 @@ export default function LiveConversation() {
             }
             break;
         }
-      });
+      }, language);
     } catch (e) {
       session.current = null;
       setPhase('idle');
@@ -278,6 +299,7 @@ export default function LiveConversation() {
             <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle}>Talk to Recall</Text>
+          <LanguageButton value={language} open={langOpen} onToggle={() => setLangOpen((v) => !v)} />
         </View>
 
         {/* The brain has the screen; the words sit just above the mic as
@@ -343,6 +365,105 @@ export default function LiveConversation() {
           )}
         </View>
       </SafeAreaView>
+      <LanguageMenu
+        visible={langOpen}
+        value={language}
+        top={insets.top + 58}
+        onPick={pickLanguage}
+        onClose={() => setLangOpen(false)}
+      />
+    </View>
+  );
+}
+
+const LANGUAGE_KEY = 'liveLanguage';
+
+const LANGUAGES: { key: LiveLanguage; badge: string; label: string; hint: string }[] = [
+  { key: 'auto', badge: 'A', label: 'Auto', hint: 'Follows you' },
+  { key: 'ar', badge: 'ع', label: 'عربي', hint: 'Egyptian Arabic' },
+  { key: 'en', badge: 'EN', label: 'English', hint: 'English only' },
+];
+
+// A round glass button, top right: what it shows is what is chosen.
+function LanguageButton({ value, open, onToggle }: { value: LiveLanguage; open: boolean; onToggle: () => void }) {
+  const badge = LANGUAGES.find((l) => l.key === value)?.badge ?? 'A';
+  return (
+    <Pressable
+      onPress={onToggle}
+      hitSlop={10}
+      style={[styles.langBtn, open && styles.langBtnOpen]}
+      accessibilityRole="button"
+      accessibilityLabel={`Language: ${LANGUAGES.find((l) => l.key === value)?.label}. Tap to change`}
+    >
+      {value === 'auto' ? (
+        <Ionicons name="language" size={19} color={open ? colors.ink : colors.white} />
+      ) : (
+        <Text style={[styles.langBadge, open && { color: colors.ink }, value === 'ar' && styles.langBadgeAr]}>{badge}</Text>
+      )}
+    </Pressable>
+  );
+}
+
+// Drops down from the button: three rows, the chosen one ticked.
+function LanguageMenu({
+  visible,
+  value,
+  top,
+  onPick,
+  onClose,
+}: {
+  visible: boolean;
+  value: LiveLanguage;
+  top: number;
+  onPick: (l: LiveLanguage) => void;
+  onClose: () => void;
+}) {
+  const shown = useRef(new Animated.Value(0)).current;
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => {
+    if (visible) setMounted(true);
+    Animated.spring(shown, { toValue: visible ? 1 : 0, friction: 9, tension: 120, useNativeDriver: true }).start(
+      ({ finished }) => finished && !visible && setMounted(false),
+    );
+  }, [visible, shown]);
+  if (!mounted) return null;
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents={visible ? 'auto' : 'none'}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <Animated.View
+        style={[
+          styles.langMenu,
+          {
+            top,
+            opacity: shown,
+            transform: [
+              { translateY: shown.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) },
+              { scale: shown.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+            ],
+          },
+        ]}
+      >
+        <Text style={styles.langMenuTitle}>Talk in</Text>
+        {LANGUAGES.map((l) => {
+          const on = l.key === value;
+          return (
+            <Pressable key={l.key} onPress={() => onPick(l.key)} style={[styles.langRow, on && styles.langRowOn]}>
+              <View style={[styles.langRowBadge, on && styles.langRowBadgeOn]}>
+                {l.key === 'auto' ? (
+                  <Ionicons name="language" size={16} color={on ? colors.ink : colors.white} />
+                ) : (
+                  <Text style={[styles.langRowBadgeText, on && { color: colors.ink }]}>{l.badge}</Text>
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.langRowLabel}>{l.label}</Text>
+                <Text style={styles.langRowHint}>{l.hint}</Text>
+              </View>
+              {on && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+            </Pressable>
+          );
+        })}
+      </Animated.View>
     </View>
   );
 }
@@ -420,6 +541,59 @@ const styles = StyleSheet.create({
   },
   back: { position: 'absolute', left: 16, top: 6, padding: 4 },
   headerTitle: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },
+  langBtn: {
+    position: 'absolute',
+    right: 16,
+    top: 2,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(111,245,230,0.30)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langBtnOpen: { backgroundColor: colors.accent, borderColor: colors.accent },
+  langBadge: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.white, letterSpacing: 0.3 },
+  langBadgeAr: { fontSize: 18, marginTop: -2 },
+  langMenu: {
+    position: 'absolute',
+    right: 16,
+    width: 230,
+    borderRadius: 20,
+    padding: 8,
+    backgroundColor: 'rgba(6,30,33,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(111,245,230,0.22)',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 12,
+  },
+  langMenuTitle: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.5)',
+    paddingHorizontal: 10,
+    paddingTop: 6,
+    paddingBottom: 6,
+  },
+  langRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 14 },
+  langRowOn: { backgroundColor: 'rgba(99,188,198,0.14)' },
+  langRowBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  langRowBadgeOn: { backgroundColor: colors.accent },
+  langRowBadgeText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.white },
+  langRowLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.white },
+  langRowHint: { fontFamily: fonts.regular, fontSize: 12, color: 'rgba(255,255,255,0.5)', marginTop: 1 },
   cardRow: { paddingHorizontal: 16, gap: 10, paddingBottom: 12 },
   card: {
     width: 156,

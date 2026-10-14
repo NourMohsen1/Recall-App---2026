@@ -60,7 +60,40 @@ export type LiveSession = {
   end: () => void;
   /** Cut the model off mid-sentence without ending the call. */
   interrupt: () => void;
+  /** Switch language mid-call: what it hears and what it says. */
+  setLanguage: (language: LiveLanguage) => void;
 };
+
+/** The language picker on the live screen. 'auto' follows the user. */
+export type LiveLanguage = 'auto' | 'ar' | 'en';
+
+// Said to the model, and given to the transcriber as a hint. Without a
+// choice it kept switching languages on Nour, so picking one pins both
+// ends: the words it hears are read as that language, and it answers in
+// it whatever it thinks it heard.
+const LANGUAGE_RULE: Record<LiveLanguage, string> = {
+  auto: 'LANGUAGE: follow the user. Answer in the language of their last full sentence; when they mix Arabic and English, answer in Egyptian Arabic with their English words kept as they said them.',
+  ar: 'LANGUAGE: always speak Egyptian colloquial Arabic, the way people talk in Cairo, never Modern Standard Arabic, whatever language you think you heard. English names and words the user uses stay as they say them.',
+  en: 'LANGUAGE: always speak English, whatever language you think you heard. Names keep their own spelling and sound.',
+};
+
+function sessionSettings(language: LiveLanguage, bootstrap: string) {
+  return {
+    type: 'realtime',
+    instructions: `${VOICE_INSTRUCTIONS}\n\n${LANGUAGE_RULE[language]}\n\n${bootstrap}`,
+    audio: {
+      input: {
+        // Without this the model HEARS the user but never writes down what
+        // they said, so only its own half of the conversation could be saved
+        // or shown. Mishearing is the commonest reason a spoken answer is
+        // wrong, and out loud there is no telling a misheard question from a
+        // bad answer unless both are on screen. A chosen language is a hint
+        // to it (accepted as "languages": ["ar"], checked against OpenAI).
+        transcription: { model: 'gpt-live-transcribe', ...(language === 'auto' ? {} : { language }) },
+      },
+    },
+  };
+}
 
 export function liveVoiceAvailable(): boolean {
   return !!backendUrl('/') && !!backendToken();
@@ -129,7 +162,9 @@ async function routeToSpeaker(when: string): Promise<void> {
 
 export async function startLiveVoice(
   onEvent: (e: LiveEvent) => void,
+  initialLanguage: LiveLanguage = 'auto',
 ): Promise<LiveSession> {
+  let language = initialLanguage;
   onEvent({ type: 'connecting' });
 
   const key = await mintToken();
@@ -195,24 +230,7 @@ export async function startLiveVoice(
       channel.send(
         JSON.stringify({
           type: 'session.update',
-          session: {
-            type: 'realtime',
-            instructions: `${VOICE_INSTRUCTIONS}\n\n${bootstrap}`,
-            tools: REALTIME_TOOLS,
-            tool_choice: 'auto',
-            audio: {
-              input: {
-                // Without this the model HEARS the user but never writes
-                // down what they said, so only its own half of the
-                // conversation could be saved or shown. Transcribing the
-                // user's side is not a nicety here: mishearing is the
-                // commonest reason a spoken answer is wrong, and out loud
-                // there is no way to tell a misheard question from a bad
-                // answer unless both are on screen.
-                transcription: { model: 'gpt-live-transcribe' },
-              },
-            },
-          },
+          session: { ...sessionSettings(language, bootstrap), tools: REALTIME_TOOLS, tool_choice: 'auto' },
         }),
       );
       onEvent({ type: 'listening' });
@@ -262,6 +280,12 @@ export async function startLiveVoice(
       end: () => cleanup('user'),
       interrupt: () => {
         if (!ended) channel.send(JSON.stringify({ type: 'response.cancel' }));
+      },
+      setLanguage: (next) => {
+        if (ended || next === language) return;
+        language = next;
+        channel.send(JSON.stringify({ type: 'session.update', session: sessionSettings(next, bootstrap) }));
+        console.log(`[live] language now ${next}`);
       },
     };
   } catch (e) {
