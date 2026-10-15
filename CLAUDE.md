@@ -222,7 +222,7 @@ rebuild).
 **Notifications say nothing private** (`src/recapNotifications.ts`, Oct
 2026). A lock screen is seen by anyone near the phone: no names, places,
 moment labels or note text — only that a recap is ready and how many
-moments it holds ("Your Tuesday recap is ready · 5 moments"). Nudges
+moments it holds ("Remember your Tuesday? 5 moments from yesterday"). The weekly one opens Ask with "tell me about my last week" already asked (`/chat?ask=`). Nudges
 ("Did you log today?", "It's been a while", "On this day last year") are
 at most one a day, never two days running, never on a day already
 logged; a memory from a year ago wins over an ordinary nudge. Profile →

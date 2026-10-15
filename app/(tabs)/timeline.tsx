@@ -78,8 +78,10 @@ import { DayPlace, getPlacesForDay, onPlacesChanged } from '../../src/places';
 import { rtlIfArabic } from '../../src/transcription';
 import TopicSwapSheet from '../../src/components/TopicSwapSheet';
 import { colors, fonts } from '../../src/theme';
+import { Image as ExpoImage } from 'expo-image';
 
-// Compact version of the On This Day topic card, sized to fit the canvas.
+// One On This Day topic on the canvas, with its photo.
+const MINI_CARD_W = 264;
 function MiniTopicCard({
   topic,
   item,
@@ -93,8 +95,23 @@ function MiniTopicCard({
   loading: boolean;
   onFeedback: () => void;
 }) {
+  // A photo on top: the story's own news photo when the search found one
+  // (checked on the phone first, src/contentSafety.ts), else the topic's
+  // icon on teal. Bigger than before (Nour): the canvas has the room.
+  const photo = !future && !loading ? item?.image : undefined;
   return (
     <View style={styles.miniTopicCard}>
+      {photo ? (
+        <ExpoImage source={{ uri: photo }} style={styles.miniTopicPhoto} contentFit="cover" transition={200} />
+      ) : (
+        <View style={[styles.miniTopicPhoto, styles.miniTopicNoPhoto]}>
+          <MaterialCommunityIcons
+            name={(topic.icon as keyof typeof MaterialCommunityIcons.glyphMap) ?? 'newspaper-variant-outline'}
+            size={38}
+            color="rgba(255,255,255,0.9)"
+          />
+        </View>
+      )}
       <View style={styles.miniTopicHeader}>
         <Text style={styles.miniTopicLabel}>{topic.label}</Text>
         {!future && (
@@ -206,7 +223,7 @@ const CARD_POS = {
   photo: { x: 440, y: 44, w: 410 },
   day: { x: 30, y: 330, w: 340 },
   places: { x: 470, y: 330, w: 410 },
-  otd: { x: 180, y: 780, w: 400 },
+  otd: { x: 180, y: 780, w: 560 },
   // Joined to the photos it was guessed from; the card itself is dashed and
   // tinted so a guess never reads as part of what the user logged.
   assumed: { x: 610, y: 780, w: 290 },
@@ -1185,7 +1202,7 @@ export default function Timeline() {
                       <ScrollView
                         horizontal
                         showsHorizontalScrollIndicator={false}
-                        snapToInterval={216}
+                        snapToInterval={MINI_CARD_W + 12}
                         decelerationRate="fast"
                         contentContainerStyle={styles.otdScrollContent}
                       >
@@ -1517,17 +1534,20 @@ const styles = StyleSheet.create({
   assumedTranslateText: { fontFamily: fonts.medium, fontSize: 11, color: colors.teal },
   otdScrollContent: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 6, gap: 12 },
   miniTopicCard: {
-    width: 204,
+    width: MINI_CARD_W,
     borderWidth: 1,
     borderColor: '#E4E8E8',
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 18,
+    padding: 10,
+    paddingBottom: 14,
   },
-  miniTopicHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  miniTopicLabel: { fontFamily: fonts.medium, fontSize: 13, color: '#2B2B2B' },
-  miniTopicMuted: { fontFamily: fonts.regular, fontSize: 11, color: '#8B9394', marginTop: 6 },
-  miniTopicHeadline: { fontFamily: fonts.semiBold, fontSize: 12, lineHeight: 17, color: '#1B1B1B', marginTop: 6 },
-  miniTopicSummary: { fontFamily: fonts.regular, fontSize: 11, lineHeight: 16, color: '#4A5253', marginTop: 3 },
+  miniTopicPhoto: { width: '100%', height: 150, borderRadius: 12, marginBottom: 10, backgroundColor: colors.pale },
+  miniTopicNoPhoto: { backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  miniTopicHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
+  miniTopicLabel: { fontFamily: fonts.medium, fontSize: 13, color: '#5B6364' },
+  miniTopicMuted: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginTop: 6, paddingHorizontal: 4 },
+  miniTopicHeadline: { fontFamily: fonts.semiBold, fontSize: 15, lineHeight: 21, color: '#1B1B1B', marginTop: 4, paddingHorizontal: 4 },
+  miniTopicSummary: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#4A5253', marginTop: 4, paddingHorizontal: 4 },
 
   emptyHint: { fontFamily: fonts.regular, fontSize: 14, color: '#9AA4A5', marginTop: 14 },
 });

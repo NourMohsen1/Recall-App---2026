@@ -17,7 +17,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { goBack } from '../src/navigation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -423,6 +423,8 @@ function Chat() {
       .catch(() => {});
   }, []);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // A question to ask as soon as Ask opens (src/recapNotifications.ts).
+  const { ask: startWith } = useLocalSearchParams<{ ask?: string }>();
   const times = messageTimes(messages, sessionId);
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -490,7 +492,9 @@ function Chat() {
   useEffect(() => {
     let live = true;
     (async () => {
-      const resumable = await resumableSession();
+      // Opened to ask something (the weekly notification's "tell me about
+      // my week"): a fresh thread, so the answer isn't buried in an old one.
+      const resumable = startWith ? null : await resumableSession();
       if (!live) return;
       if (resumable) {
         const saved = await getMessages(resumable.id);
@@ -512,6 +516,16 @@ function Chat() {
       live = false;
     };
   }, []);
+
+  // …and that question asked once the thread is ready.
+  const askedStart = useRef(false);
+  useEffect(() => {
+    if (!sessionLoaded || !startWith || askedStart.current) return;
+    askedStart.current = true;
+    console.log('[ask] opened with a question from a notification');
+    ask(startWith);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionLoaded, startWith]);
 
   useEffect(() => {
     if (!sessionLoaded || !sessionId || messages.length === 0) return;

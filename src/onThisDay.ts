@@ -671,6 +671,22 @@ async function checkCachedImages(items: TopicItem[], save: (items: TopicItem[]) 
 
 const CACHE_PREFIX = 'otdFeed-';
 
+// When saved cards can be shown again. A day's news keeps arriving for a
+// day or two: a card saved that morning or that evening said "a quiet day"
+// and was then shown forever, which is why big nights (PSG beat City 4-2 on
+// 14 Oct) came up empty for Nour. So cards saved two days after their date
+// are kept for good; anything saved sooner is trusted for three hours.
+// Saved before this rule (no time on them), they are kept only if nothing
+// in them is quiet or failed.
+const SETTLED_MS = 2 * 86400000;
+const RECENT_TRUST_MS = 3 * 3600000;
+function cacheStillGood(date: Date, savedAt: number | undefined, items: TopicItem[]): boolean {
+  if (savedAt == null) return items.every((i) => i.live && !i.quiet);
+  const start = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  if (savedAt >= start + SETTLED_MS) return true;
+  return Date.now() - savedAt < RECENT_TRUST_MS;
+}
+
 // Signature of "what would change the results" — topic mix plus the user's
 // per-topic taste text. A cache from a different signature is stale.
 // v3: same-day events only, never repeated across days (Oct 2026) — feeds
@@ -698,6 +714,7 @@ export async function getDayFeed(date: Date, topics: Topic[]): Promise<TopicItem
       if (
         parsed.sig === sig &&
         parsed.items.some((i) => i.live) &&
+        cacheStillGood(date, (parsed as { savedAt?: number }).savedAt, parsed.items) &&
         topics.every((t) => parsed.items.some((i) => i.topic === t.key))
       ) {
         return topics.map((t) => {
@@ -712,7 +729,7 @@ export async function getDayFeed(date: Date, topics: Topic[]): Promise<TopicItem
 
   const live = (await fetchFromNews(date, topics, interests)) ?? (await fetchFromInternet(date, topics, interests));
   if (live) {
-    AsyncStorage.setItem(cacheId, JSON.stringify({ items: live, sig })).catch(() => {});
+    AsyncStorage.setItem(cacheId, JSON.stringify({ items: live, sig, savedAt: Date.now() })).catch(() => {});
     return live;
   }
   return topics.map((t) => (interests[t.key] ? notLoadedItem(t) : fallbackFeed(date, [t])[0]));
@@ -733,10 +750,10 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
   try {
     const cached = await AsyncStorage.getItem(cacheId);
     if (cached) {
-      const parsed = JSON.parse(cached) as { items: TopicItem[] };
-      if (parsed.items.length > 0) {
+      const parsed = JSON.parse(cached) as { items: TopicItem[]; savedAt?: number };
+      if (parsed.items.length > 0 && cacheStillGood(date, parsed.savedAt, parsed.items)) {
         const items = await checkCachedImages(parsed.items, (checked) =>
-          AsyncStorage.setItem(cacheId, JSON.stringify({ items: checked })).catch(() => {}),
+          AsyncStorage.setItem(cacheId, JSON.stringify({ items: checked, savedAt: parsed.savedAt })).catch(() => {}),
         );
         return items.map(cleanItem);
       }
@@ -751,7 +768,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
     const cards = (await writeCards(date, [{ t: topic, taste: taste || undefined, hits }], EVENTS_COUNT)).get(topic.key);
     if (!cards?.length) return taste ? [quietItem(topic, taste)] : [];
     const items = await withImages(cards.map((c) => ({ topic: topic.key, label: topic.label, ...c, live: true })));
-    AsyncStorage.setItem(cacheId, JSON.stringify({ items })).catch(() => {});
+    AsyncStorage.setItem(cacheId, JSON.stringify({ items, savedAt: Date.now() })).catch(() => {});
     return items;
   }
 
@@ -803,7 +820,7 @@ export async function getTopicEvents(date: Date, topic: Topic): Promise<TopicIte
           if (mapped.length === 0 && taste) return [quietItem(topic, taste)];
           if (mapped.length > 0) {
             const items = await withImages(mapped);
-            AsyncStorage.setItem(cacheId, JSON.stringify({ items })).catch(() => {});
+            AsyncStorage.setItem(cacheId, JSON.stringify({ items, savedAt: Date.now() })).catch(() => {});
             return items;
           }
         }

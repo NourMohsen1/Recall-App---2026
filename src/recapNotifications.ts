@@ -43,11 +43,15 @@ const LAST_YEAR_HOUR = 18;
 /** How many days ahead nudges are planned — rebuilt on every open anyway. */
 const NUDGE_DAYS = 4;
 
+// Each one an invitation into the user's own story, never a chore, and
+// still nothing private on the lock screen (Nour, Oct 2026: "something
+// that pulls you in", like asking Recall to tell you your week).
+const LOG_TITLES = ['Before today slips away', 'What made today today?', 'Keep today', 'A line for today'];
 const LOG_LINES = [
-  '30 seconds is enough.',
-  'How was today? Say it before it slips away.',
-  'One line about today. Future you will thank you.',
-  "Today isn't in Recall yet. What happened?",
+  'Say it in 30 seconds. Recall keeps the rest.',
+  'One thing you want to remember from today.',
+  'Who did you see? Where did you go? Just talk.',
+  'Future you will want to know how today went.',
 ];
 
 export async function getRecapPrefs(): Promise<RecapPrefs> {
@@ -98,6 +102,13 @@ const moments = (n: number) => `${n} ${n === 1 ? 'moment' : 'moments'}`;
 
 // ── Scheduling ───────────────────────────────────────────────────────────
 
+/** "Tell me about my last week", in the language the user mostly writes. */
+function weekQuestion(store: Store): string {
+  const texts = [...store.byDay.values()].flat().slice(-40).map((m) => m.text ?? '');
+  const arabic = texts.filter((t) => /[\u0600-\u06FF]/.test(t)).length;
+  return arabic > texts.length / 2 ? 'احكيلي الأسبوع اللي فات كان عامل إزاي' : 'Tell me about my last week';
+}
+
 type Planned = { id: string; when: Date; title: string; body: string; data: Record<string, unknown> };
 
 export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
@@ -114,8 +125,8 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
       out.push({
         id: 'recap-daily',
         when,
-        title: `Your ${WEEKDAYS[covered.getDay()]} recap is ready`,
-        body: `${moments(n)} · tap to look back`,
+        title: `Remember your ${WEEKDAYS[covered.getDay()]}?`,
+        body: `${moments(n)} from yesterday. Take a minute to live it again.`,
         data: { day: dateKey(covered) },
       });
     }
@@ -132,9 +143,11 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
       out.push({
         id: 'recap-weekly',
         when: at(monday, RECAP_HOUR),
-        title: 'See what happened last week',
-        body: `${moments(n)} last week · tap to check them`,
-        data: { recap: RECAP_TAB.weekly, weekOf: dateKey(from) },
+        title: 'Your week, told back to you',
+        body: `${moments(n)} last week. Tap and Recall tells you how it went.`,
+        // Opens Ask with the question already asked: the answer to "tell me
+        // about my last week" is the one Nour liked most.
+        data: { ask: weekQuestion(store), weekOf: dateKey(from) },
       });
     }
   }
@@ -149,8 +162,8 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
       out.push({
         id: 'recap-monthly',
         when: first,
-        title: `Your ${MONTHS[from.getMonth()]} recap is ready`,
-        body: `${moments(n)} in ${MONTHS[from.getMonth()]} · tap to look back`,
+        title: `How was your ${MONTHS[from.getMonth()]}?`,
+        body: `${moments(n)} in one month. See it all in one place.`,
         data: { recap: RECAP_TAB.monthly, monthOf: dateKey(from) },
       });
     }
@@ -184,8 +197,8 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
         out.push({
           id: `reminder-year-${dateKey(day)}`,
           when: at(day, LAST_YEAR_HOUR),
-          title: 'On this day last year',
-          body: 'You have a memory from a year ago today. Tap to see it.',
+          title: 'A year ago today…',
+          body: 'Something happened on this day last year. Want to see it?',
           data: { day: dateKey(yearAgo) },
         });
         lastNudge = i;
@@ -201,8 +214,8 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
         out.push({
           id: `reminder-quiet-${dateKey(day)}`,
           when,
-          title: "It's been a while",
-          body: 'What has happened since? A few words is enough.',
+          title: 'Your story has a gap',
+          body: 'A few words about the last few days, before they fade.',
           data: { log: true },
         });
         break; // one "while" is enough until they're back
@@ -211,8 +224,8 @@ export function plan(prefs: RecapPrefs, store: Store, now: Date): Planned[] {
       out.push({
         id: `reminder-${dateKey(day)}`,
         when,
-        title: 'Did you log today?',
-        body: LOG_LINES[day.getDate() % LOG_LINES.length],
+        title: LOG_TITLES[day.getDate() % LOG_TITLES.length],
+        body: LOG_LINES[(day.getDate() + 1) % LOG_LINES.length],
         data: { log: true },
       });
     }
@@ -284,8 +297,8 @@ export async function sendTestRecapNotification(): Promise<void> {
   const yesterday = addDays(at(new Date(), 0), -1);
   await Notifications.scheduleNotificationAsync({
     content: {
-      title: `Your ${WEEKDAYS[yesterday.getDay()]} recap is ready`,
-      body: `${moments(momentCount(store, yesterday, yesterday))} · tap to look back`,
+      title: `Remember your ${WEEKDAYS[yesterday.getDay()]}?`,
+      body: `${moments(momentCount(store, yesterday, yesterday))} from yesterday. Take a minute to live it again.`,
       data: { day: dateKey(yesterday) },
     },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL, seconds: 5 },
@@ -303,6 +316,7 @@ export function notificationTarget(data: Record<string, unknown> | undefined):
     return Math.round((new Date(y, m - 1, d).getTime() - at(new Date(), 0).getTime()) / 86400000);
   };
   if (data.log) return { pathname: '/log/text' };
+  if (typeof data.ask === 'string') return { pathname: '/chat', params: { ask: data.ask } };
   if (typeof data.day === 'string') return { pathname: `/day/${daysAgo(data.day)}` };
   if (typeof data.weekOf === 'string') {
     // Weeks start on Monday: how many weeks before this one it was.
