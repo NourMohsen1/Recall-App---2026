@@ -512,6 +512,23 @@ export default {
         return deny(400, 'Bad dates.');
       }
       const max = Math.min(8, Math.max(1, Number(q.max) || 5));
+
+      // Remembered: news about a past date doesn't change, and every
+      // tester opening the same day (or one opening it twice) would
+      // otherwise spend another Tavily search on it. A month for days that
+      // are well past, six hours while the reports are still coming in.
+      // Keyed by the search only, never by who asked; nothing personal is
+      // in it. Cloudflare's cache is per data centre, which is fine here.
+      const cacheKey = new Request(
+        `https://cache.recall.internal/search/news?q=${encodeURIComponent(q.query.trim().toLowerCase())}&from=${q.from}&to=${q.to}&max=${max}`,
+      );
+      const cache = (caches as unknown as { default: Cache }).default;
+      const remembered = await cache.match(cacheKey);
+      if (remembered) {
+        console.log('[search] from cache');
+        return new Response(remembered.body, { headers: { 'content-type': 'application/json' } });
+      }
+      const settled = q.to < new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
       const res = await fetch('https://api.tavily.com/search', {
         method: 'POST',
         headers: { authorization: `Bearer ${env.TAVILY_API_KEY}`, 'content-type': 'application/json' },
@@ -532,7 +549,7 @@ export default {
       const data = (await res.json()) as {
         results?: { title?: string; url?: string; content?: string; published_date?: string | null }[];
       };
-      return json({
+      const found = json({
         results: (data.results ?? []).map((r) => ({
           title: r.title ?? '',
           url: r.url ?? '',
@@ -540,6 +557,10 @@ export default {
           published: r.published_date ?? null,
         })),
       });
+      const keep = found.clone();
+      keep.headers.set('cache-control', `public, max-age=${settled ? 30 * 86400 : 6 * 3600}`);
+      await cache.put(cacheKey, keep).catch((e: unknown) => console.log(`[search] not cached: ${String(e)}`));
+      return found;
     }
 
     let upstream: string;

@@ -93,6 +93,17 @@ export async function setPhotoSync(on: boolean): Promise<void> {
 
 let quietSync: Promise<ImportResult | null> | null = null;
 
+// Who is watching the quiet sync: the Home card shows its progress while
+// the user's past comes in (src/components/ExplorePastCard.tsx).
+const syncWatchers = new Set<(p: ImportProgress) => void>();
+export function watchQuietSync(fn: (p: ImportProgress) => void): () => void {
+  syncWatchers.add(fn);
+  return () => syncWatchers.delete(fn);
+}
+export function quietSyncRunning(): boolean {
+  return quietSync !== null;
+}
+
 /** Brings in photos taken since the last sync, when Sync photos is on.
  *  Silent: nothing on screen waits for it. */
 export function syncNewPhotosIfOn(): Promise<ImportResult | null> {
@@ -102,7 +113,7 @@ export function syncNewPhotosIfOn(): Promise<ImportResult | null> {
     const perm = await MediaLibrary.getPermissionsAsync();
     if (!perm.granted) return null;
     const started = Date.now();
-    const res = await importRecentPhotos(SYNC_DAYS);
+    const res = await importRecentPhotos(SYNC_DAYS, (p) => syncWatchers.forEach((fn) => fn(p)));
     if (res.imported > 0) {
       console.log(`[photos] synced ${res.imported} new photos across ${res.days} days in ${Math.round((Date.now() - started) / 1000)}s`);
     }

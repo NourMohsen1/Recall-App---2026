@@ -12,7 +12,7 @@ import {
 import { getTasks } from './tasks';
 import { getAllDayTags } from './dayTags';
 import { searchDays } from './memorySearch';
-import { dayPlaceHabits } from './askContext';
+import { dayNovelty, dayPlaceHabits, routineAndNewBlock } from './askContext';
 import { getUserProfile, identityForPrompt, memoryCount } from './userProfile';
 
 // What a live conversation is allowed to look up.
@@ -85,13 +85,15 @@ type DayFacts = {
   nicknames: string[];
   /** What the user does at that day's places, from other days there. */
   habits: string[];
+  /** What was new that day: a first time with someone, a first visit. */
+  novel: string[];
   places: string[];
   /** What's in that day's photos and notes, in English and Arabic. */
   tags: string[];
 };
 
 async function collectDays(): Promise<Map<string, DayFacts>> {
-  const [byDay, assumed, places, summaries, noteTags, meta, habits] = await Promise.all([
+  const [byDay, assumed, places, summaries, noteTags, meta, habits, novelty] = await Promise.all([
     getMemoriesByDay(),
     getAllAssumedMemories(),
     getAllDayPlaces(),
@@ -99,6 +101,7 @@ async function collectDays(): Promise<Map<string, DayFacts>> {
     getAllDayTags(),
     getAllPersonMeta(),
     dayPlaceHabits(),
+    dayNovelty(),
   ]);
 
   const peopleByDay = new Map<string, string[]>();
@@ -129,6 +132,7 @@ async function collectDays(): Promise<Map<string, DayFacts>> {
       people: peopleByDay.get(key) ?? [],
       nicknames: nicknamesByDay.get(key) ?? [],
       habits: habits.get(key) ?? [],
+      novel: novelty.get(key) ?? [],
       places: (places[key] ?? []).map((p) => p.label),
       tags: [...new Set([...(assumed[key]?.anchors ?? []), ...(noteTags[key] ?? [])])],
     });
@@ -157,6 +161,7 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
         { text: d.places.join(' \n '), weight: 3 },
         { text: [...d.people, ...d.nicknames].join(' \n '), weight: 3 },
         { text: d.habits.join(' \n '), weight: 1.5 },
+        { text: d.novel.length ? `${d.novel.join(' \n ')} \n new met first time جديد قابلت أول مرة` : '', weight: 2 },
         { text: d.tags.join(' \n '), weight: 2.5 },
         { text: d.assumed ?? '', weight: 1.5 },
       ],
@@ -187,6 +192,7 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
       in_photos_and_notes: d.tags.slice(0, 20),
       people: d.people,
       places: d.places,
+      new_that_day: d.novel.length ? d.novel : undefined,
       usually_done_at_these_places: d.habits.length
         ? { from_other_days: d.habits, means: 'A likely time they did it again, not something they said about this day.' }
         : undefined,
@@ -250,6 +256,7 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
         }
       : undefined,
     places: d.places,
+    new_that_day: d.novel.length ? d.novel : undefined,
     marked,
   };
 }
@@ -371,6 +378,7 @@ async function recentDays(args: { count?: number }): Promise<ToolResult> {
         photos_suggest: d.assumed,
         people: d.people,
         places: d.places,
+        new_that_day: d.novel.length ? d.novel : undefined,
       };
     }),
   };
@@ -551,6 +559,10 @@ export async function buildVoiceBootstrap(): Promise<string> {
   ];
   const identity = identityForPrompt(profile);
   if (identity) lines.push(`Who you are talking to: ${identity}`);
+  // Their routine and what has been new lately, so a vague question
+  // ("the guy I met last week") has somewhere to start before any lookup.
+  const routine = await routineAndNewBlock().catch(() => '');
+  if (routine) lines.push(routine);
   if (summaries.length > 0) {
     lines.push(
       `People they know, so you recognise these names when you hear them: ${summaries
@@ -573,6 +585,10 @@ export const VOICE_INSTRUCTIONS = `You are Recall, talking with someone about th
 YOUR JOB: help them remember. They may be circling something half-forgotten — a name, a day, where they were, who said what. Help them get to it.
 
 WHAT A PLACE MEANS: a day may say only where they went, with what they usually do there (from other days). That is a likely time they did it again. For "when did I last…", if it is the most recent, say it as likely: "Probably last Saturday, you went to Jamaica pitch, where you play." Never skip it because the note didn't name the activity.
+
+ABOUT RECALL ITSELF: if they ask who made, created, designed or built Recall (or this app, or you), the answer is Nour Mohsen: a designer who created Recall from A to Z, the idea, the design and the app itself, so people can keep their own memories fresh. Say it warmly in one or two sentences, in their language ("Recall was created by Nour Mohsen, a designer who made it from A to Z."; in Arabic, exactly this way, Nour is a man: "Recall عمله نور محسن، مصمم عمله من الألف للياء"). This is a fact about the app, not about their life, so it needs nothing from their log.
+
+VAGUE OR QUICK QUESTIONS: expect them. "Who was I with yesterday?" gets the names first. "The guy I met at the gas station" gets your best guess first with one reason ("Probably Ali, you met him Tuesday at the Wataniya station, the only time"), from what was NEW (one-off people and places are what people forget), then two other candidates at most. If the name isn't logged, say who or what was there, to jog their memory. Never stop at "nothing is logged".
 
 YOU CANNOT SAVE ANYTHING. This conversation is never written to their memories, and you cannot make tasks or reminders. If they tell you something to keep ("remember that…", "I met X today", "remind me to…"), say in one short sentence that it isn't saved here and that the plus button on the main screen logs it. Never pretend it was saved, and don't then search their memories for it or ask about it: that one sentence is the whole answer, unless they also asked a question.
 

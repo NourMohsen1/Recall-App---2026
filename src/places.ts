@@ -121,6 +121,11 @@ export type DayPlace = {
 /** Everything the Places page and a place's profile need. */
 export type PlaceSummary = Place & {
   label: string;
+  /** On the Places page. A spot known only from where the phone was when
+   *  the user logged something stays off it until it comes up on a second
+   *  day: one log written on a pavement is not a place (Nour, Oct 2026). It
+   *  is still on its day, in Ask and everywhere else. */
+  listed: boolean;
   /** Every day the user was there, oldest first. */
   days: string[];
   /** Photos taken there, newest first. */
@@ -978,8 +983,10 @@ async function buildWorld(): Promise<World> {
         ? uniq(sortedDays.slice().reverse().flatMap((d) => photosOnDay.get(d) ?? [])).slice(0, 30)
         : [];
     const photoUris = uniq(photos.map((p) => p.uri));
+    const listed = place.named || !!place.addedByUser || photoUris.length > 0 || sortedDays.length >= 2;
     summaries.set(place.id, {
       ...place,
+      listed,
       label: place.name || UNNAMED,
       days: sortedDays,
       photos: photoUris,
@@ -1027,10 +1034,11 @@ async function buildWorld(): Promise<World> {
   return { summaries, byDay };
 }
 
-/** Every place, most recently visited first. */
-export async function getPlaces(): Promise<PlaceSummary[]> {
+/** The user's places, most recently visited first: the Places page.
+ *  `all` adds the one-off spots it leaves out (see `listed`). */
+export async function getPlaces(opts: { all?: boolean } = {}): Promise<PlaceSummary[]> {
   const { summaries } = await world();
-  return [...summaries.values()].sort(
+  return [...summaries.values()].filter((p) => opts.all || p.listed).sort(
     (a, b) => (b.days[b.days.length - 1] ?? '').localeCompare(a.days[a.days.length - 1] ?? '') ||
       b.days.length - a.days.length,
   );

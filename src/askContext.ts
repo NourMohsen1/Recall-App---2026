@@ -105,6 +105,10 @@ type DayRecord = {
    *  جامايكا: لعبت كورة | لعبت كورة مع الشباب". A day that only says
    *  "went to Jamaica pitch" is then still a likely football day. */
   placeHabits: string[];
+  /** What was new that day: a first time with someone, a first visit, or
+   *  someone met only that once. Vague questions ("the guy I met at the
+   *  gas station") most often mean these; routine is what people remember. */
+  novel: string[];
   /** Smart Icon Reminders on that day — "medicine: أخدت الدوا". Written
    *  from what the user logged or added themselves, so these are facts. */
   markers: string[];
@@ -118,7 +122,20 @@ type DayRecord = {
   photoCount: number;
 };
 
-async function buildDayIndex(): Promise<Map<string, DayRecord>> {
+// One question builds the index several times (search, context, the
+// routine block); one build serves them all for a few seconds.
+let dayIndexCache: { at: number; built: Promise<Map<string, DayRecord>> } | null = null;
+function buildDayIndex(): Promise<Map<string, DayRecord>> {
+  if (dayIndexCache && Date.now() - dayIndexCache.at < 5000) return dayIndexCache.built;
+  const built = buildDayIndexNow();
+  dayIndexCache = { at: Date.now(), built };
+  built.catch(() => {
+    dayIndexCache = null;
+  });
+  return built;
+}
+
+async function buildDayIndexNow(): Promise<Map<string, DayRecord>> {
   const days = new Map<string, DayRecord>();
   const get = (key: string): DayRecord => {
     const existing = days.get(key);
@@ -131,6 +148,7 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
       places: [],
       placeIds: [],
       placeHabits: [],
+      novel: [],
       markers: [],
       tags: [],
       photoCount: 0,
@@ -214,7 +232,7 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
   // other visit to Jamaica pitch was football. Each day gets the habits of
   // its places from the OTHER days, so it is found by the activity and the
   // answer can call it a likely time, never a certain one.
-  const placesById = new Map((await getPlaces()).map((p) => [p.id, p]));
+  const placesById = new Map((await getPlaces({ all: true })).map((p) => [p.id, p]));
   for (const [key, rec] of days) {
     for (const id of new Set(rec.placeIds)) {
       const place = placesById.get(id);
@@ -229,7 +247,76 @@ async function buildDayIndex(): Promise<Map<string, DayRecord>> {
     }
   }
 
+  // What was new on each day. Not on the user's first week in the app,
+  // when everything is "new" only because nothing came before it.
+  const today = isoDate(new Date());
+  const logged = [...days.keys()].filter((k) => k <= today).sort();
+  const settled = logged.length ? shiftDay(logged[0], 7) : today;
+  const mark = (day: string, what: string) => {
+    if (day < settled || day > today) return;
+    const rec = days.get(day);
+    if (rec && !rec.novel.includes(what)) rec.novel.push(what);
+  };
+  for (const person of await getPeopleSummaries()) {
+    const seen = person.days.filter((d) => d <= today).sort();
+    if (seen.length === 1) mark(seen[0], `met ${person.name} (the only day with them)`);
+    else if (seen.length > 1) mark(seen[0], `first time with ${person.name}`);
+  }
+  for (const place of placesById.values()) {
+    const been = place.days.filter((d) => d <= today);
+    if (been.length === 1) mark(been[0], `went to ${place.label} (the only visit)`);
+    else if (been.length > 1) mark(been[0], `first time at ${place.label}`);
+  }
+
   return days;
+}
+
+/** The user's routine and what has been new lately, worked out from their
+ *  days and kept current as they log: what Ask and live voice know about
+ *  them before a question is asked. */
+export async function routineAndNewBlock(): Promise<string> {
+  const days = await buildDayIndex();
+  const today = isoDate(new Date());
+  const since = shiftDay(today, -60);
+  const lines: string[] = [];
+
+  const places = (await getPlaces({ all: true }))
+    .map((p) => ({ p, recent: p.days.filter((d) => d >= since && d <= today) }))
+    .filter(({ recent }) => recent.length >= 3)
+    .sort((a, b) => b.recent.length - a.recent.length)
+    .slice(0, 6)
+    .map(({ p, recent }) => {
+      const wd = usualWeekday(recent);
+      return `${p.label} (${recent.length} times in 2 months${wd ? `, usually ${wd}s` : ''})`;
+    });
+  if (places.length) lines.push(`Places they go regularly: ${places.join('; ')}.`);
+
+  const people = (await getPeopleSummaries())
+    .map((p) => ({ p, recent: p.days.filter((d) => d >= since && d <= today) }))
+    .filter(({ recent }) => recent.length >= 3)
+    .sort((a, b) => b.recent.length - a.recent.length)
+    .slice(0, 6)
+    .map(({ p, recent }) => `${p.name} (${recent.length} days in 2 months)`);
+  if (people.length) lines.push(`People they see often: ${people.join('; ')}.`);
+
+  const recentNew = [...days.entries()]
+    .filter(([k, r]) => k >= shiftDay(today, -21) && k <= today && r.novel.length > 0)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .slice(0, 10)
+    .map(([k, r]) => `- ${dayLabel(k)}: ${r.novel.join('; ')}`);
+  if (recentNew.length) {
+    lines.push(
+      `New in the last three weeks, newest first (one-off people and places are the ones people forget, so a vague question about someone or somewhere "I met / went to" most likely means one of these):\n${recentNew.join('\n')}`,
+    );
+  }
+  return lines.length ? `WHAT YOU KNOW ABOUT THEIR LIFE (routine vs new):\n${lines.join('\n')}` : '';
+}
+
+/** Day → what was new that day. Live voice reads the same (realtimeTools). */
+export async function dayNovelty(): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const [key, rec] of await buildDayIndex()) if (rec.novel.length) out.set(key, rec.novel);
+  return out;
 }
 
 /** Day → what the user does at that day's places, from their other days
@@ -322,6 +409,9 @@ function fullDayBlock(key: string, rec: DayRecord, matched?: string[]): string {
     );
   }
   if (rec.places.length > 0) lines.push(`Places that day: ${rec.places.join(', ')}`);
+  if (rec.novel.length > 0) {
+    lines.push(`NEW THAT DAY (not their routine): ${rec.novel.join('; ')}`);
+  }
   if (rec.placeHabits.length > 0) {
     lines.push(
       `What the user did at those places on OTHER days (not said about this day; makes this day a LIKELY, not certain, time they did it again): ${rec.placeHabits.join(' / ')}`,
@@ -345,6 +435,7 @@ function indexLine(key: string, rec: DayRecord): string {
   // MIGHT appear is worth looking at — but it must not arrive here looking
   // like a day where they definitely did.
   const extras = [
+    ...rec.novel.map((n) => `NEW: ${n}`),
     ...rec.markers,
     ...rec.places,
     ...rec.people,
@@ -384,6 +475,8 @@ function searchDoc(key: string, rec: DayRecord): SearchDoc {
       { text: [...rec.people, ...rec.peopleAlso].join(' \n '), weight: 3 },
       // Weaker than the day's own words: a likely activity, not a said one.
       { text: rec.placeHabits.join(' \n '), weight: 1.5 },
+      // A new person or place, found by "met", "new", "first time" too.
+      { text: rec.novel.length ? `${rec.novel.join(' \n ')} \n new met first time جديد قابلت أول مرة` : '', weight: 2 },
       { text: rec.tags.join(' \n '), weight: 2.5 },
       { text: rec.markers.join(' \n '), weight: 2 },
       { text: rec.assumed ?? '', weight: 1.5 },
@@ -508,6 +601,9 @@ export async function buildMemoryContext(
 
   const placeLines = await placesBlock();
   if (placeLines) sections.push(placeLines);
+
+  const routine = await routineAndNewBlock();
+  if (routine) sections.push(routine);
 
   const days = await buildDayIndex();
 

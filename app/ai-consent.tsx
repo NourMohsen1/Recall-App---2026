@@ -47,6 +47,12 @@ export default function AiConsentScreen() {
       if (router.canGoBack()) router.back();
       return;
     }
+    // In setup: "Explore your past" next, whatever the answer; it leads on
+    // to the photo question (app/explore-past.tsx).
+    if (dark) {
+      router.replace('/explore-past');
+      return;
+    }
     // Yes leads on to the photo question, if that hasn't been answered.
     if (picked === 'on' && (await getPhotoReading()) === null) {
       router.replace({ pathname: '/photo-reading', params: { from: dark ? 'onboarding' : 'home' } });

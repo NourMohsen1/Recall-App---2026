@@ -162,6 +162,22 @@ it skipped 10 Oct before, leads with it now. Without that block it called Ketch'
 different events. `[ask] people:` logs it. Ask's answers never use the
 long dash.
 
+**Ask knows routine from new** (`routineAndNewBlock`, `novel` in
+`src/askContext.ts`, Oct 2026). Each day carries what was new on it (first
+time with someone, only visit somewhere), and every Ask question and live
+call starts with the user's routine (places and people of the last two
+months) and the last three weeks' new things. Vague questions ("the guy I
+met last week") lead with those; quick ones get the answer first. Measured
+on a test phone: six vague questions answered right in 4 to 6 s. Asked who
+made Recall, both answer "Nour Mohsen, a designer who made it from A to Z"
+(in Arabic: نور محسن، مصمم).
+
+**Explore your past** (`src/explorePast.ts`): setup offers to bring in the
+past year of photos right after the AI question; Home asks once anyone
+who never saw that. A spot known only from where the phone was when a log
+was written stays off the Places page until a second day (`listed`).
+Tavily searches are cached on the server (a month for settled days).
+
 **+ saves, Ask answers** (Oct 2026). A tester thought live voice would
 save what he said and make tasks. It never does: only the + (talk, type,
 photos) logs. The Home tour (`src/components/CoachTour.tsx`, five tips on the real
