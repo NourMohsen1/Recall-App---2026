@@ -178,6 +178,29 @@ who never saw that. A spot known only from where the phone was when a log
 was written stays off the Places page until a second day (`listed`).
 Tavily searches are cached on the server (a month for settled days).
 
+**Live voice: how it takes turns** (`src/realtimeVoice.ts`, Oct 2026).
+WebRTC, `gpt-realtime-2.1`, voice `marin` (OpenAI's own recommendation
+for both). Turn detection is `server_vad` with **800 ms** of silence —
+measured, not assumed: recordings of Egyptian, English and mixed
+questions with natural 0.6–0.9 s pauses, streamed in real time, gave 9
+mid-sentence false starts on OpenAI's default (500 ms), 8 on
+`semantic_vad` medium (twice no answer at all), and 0 at 800 ms,
+answering 1.1–1.4 s after the end. A false start is heard as Recall
+starting to talk and going quiet. Don't switch to semantic VAD without
+re-measuring (`scratchpad/rt/vad.mjs` pattern). `far_field` noise
+reduction (it's on the loudspeaker). The orb's "speaking" comes from
+`output_audio_buffer.started/stopped`, never from the audio track
+arriving (that once made a tap meant to interrupt hang up). The stop tap
+sends `response.cancel` and `output_audio_buffer.clear`. A dropped line
+reconnects by itself twice, handing the last 20 turns to the new session
+as text items. After a lookup a system note says the filler was already
+said (it said a second one about half the time). The instructions add
+personality, listening (half sentences, self-corrections, change of
+direction), interruptions, keeping the thread, Egyptian Arabic with
+English words kept, and "talk about their life, not their data".
+Measured end to end on a test phone (11 spoken scenarios, real tools):
+all answered right, in the language asked, including French.
+
 **+ saves, Ask answers** (Oct 2026). A tester thought live voice would
 save what he said and make tasks. It never does: only the + (talk, type,
 photos) logs. The Home tour (`src/components/CoachTour.tsx`, five tips on the real

@@ -8,6 +8,7 @@ import {
 import { setAudioModeAsync } from 'expo-audio';
 
 import { backendToken, backendUrl } from './backend';
+import type { VoiceTurn } from './voiceSession';
 import {
   REALTIME_TOOLS,
   VOICE_INSTRUCTIONS,
@@ -53,7 +54,8 @@ export type LiveEvent =
   | { type: 'looked-up'; label: string }
   /** What a lookup found, for the cards on screen (src/liveCards.ts). */
   | { type: 'found'; tool: string; output: unknown }
-  | { type: 'ended'; reason: 'user' | 'time' | 'error'; detail?: string };
+  /** 'dropped': the line went (signal, network); the screen reconnects. */
+  | { type: 'ended'; reason: 'user' | 'time' | 'error' | 'dropped'; detail?: string };
 
 export type LiveSession = {
   /** Stop talking and hang up. Safe to call twice. */
@@ -72,24 +74,58 @@ export type LiveLanguage = 'auto' | 'ar' | 'en';
 // ends: the words it hears are read as that language, and it answers in
 // it whatever it thinks it heard.
 const LANGUAGE_RULE: Record<LiveLanguage, string> = {
-  auto: 'LANGUAGE: follow the user. Answer in the language of their last full sentence; when they mix Arabic and English, answer in Egyptian Arabic with their English words kept as they said them.',
+  auto: 'LANGUAGE: follow the user, turn by turn, in any language they speak. Answer in the language of their latest turn, and switch the moment they switch, without comment. Arabic is Egyptian colloquial Arabic, the way people talk in Cairo, never Modern Standard Arabic unless they ask for it. When they mix Egyptian and English in one sentence ("روحت الـ gym امبارح"), answer the same way: Egyptian, with their English words kept in English, never translated. A single English word in an Arabic sentence does not make it English.',
   ar: 'LANGUAGE: always speak Egyptian colloquial Arabic, the way people talk in Cairo, never Modern Standard Arabic, whatever language you think you heard. English names and words the user uses stay as they say them.',
   en: 'LANGUAGE: always speak English, whatever language you think you heard. Names keep their own spelling and sound.',
 };
 
-function sessionSettings(language: LiveLanguage, bootstrap: string) {
+// When the user has finished speaking. Measured, not assumed (Oct 2026):
+// recordings of Egyptian, English and mixed questions with natural pauses
+// of 0.6 to 0.9 s, streamed to the model in real time, counting answers
+// that started mid-sentence. Each false start is heard on the phone as
+// Recall starting to talk and going quiet again.
+//   OpenAI's default (silence 500 ms):  9 false starts in 4 recordings
+//   semantic_vad, medium:               8, and twice no answer at all
+//   semantic_vad, low:                  4, and twice no answer at all
+//   silence 800 ms:                     0, answering 1.1–1.4 s after the end
+// 1000 ms was no better and 0.2 s slower. A thinking pause longer than this
+// still ends a turn; the instructions handle that ("mm?", and let them go on).
+const TURN_DETECTION = {
+  type: 'server_vad',
+  threshold: 0.5,
+  prefix_padding_ms: 300,
+  silence_duration_ms: 800,
+  create_response: true,
+  // Talking over Recall cuts it off; the server drops the audio not yet
+  // played, so what it remembers saying is what the user heard.
+  interrupt_response: true,
+} as const;
+
+/** The session as the model gets it. Exported for the test harness. */
+export function sessionSettings(language: LiveLanguage, bootstrap: string) {
   return {
     type: 'realtime',
     instructions: `${VOICE_INSTRUCTIONS}\n\n${LANGUAGE_RULE[language]}\n\n${bootstrap}`,
     audio: {
       input: {
+        turn_detection: TURN_DETECTION,
+        // The phone is on the loudspeaker, held away (routeToSpeaker), so
+        // far-field: room noise and the speaker's own sound are less often
+        // taken for the user starting to talk.
+        noise_reduction: { type: 'far_field' },
         // Without this the model HEARS the user but never writes down what
         // they said, so only its own half of the conversation could be saved
         // or shown. Mishearing is the commonest reason a spoken answer is
         // wrong, and out loud there is no telling a misheard question from a
         // bad answer unless both are on screen. A chosen language is a hint
         // to it (accepted as "languages": ["ar"], checked against OpenAI).
-        transcription: { model: 'gpt-live-transcribe', ...(language === 'auto' ? {} : { language }) },
+        transcription: {
+          model: 'gpt-live-transcribe',
+          // What it will hear, so a mixed sentence isn't forced into one
+          // language on screen. Only a hint; the model hears the audio.
+          prompt: 'Often Egyptian Arabic and English mixed in one sentence; any other language is possible.',
+          ...(language === 'auto' ? {} : { language }),
+        },
       },
     },
   };
@@ -160,9 +196,19 @@ async function routeToSpeaker(when: string): Promise<void> {
   }
 }
 
+/** A call picked up again after the line dropped: what was said so far,
+ *  given back to the new session so it carries on rather than starting
+ *  over, and how much of the ten minutes is left. */
+export type Resume = { turns: VoiceTurn[]; remainingMs: number };
+
+// The last few exchanges are enough to carry on; the whole call would only
+// cost more on every answer.
+const RESUME_TURNS = 20;
+
 export async function startLiveVoice(
   onEvent: (e: LiveEvent) => void,
   initialLanguage: LiveLanguage = 'auto',
+  resume?: Resume,
 ): Promise<LiveSession> {
   let language = initialLanguage;
   onEvent({ type: 'connecting' });
@@ -178,12 +224,15 @@ export async function startLiveVoice(
   let ended = false;
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
+  let dropTimer: ReturnType<typeof setTimeout> | undefined;
+  const state = { responding: false, speaking: false };
 
-  const cleanup = (reason: 'user' | 'time' | 'error', detail?: string) => {
+  const cleanup = (reason: 'user' | 'time' | 'error' | 'dropped', detail?: string) => {
     if (ended) return;
     ended = true;
     clearTimeout(warnTimer);
     clearTimeout(endTimer);
+    clearTimeout(dropTimer);
     mic?.getTracks().forEach((t) => t.stop());
     try {
       pc.close();
@@ -204,21 +253,34 @@ export async function startLiveVoice(
     // The model's voice arrives as an ordinary remote track; react-native-webrtc
     // plays it through the phone's audio session without anything further.
     let voiceRouted = false;
+    // (The track arrives once, when the call connects, not when Recall
+    // talks: "speaking" comes from output_audio_buffer.started instead.
+    // Taken from here, the screen showed "speaking" while it listened, and
+    // a tap meant to cut it off hung up.)
     (pc as unknown as { ontrack: (e: unknown) => void }).ontrack = () => {
       if (!voiceRouted) {
         voiceRouted = true;
         void routeToSpeaker('voice arrived');
       }
-      onEvent({ type: 'speaking' });
     };
     (pc as unknown as { onconnectionstatechange: () => void }).onconnectionstatechange = () => {
-      if ((pc as unknown as { connectionState?: string }).connectionState === 'connected') {
+      const now = (pc as unknown as { connectionState?: string }).connectionState;
+      console.log(`[live] connection ${now}`);
+      if (now === 'connected') {
+        clearTimeout(dropTimer);
         void routeToSpeaker('connected');
         // Once more after the audio has settled, in case WebRTC set the
         // session again while starting the audio.
         setTimeout(() => {
           if (!ended) void routeToSpeaker('settled');
         }, 1500);
+      } else if (now === 'failed') {
+        cleanup('dropped', 'The line dropped.');
+      } else if (now === 'disconnected') {
+        // Often back by itself within a second or two (a Wi-Fi to 4G hand
+        // over). Gone for longer, the screen reconnects with what was said.
+        clearTimeout(dropTimer);
+        dropTimer = setTimeout(() => cleanup('dropped', 'The line dropped.'), 4000);
       }
     };
 
@@ -233,6 +295,24 @@ export async function startLiveVoice(
           session: { ...sessionSettings(language, bootstrap), tools: REALTIME_TOOLS, tool_choice: 'auto' },
         }),
       );
+      // Picking up a dropped call: the conversation so far, as plain text
+      // turns, so "and what about her?" still means who it meant. Nothing
+      // is said until the user speaks.
+      if (resume?.turns.length) {
+        for (const t of resume.turns.slice(-RESUME_TURNS)) {
+          channel.send(
+            JSON.stringify({
+              type: 'conversation.item.create',
+              item: {
+                type: 'message',
+                role: t.role,
+                content: [{ type: t.role === 'user' ? 'input_text' : 'output_text', text: t.text }],
+              },
+            }),
+          );
+        }
+        console.log(`[live] picked up again with ${Math.min(resume.turns.length, RESUME_TURNS)} turns`);
+      }
       onEvent({ type: 'listening' });
     };
 
@@ -244,7 +324,7 @@ export async function startLiveVoice(
       } catch {
         return;
       }
-      void handleEvent(msg, channel, onEvent);
+      void handleEvent(msg, channel, onEvent, state);
     };
 
     const offer = await pc.createOffer({});
@@ -262,6 +342,7 @@ export async function startLiveVoice(
 
     // The cap. A spoken warning first, because a call that simply stops
     // feels like a fault rather than a limit.
+    const total = resume ? Math.max(resume.remainingMs, 30_000) : MAX_SESSION_MS;
     warnTimer = setTimeout(() => {
       if (ended) return;
       channel.send(
@@ -273,13 +354,18 @@ export async function startLiveVoice(
           },
         }),
       );
-    }, WARN_AT_MS);
-    endTimer = setTimeout(() => cleanup('time'), MAX_SESSION_MS);
+    }, Math.max(total - (MAX_SESSION_MS - WARN_AT_MS), 0));
+    endTimer = setTimeout(() => cleanup('time'), total);
 
     return {
       end: () => cleanup('user'),
       interrupt: () => {
-        if (!ended) channel.send(JSON.stringify({ type: 'response.cancel' }));
+        if (ended) return;
+        // Stop thinking, and stop the sound already on its way: over
+        // WebRTC the model sends audio ahead of playback, and cancelling
+        // alone let a second or two of it play on.
+        channel.send(JSON.stringify({ type: 'response.cancel' }));
+        channel.send(JSON.stringify({ type: 'output_audio_buffer.clear' }));
       },
       setLanguage: (next) => {
         if (ended || next === language) return;
@@ -299,8 +385,48 @@ async function handleEvent(
   msg: Record<string, unknown>,
   channel: { send: (data: string) => void },
   onEvent: (e: LiveEvent) => void,
+  state: { responding: boolean; speaking: boolean },
 ): Promise<void> {
   const type = String(msg.type ?? '');
+
+  // Whose turn it is, from what is actually happening: Recall's voice
+  // starting and stopping on the phone, the user starting and stopping.
+  if (type === 'output_audio_buffer.started') {
+    state.speaking = true;
+    onEvent({ type: 'speaking' });
+    return;
+  }
+  // A safety net: the first words of an answer mean it is speaking, should
+  // the playback event above ever not arrive.
+  if (type === 'response.output_audio_transcript.delta') {
+    if (!state.speaking) {
+      state.speaking = true;
+      onEvent({ type: 'speaking' });
+    }
+    return;
+  }
+  if (type === 'output_audio_buffer.stopped' || type === 'output_audio_buffer.cleared') {
+    state.speaking = false;
+    onEvent({ type: 'listening' });
+    return;
+  }
+  if (type === 'input_audio_buffer.speech_stopped') {
+    onEvent({ type: 'thinking' });
+    return;
+  }
+  if (type === 'response.created') {
+    state.responding = true;
+    return;
+  }
+
+  // Said out loud by nobody, but the only way to see why a call went wrong.
+  if (type === 'error') {
+    const err = msg.error as { code?: string; message?: string } | undefined;
+    // Cancelling when nothing is playing is harmless and common.
+    if (err?.code === 'response_cancel_not_active') return;
+    console.warn(`[live] error from OpenAI: ${err?.code ?? ''} ${(err?.message ?? '').slice(0, 200)}`);
+    return;
+  }
 
   // What the user said, as the model heard it. Worth showing: mishearing is
   // the commonest reason a spoken answer is wrong, and it is invisible
@@ -318,13 +444,16 @@ async function handleEvent(
   }
 
   if (type === 'input_audio_buffer.speech_started') {
+    state.speaking = false;
     onEvent({ type: 'listening' });
     return;
   }
 
   // A finished response may contain calls to go and look something up.
   if (type === 'response.done') {
-    const response = msg.response as { output?: unknown[] } | undefined;
+    state.responding = false;
+    const response = msg.response as { output?: unknown[]; status?: string } | undefined;
+    if (response?.status === 'cancelled') console.log('[live] answer cut off (the user spoke)');
     const calls = (response?.output ?? []).filter(
       (o): o is { type: string; name: string; arguments: string; call_id: string } =>
         !!o && typeof o === 'object' && (o as { type?: string }).type === 'function_call',
@@ -365,7 +494,27 @@ async function handleEvent(
         }),
       );
     }
-    // Now that it has what it asked for, let it answer.
+    // Now that it has what it asked for, let it answer: unless the user
+    // has already started something new, which the answer under way will
+    // cover. Asking for a second one then was refused, or answered twice.
+    if (state.responding) {
+      console.log('[live] the user moved on during the lookup; not answering the old question');
+      return;
+    }
+    // It has already said its "one sec" before the first lookup. Told
+    // here, at the one moment it would otherwise say another: measured, it
+    // said a second filler ("ok, going through the days now…") before a
+    // second lookup about half the time, which is what sounded scripted.
+    channel.send(
+      JSON.stringify({
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'system',
+          content: [{ type: 'input_text', text: 'You already said your short filler for this question. Now either answer, or call another tool without saying anything first.' }],
+        },
+      }),
+    );
     channel.send(JSON.stringify({ type: 'response.create' }));
   }
 }

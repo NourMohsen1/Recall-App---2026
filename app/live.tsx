@@ -10,7 +10,7 @@ import { offsetOfDay } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession } from '../src/chatSessions';
-import { liveVoiceAvailable, startLiveVoice, type LiveLanguage, type LiveSession } from '../src/realtimeVoice';
+import { liveVoiceAvailable, startLiveVoice, type LiveLanguage, type LiveSession, type Resume } from '../src/realtimeVoice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '../src/theme';
@@ -138,6 +138,17 @@ export default function LiveConversation() {
     };
   }, []);
 
+  // The same turns, readable from inside the call's event handler (which
+  // would otherwise see the list as it was when the call began).
+  const turnsRef = useRef<VoiceTurn[]>([]);
+  useEffect(() => {
+    turnsRef.current = turns;
+  }, [turns]);
+  // When this call began, for what's left of its ten minutes after a
+  // reconnect, and how many times it has reconnected.
+  const callStarted = useRef(0);
+  const reconnects = useRef(0);
+
   const push = useCallback((turn: VoiceTurn) => {
     setTurns((prev) => [...prev, turn]);
     requestAnimationFrame(() => scroller.current?.scrollToEnd({ animated: true }));
@@ -160,17 +171,22 @@ export default function LiveConversation() {
   // Start talking. Everything after this is driven by events from the
   // model rather than by taps: it decides when the user has finished
   // speaking, and it can be interrupted by them starting again.
-  const start = async () => {
+  const start = async (resume?: Resume) => {
     setError(null);
     setPhase('opening');
-    // A new thread each time the orb is tapped from idle. Picking up where
-    // a previous conversation left off is a different feature; this one
-    // just has to not lose anything.
-    sessionId.current = newSessionId();
-    question.current = 0;
-    cardsByQuestion.current = {};
-    newQuestion.current = true;
-    setCards([]);
+    if (!resume) {
+      // A new thread each time the orb is tapped from idle. Picking up where
+      // a previous conversation left off is a different feature; this one
+      // just has to not lose anything. (A dropped line is picked up again
+      // below, in the same thread.)
+      sessionId.current = newSessionId();
+      question.current = 0;
+      cardsByQuestion.current = {};
+      newQuestion.current = true;
+      setCards([]);
+      callStarted.current = Date.now();
+      reconnects.current = 0;
+    }
     try {
       session.current = await startLiveVoice((e) => {
         switch (e.type) {
@@ -218,15 +234,28 @@ export default function LiveConversation() {
             break;
           case 'ended':
             session.current = null;
+            // The line dropped: pick the same call up again, twice at most,
+            // with what has been said so far. Signal comes and goes; a call
+            // that just died would lose the thread of the conversation.
+            if (e.reason === 'dropped' && reconnects.current < 2) {
+              reconnects.current += 1;
+              const remainingMs = 10 * 60 * 1000 - (Date.now() - callStarted.current);
+              console.log(`[live] line dropped; reconnecting (${reconnects.current}) with ${turnsRef.current.length} turns`);
+              setPhase('opening');
+              setTimeout(() => void start({ turns: turnsRef.current, remainingMs }), 800);
+              break;
+            }
             setPhase('idle');
-            if (e.reason === 'time') {
+            if (e.reason === 'dropped') {
+              setError('The connection dropped. Tap to start again.');
+            } else if (e.reason === 'time') {
               setError('That conversation reached ten minutes. Tap to start another.');
             } else if (e.reason === 'error') {
               setError(e.detail ?? 'The conversation dropped.');
             }
             break;
         }
-      }, language);
+      }, language, resume);
     } catch (e) {
       session.current = null;
       setPhase('idle');
