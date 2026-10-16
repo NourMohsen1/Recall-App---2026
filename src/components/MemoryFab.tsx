@@ -5,6 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { ICONS } from '../images';
 import { registerCoachTarget } from '../coachTargets';
+import { FAB_OVERLAP, useAppNavHeight } from '../navBar';
 import { colors, fonts } from '../theme';
 import { makeStyles, useColors } from '../appearance';
 
@@ -34,6 +35,8 @@ const tick = (style: Haptics.ImpactFeedbackStyle) => Haptics.impactAsync(style).
 export default function MemoryFab() {
   const c = useColors();
   const styles = useStyles();
+  // The + stands on the bar the same way on every phone, home line or not.
+  const fabBottom = useAppNavHeight() - FAB_OVERLAP;
   const router = useRouter();
   // The logging screen needs to know which tab to return to (see useReturnTo).
   const pathname = usePathname();
@@ -165,7 +168,7 @@ export default function MemoryFab() {
           <Animated.View
             key={a.key}
             pointerEvents={open ? 'box-none' : 'none'}
-            style={[styles.slot, { opacity: openAnim, transform: [{ translateX }, { translateY }, { scale }] }]}
+            style={[styles.slot, { bottom: fabBottom + (FAB - BUBBLE) / 2, opacity: openAnim, transform: [{ translateX }, { translateY }, { scale }] }]}
           >
             {/* Its name, only while lit */}
             <Animated.View
@@ -218,7 +221,7 @@ export default function MemoryFab() {
       <GestureDetector gesture={gesture}>
         <View
           ref={fabRef}
-          style={styles.fab}
+          style={[styles.fab, { bottom: fabBottom }]}
           accessible
           accessibilityRole="button"
           accessibilityLabel={open ? 'Close' : 'Log a memory'}
@@ -236,7 +239,6 @@ export default function MemoryFab() {
   );
 }
 
-const FAB_BOTTOM = 60;
 
 const useStyles = makeStyles((c) => ({
   // See the note in app/log/voice.tsx — neither absoluteFill nor
@@ -252,7 +254,6 @@ const useStyles = makeStyles((c) => ({
   },
   fab: {
     position: 'absolute',
-    bottom: FAB_BOTTOM,
     alignSelf: 'center',
     width: FAB,
     height: FAB,
@@ -272,7 +273,6 @@ const useStyles = makeStyles((c) => ({
   // Each bubble starts at the + button's centre and springs out from there.
   slot: {
     position: 'absolute',
-    bottom: FAB_BOTTOM + (FAB - BUBBLE) / 2,
     alignSelf: 'center',
     width: BUBBLE,
     alignItems: 'center',

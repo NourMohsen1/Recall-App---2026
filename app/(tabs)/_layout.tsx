@@ -1,73 +1,30 @@
 import { Tabs, useRouter } from 'expo-router';
-import { ColorValue, Image, StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import MemoryFab from '../../src/components/MemoryFab';
-import { ICONS } from '../../src/images';
-import { colors, fonts } from '../../src/theme';
-import { useColors } from '../../src/appearance';
-
-// `color` is whatever the tab bar hands us, which is a ColorValue — it can
-// be a platform color object, not just a string. Image's tintColor accepts
-// the same type, so this just matches the caller instead of narrowing it.
-function TabIcon({ source, color }: { source: any; color: ColorValue }) {
-  return (
-    <Image source={source} style={{ width: 26, height: 26 }} tintColor={color} resizeMode="contain" />
-  );
-}
+import { BottomBar } from '../../src/components/AppNav';
 
 export default function TabsLayout() {
-  const c = useColors();
   const router = useRouter();
   return (
     <View style={{ flex: 1 }}>
       <Tabs
-        screenOptions={{
-          headerShown: false,
-          tabBarActiveTintColor: c.brand,
-          tabBarInactiveTintColor: c.brand,
-          tabBarStyle: {
-            backgroundColor: c.bg,
-            borderTopColor: c.divider,
-            height: 84,
-            paddingTop: 8,
-          },
-          tabBarLabelStyle: { fontFamily: fonts.regular, fontSize: 11 },
-        }}
+        screenOptions={{ headerShown: false }}
+        // The same bar the screens over the tabs draw (src/components/AppNav.tsx),
+        // so the icons sit in the same place everywhere.
+        tabBar={({ navigation }) => (
+          <BottomBar
+            onSelect={(href) => {
+              // Ask opens the full chat screen over the tabs, as from Home's pill.
+              if (href === '/chat') router.push('/chat');
+              else navigation.navigate(href.slice(1));
+            }}
+          />
+        )}
       >
-        <Tabs.Screen
-          name="home"
-          options={{
-            title: 'Home',
-            tabBarIcon: ({ color }) => <TabIcon source={ICONS.home} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="timeline"
-          options={{
-            title: 'Timeline',
-            tabBarIcon: ({ color }) => <TabIcon source={ICONS.timeline} color={color} />,
-          }}
-        />
-        <Tabs.Screen
-          name="tasks"
-          options={{
-            title: 'Tasks',
-            tabBarIcon: ({ color }) => <TabIcon source={ICONS.tasks} color={color} />,
-          }}
-        />
-        {/* Ask opens the full chat screen over the tabs, as from Home's pill. */}
-        <Tabs.Screen
-          name="ask"
-          options={{
-            title: 'Ask',
-            tabBarIcon: ({ color }) => <TabIcon source={ICONS.ask} color={color} />,
-          }}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault();
-              router.push('/chat');
-            },
-          }}
-        />
+        <Tabs.Screen name="home" options={{ title: 'Home' }} />
+        <Tabs.Screen name="timeline" options={{ title: 'Timeline' }} />
+        <Tabs.Screen name="tasks" options={{ title: 'Tasks' }} />
+        <Tabs.Screen name="ask" options={{ title: 'Ask' }} />
         {/* Profile is opened from Home's top-right corner, not the bar. */}
         <Tabs.Screen name="profile" options={{ href: null }} />
       </Tabs>

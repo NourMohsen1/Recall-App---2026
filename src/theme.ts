@@ -160,6 +160,13 @@ const light = {
   canvasDot: '#C9CDCE',
   /** The Timeline's teal-grey header band. */
   band: colors.muted,
+  /** The Timeline canvas, and the cards laid on it. In light a shadow
+   *  lifts the cards; in dark the canvas sits a step below the page and
+   *  the cards two steps above it, with a faint edge (Nour: "dark on
+   *  dark"). */
+  canvas: '#FFFFFF',
+  canvasCard: '#FFFFFF',
+  canvasEdge: 'transparent',
 };
 
 // Every role is a colour string (the brand constants above are literal
@@ -212,8 +219,11 @@ const dark: Palette = {
   scrim: 'rgba(0,0,0,0.62)',
   backdrop: 'rgba(0,0,0,0.6)',
   shadow: 'transparent',
-  canvasDot: '#2A3E41',
+  canvasDot: '#22353A',
   band: '#1A2E31',
+  canvas: '#0A1213',
+  canvasCard: '#1E2F31',
+  canvasEdge: 'rgba(227,235,235,0.10)',
 };
 
 export const palettes: Record<Scheme, Palette> = { light, dark };

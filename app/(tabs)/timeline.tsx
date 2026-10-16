@@ -164,14 +164,14 @@ function DayCell({
     <Pressable onPress={onPress} style={[styles.railCell, isSelected && styles.railCellSelected]}>
       {isSelected && (
         <View style={styles.railWeekdayWrap}>
-          <Text numberOfLines={1} style={styles.railWeekday}>
+          <Text numberOfLines={1} style={[styles.railWeekday, styles.railTextOnAccent]}>
             {WEEKDAYS[d.getDay()].slice(0, 3).toUpperCase()}
           </Text>
         </View>
       )}
       <View style={{ alignItems: 'center' }}>
-        <Text style={styles.railMonth}>{MONTHS_SHORT[d.getMonth()]}</Text>
-        <Text style={styles.railDay}>{String(d.getDate()).padStart(2, '0')}</Text>
+        <Text style={[styles.railMonth, isSelected && styles.railTextOnAccent]}>{MONTHS_SHORT[d.getMonth()]}</Text>
+        <Text style={[styles.railDay, isSelected && styles.railTextOnAccent]}>{String(d.getDate()).padStart(2, '0')}</Text>
       </View>
     </Pressable>
   );
@@ -1400,7 +1400,7 @@ const useStyles = makeStyles((c) => ({
   headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.scheme === 'dark' ? c.text : c.textBody },
   analyzingFloat: { position: 'absolute', top: 76, left: 16, zIndex: 10 },
 
-  bodyRow: { flex: 1, flexDirection: 'row', backgroundColor: c.bg },
+  bodyRow: { flex: 1, flexDirection: 'row', backgroundColor: c.canvas },
   viewport: { flex: 1, overflow: 'hidden' },
   markDay: {
     position: 'absolute',
@@ -1441,6 +1441,8 @@ const useStyles = makeStyles((c) => ({
   railWeekday: { fontFamily: fonts.semiBold, fontSize: 11, color: c.textBody },
   railMonth: { fontFamily: fonts.semiBold, fontSize: 13, color: c.textBody, lineHeight: 17 },
   railDay: { fontFamily: fonts.bold, fontSize: 22, color: c.textBody, lineHeight: 26 },
+  // The chosen day is on aqua: dark text in both modes, as in light.
+  railTextOnAccent: { color: '#2B2B2B' },
 
   // Collapsed month/year — same flat tile as a day cell, just a centered
   // label, so the whole rail reads as one continuous list.
@@ -1459,8 +1461,10 @@ const useStyles = makeStyles((c) => ({
 
   card: {
     position: 'absolute',
-    backgroundColor: c.surface,
+    backgroundColor: c.canvasCard,
     borderRadius: 22,
+    borderWidth: c.scheme === 'dark' ? 1 : 0,
+    borderColor: c.canvasEdge,
     padding: 16,
     shadowColor: c.shadow,
     shadowOpacity: 0.12,
@@ -1476,7 +1480,7 @@ const useStyles = makeStyles((c) => ({
 
   dayCard: {
     position: 'absolute',
-    backgroundColor: c.surface,
+    backgroundColor: c.canvasCard,
     borderRadius: 24,
     borderWidth: 2.5,
     borderColor: c.accent,
@@ -1543,7 +1547,7 @@ const useStyles = makeStyles((c) => ({
   miniTopicCard: {
     width: MINI_CARD_W,
     borderWidth: 1,
-    borderColor: c.divider,
+    borderColor: c.scheme === 'dark' ? c.canvasEdge : c.divider,
     borderRadius: 18,
     padding: 10,
     paddingBottom: 14,
