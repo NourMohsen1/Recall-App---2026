@@ -4,6 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PersonAvatar from './PersonAvatar';
 import { PersonMeta, PersonSummary } from '../peopleTags';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Joining two profiles by hand.
 //
@@ -29,6 +30,8 @@ export default function MergePeopleSheet({
   onMerge: (mergeName: string, keepName: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [picked, setPicked] = useState<string[]>([]);
   const [keep, setKeep] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
@@ -104,7 +107,7 @@ export default function MergePeopleSheet({
                     <Ionicons
                       name={on ? 'checkmark-circle' : 'ellipse-outline'}
                       size={24}
-                      color={on ? colors.teal : '#C6CDCD'}
+                      color={on ? c.brandSoft : c.textGhost}
                     />
                   </Pressable>
                 );
@@ -143,7 +146,7 @@ export default function MergePeopleSheet({
           {step === 'keep' && (
             <>
               <View style={styles.warnRow}>
-                <MaterialCommunityIcons name="information-outline" size={16} color={colors.slate} />
+                <MaterialCommunityIcons name="information-outline" size={16} color={c.brandMuted} />
                 <Text style={styles.warnText}>
                   Every day, note and photo moves onto the name you keep, and the other spelling
                   is remembered so future entries land here too. This can't be undone.
@@ -171,10 +174,10 @@ export default function MergePeopleSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.backdrop },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 22,
@@ -187,17 +190,17 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#DDE3E3',
+    backgroundColor: c.grabber,
     marginBottom: 12,
   },
   headerRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
-  cancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
+  title: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
+  cancel: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
   step: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#5B6364',
+    color: c.textMuted,
     marginTop: 12,
     marginBottom: 6,
   },
@@ -211,9 +214,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 14,
   },
-  rowOn: { backgroundColor: colors.pale },
-  rowName: { fontFamily: fonts.medium, fontSize: 15, color: '#1B1B1B' },
-  rowSub: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
+  rowOn: { backgroundColor: c.chip },
+  rowName: { fontFamily: fonts.medium, fontSize: 15, color: c.text },
+  rowSub: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint, marginTop: 2 },
 
   keepStep: { flexDirection: 'row', gap: 12, marginTop: 10 },
   keepCard: {
@@ -223,34 +226,34 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: '#E5E8E8',
+    borderColor: c.divider,
   },
-  keepCardOn: { borderColor: colors.teal, backgroundColor: colors.pale },
-  keepName: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B', marginTop: 6, textAlign: 'center' },
-  keepDesc: { fontFamily: fonts.regular, fontSize: 12, color: colors.teal, textAlign: 'center' },
-  keepDays: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
+  keepCardOn: { borderColor: c.brandSoft, backgroundColor: c.chip },
+  keepName: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text, marginTop: 6, textAlign: 'center' },
+  keepDesc: { fontFamily: fonts.regular, fontSize: 12, color: c.brandSoft, textAlign: 'center' },
+  keepDays: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
   keepNote: {
     fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 16,
-    color: '#5B7377',
+    color: c.textMuted,
     textAlign: 'center',
     marginTop: 6,
   },
 
   warnRow: { flexDirection: 'row', gap: 8, marginTop: 18 },
-  warnText: { flex: 1, fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: '#8B9394' },
+  warnText: { flex: 1, fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: c.textFaint },
 
   footer: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 18 },
   backBtn: { paddingVertical: 12, paddingHorizontal: 18 },
-  backBtnText: { fontFamily: fonts.medium, fontSize: 14, color: '#8B9394' },
+  backBtnText: { fontFamily: fonts.medium, fontSize: 14, color: c.textFaint },
   mergeBtn: {
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  mergeBtnOff: { backgroundColor: '#C6CDCD' },
-  mergeBtnText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.white },
-});
+  mergeBtnOff: { backgroundColor: c.knobOff },
+  mergeBtnText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.onTile },
+}));

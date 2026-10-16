@@ -1,5 +1,6 @@
 import { Pressable, StyleProp, StyleSheet, Text, ViewStyle } from 'react-native';
 import { colors, fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 type Props = {
   label: string;
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default function PillButton({ label, onPress, variant = 'primary', style }: Props) {
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -26,7 +28,7 @@ export default function PillButton({ label, onPress, variant = 'primary', style 
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   base: {
     borderRadius: 999,
     paddingVertical: 14,
@@ -35,7 +37,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   primary: {
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
   },
   ghost: {
     backgroundColor: 'rgba(255,255,255,0.12)',
@@ -46,11 +48,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   labelPrimary: {
-    color: colors.ink,
+    color: c.ink,
     fontFamily: fonts.regular,
   },
   labelGhost: {
-    color: colors.white,
+    color: c.onTile,
     fontFamily: fonts.regular,
   },
-});
+}));

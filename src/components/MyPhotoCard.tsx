@@ -8,6 +8,7 @@ import { persistFile } from '../memoryLog';
 import { adoptMyPhoto, knowsMyFace } from '../myFace';
 import { setUserProfile } from '../userProfile';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Asked once on Home, for someone who skipped the photo in setup or had
 // Recall before it asked: without their face, the photo stories can't tell
@@ -17,6 +18,8 @@ import { colors, fonts } from '../theme';
 const DISMISSED = 'myPhotoCardDismissed';
 
 export default function MyPhotoCard() {
+  const c = useColors();
+  const styles = useStyles();
   const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -65,40 +68,40 @@ export default function MyPhotoCard() {
   return (
     <Pressable style={styles.card} onPress={choose} disabled={busy}>
       <View style={styles.icon}>
-        {busy ? <ActivityIndicator color={colors.white} /> : <Ionicons name="person-outline" size={22} color={colors.white} />}
+        {busy ? <ActivityIndicator color={c.onTile} /> : <Ionicons name="person-outline" size={22} color={c.onTile} />}
       </View>
       <View style={styles.body}>
         <Text style={styles.title}>Add a photo of you</Text>
         <Text style={styles.text}>So Recall knows which one is you in your photos.</Text>
       </View>
       <Pressable onPress={dismiss} hitSlop={10} accessibilityLabel="Not now">
-        <Ionicons name="close" size={20} color="#8B9394" />
+        <Ionicons name="close" size={20} color={c.textFaint} />
       </Pressable>
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     borderWidth: 1,
-    borderColor: '#C9CDCE',
+    borderColor: c.border,
     borderRadius: 24,
     padding: 16,
     marginTop: 24,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
   },
   icon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
   body: { flex: 1 },
-  title: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.ink },
-  text: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#8B9394', marginTop: 2 },
-});
+  title: { fontFamily: fonts.semiBold, fontSize: 16, color: c.ink },
+  text: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textFaint, marginTop: 2 },
+}));

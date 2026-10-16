@@ -5,6 +5,7 @@ import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, type SharedVa
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import { fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 // Swipe left to delete, as in Mail and Reminders: a short swipe reveals a
 // red Delete to tap; a long swipe (past half the row) deletes on release,
@@ -22,6 +23,7 @@ function DeleteAction({
   full: number;
   onPress: () => void;
 }) {
+  const styles = useStyles();
   // The red area follows the finger past its width, like iOS.
   const style = useAnimatedStyle(() => ({ width: Math.max(ACTION_W, -translation.value) }));
   const label = useAnimatedStyle(() => ({ opacity: -translation.value > full ? 0.85 : 1 }));
@@ -98,6 +100,7 @@ function Watcher({
   onArm: (on: boolean) => void;
   children: ReactNode;
 }) {
+  const styles = useStyles();
   useAnimatedReaction(
     () => -translation.value > full,
     (past, before) => {
@@ -107,10 +110,10 @@ function Watcher({
   return <View style={styles.watcher}>{children}</View>;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   watcher: { flexDirection: 'row', justifyContent: 'flex-end' },
   action: { backgroundColor: RED, borderRadius: 20, marginLeft: 10, overflow: 'hidden' },
   actionPress: { flex: 1, justifyContent: 'center' },
   actionInner: { alignItems: 'center', justifyContent: 'center', width: ACTION_W, gap: 2, alignSelf: 'flex-end' },
   actionText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#fff' },
-});
+}));

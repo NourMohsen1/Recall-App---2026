@@ -33,6 +33,7 @@ import {
   type ReminderChoice,
 } from '../../src/tasks';
 import { colors, fonts } from '../../src/theme';
+import { makeStyles, useColors } from '../../src/appearance';
 
 // One screen for a task, new (the + on Tasks) or existing: its name, when
 // it is, when to be reminded, and notes.
@@ -80,6 +81,8 @@ const SOUNDS_DATED =
   /\d|today|tonight|tomorrow|morning|afternoon|evening|night|noon|next|mon|tue|wed|thu|fri|sat|sun|week|month|بكر|النهارد|الليل|الصبح|العصر|الضهر|المغرب|الساعة|الاسبوع|الأسبوع|يوم|bokra|bukra|el sa3a|elsa3a|ba3d/i;
 
 export default function TaskEdit() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const isNew = !id;
@@ -236,7 +239,7 @@ export default function TaskEdit() {
             value={title}
             onChangeText={setTitle}
             placeholder="Task name"
-            placeholderTextColor="#9AA4A5"
+            placeholderTextColor={c.textGhost}
             autoFocus={isNew}
             multiline
           />
@@ -251,27 +254,27 @@ export default function TaskEdit() {
               }}
             >
               <View style={styles.rowLead}>
-                <MaterialCommunityIcons name="calendar-blank-outline" size={20} color={colors.teal} />
+                <MaterialCommunityIcons name="calendar-blank-outline" size={20} color={c.brandSoft} />
                 <Text style={styles.rowLabel}>Date</Text>
               </View>
               <View style={styles.rowValueWrap}>
                 <Text style={[styles.rowValue, dueDate && styles.rowValueSet]}>
                   {dueDate ? dateLabel(dueDate) : 'None'}
                 </Text>
-                <Ionicons name="chevron-forward" size={16} color="#B4B8B8" />
+                <Ionicons name="chevron-forward" size={16} color={c.textGhost} />
               </View>
             </Pressable>
 
             <Pressable style={[styles.row, styles.rowBorder]} onPress={toggleTime}>
               <View style={styles.rowLead}>
-                <MaterialCommunityIcons name="clock-outline" size={20} color={colors.teal} />
+                <MaterialCommunityIcons name="clock-outline" size={20} color={c.brandSoft} />
                 <Text style={styles.rowLabel}>Time</Text>
               </View>
               <View style={styles.rowValueWrap}>
                 <Text style={[styles.rowValue, (dueTime || duePeriod) && styles.rowValueSet]}>
                   {taskTimeLabel({ dueTime, duePeriod }) ?? 'None'}
                 </Text>
-                <Ionicons name={timeOpen ? 'chevron-down' : 'chevron-forward'} size={16} color="#B4B8B8" />
+                <Ionicons name={timeOpen ? 'chevron-down' : 'chevron-forward'} size={16} color={c.textGhost} />
               </View>
             </Pressable>
 
@@ -282,7 +285,7 @@ export default function TaskEdit() {
                   mode="time"
                   display="spinner"
                   themeVariant="light"
-                  textColor="#1B1B1B"
+                  textColor={c.text}
                   onValueChange={(_, d) => setTime(hhmm(d))}
                   style={styles.wheel}
                 />
@@ -306,13 +309,13 @@ export default function TaskEdit() {
                   <MaterialCommunityIcons
                     name={reminder === 'none' ? 'bell-off-outline' : 'bell-outline'}
                     size={20}
-                    color={colors.teal}
+                    color={c.brandSoft}
                   />
                   <Text style={styles.rowLabel}>Reminder</Text>
                 </View>
                 <View style={styles.rowValueWrap}>
                   <Text style={[styles.rowValue, styles.rowValueSet]}>{reminderLabel(when)}</Text>
-                  <Ionicons name={reminderMenu ? 'chevron-down' : 'chevron-forward'} size={16} color="#B4B8B8" />
+                  <Ionicons name={reminderMenu ? 'chevron-down' : 'chevron-forward'} size={16} color={c.textGhost} />
                 </View>
               </Pressable>
             )}
@@ -335,7 +338,7 @@ export default function TaskEdit() {
               value={notes}
               onChangeText={setNotes}
               placeholder="Add details about this task…"
-              placeholderTextColor="#9AA4A5"
+              placeholderTextColor={c.textGhost}
               multiline
               textAlignVertical="top"
             />
@@ -368,8 +371,8 @@ export default function TaskEdit() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#EFF3F3' },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bgSoft },
   fill: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -378,26 +381,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 14,
-    backgroundColor: '#EFF3F3',
+    backgroundColor: c.fill,
   },
-  headerAction: { fontFamily: fonts.regular, fontSize: 16, color: colors.teal },
+  headerAction: { fontFamily: fonts.regular, fontSize: 16, color: c.brandSoft },
   headerSave: { fontFamily: fonts.semiBold },
-  headerTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
+  headerTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
 
   body: { paddingHorizontal: 16, paddingBottom: 60 },
 
   titleInput: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontFamily: fonts.semiBold,
     fontSize: 18,
-    color: '#1B1B1B',
+    color: c.text,
     marginTop: 8,
   },
 
-  group: { backgroundColor: colors.white, borderRadius: 16, marginTop: 14 },
+  group: { backgroundColor: c.surface, borderRadius: 16, marginTop: 14 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -405,17 +408,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  rowBorder: { borderTopWidth: 1, borderTopColor: '#EFF1F1' },
+  rowBorder: { borderTopWidth: 1, borderTopColor: c.divider },
   rowLead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  rowLabel: { fontFamily: fonts.medium, fontSize: 15, color: '#1B1B1B' },
+  rowLabel: { fontFamily: fonts.medium, fontSize: 15, color: c.text },
   rowValueWrap: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1, marginLeft: 12 },
-  rowValue: { fontFamily: fonts.regular, fontSize: 15, color: '#8B9394', flexShrink: 1, textAlign: 'right' },
-  rowValueSet: { color: colors.teal },
+  rowValue: { fontFamily: fonts.regular, fontSize: 15, color: c.textFaint, flexShrink: 1, textAlign: 'right' },
+  rowValueSet: { color: c.brandSoft },
 
   wheelWrap: { alignItems: 'center', paddingBottom: 12 },
   wheel: { width: 320, height: 216 },
   removeTime: { paddingVertical: 4, paddingHorizontal: 10 },
-  removeTimeText: { fontFamily: fonts.medium, fontSize: 14, color: '#8B9394' },
+  removeTimeText: { fontFamily: fonts.medium, fontSize: 14, color: c.textFaint },
 
   notesLabel: { paddingHorizontal: 16, paddingTop: 14 },
   notesInput: {
@@ -426,15 +429,15 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#2B2B2B',
+    color: c.textBody,
   },
 
   deleteBtn: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 16,
     marginTop: 22,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  deleteText: { fontFamily: fonts.medium, fontSize: 15, color: '#C4453E' },
-});
+  deleteText: { fontFamily: fonts.medium, fontSize: 15, color: c.danger },
+}));

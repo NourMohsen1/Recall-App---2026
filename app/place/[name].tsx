@@ -45,6 +45,7 @@ import {
 } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
 import { withAppNav } from '../../src/components/AppNav';
+import { makeStyles, useColors } from '../../src/appearance';
 
 // A place's profile: what it looks like, how often the user goes, what
 // happened last time, who they go with, and every day they were there.
@@ -65,6 +66,8 @@ function cap(s: string) {
 }
 
 function PlaceProfile() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -294,7 +297,7 @@ function PlaceProfile() {
           <PlaceCover cover={place.cover} kind={place.kind} radius={24} style={styles.hero} />
           {!place.cover && (
             <View style={styles.addPhoto}>
-              <MaterialCommunityIcons name="camera-plus-outline" size={18} color={colors.primary} />
+              <MaterialCommunityIcons name="camera-plus-outline" size={18} color={c.brand} />
               <Text style={styles.addPhotoText}>Add a photo of this place</Text>
             </View>
           )}
@@ -350,7 +353,7 @@ function PlaceProfile() {
                 </Pressable>
               ))}
               <Pressable style={[styles.askChip, styles.askChipOther]} onPress={() => setRenaming('')}>
-                <MaterialCommunityIcons name="pencil-outline" size={14} color={colors.primary} />
+                <MaterialCommunityIcons name="pencil-outline" size={14} color={c.brand} />
                 <Text style={styles.askChipText}>
                   {place.maybeNames.length > 0 ? 'Something else' : 'Name it'}
                 </Text>
@@ -418,8 +421,8 @@ function PlaceProfile() {
             hand. Only for a named place: an unnamed spot is just a street. */}
         {place.named && (
           <Pressable style={styles.visit} onPress={() => setAddingVisit(true)}>
-            <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
-            <Text style={[styles.visitDay, { flex: 1, color: colors.teal }]}>Add a day you were here</Text>
+            <Ionicons name="add-circle-outline" size={20} color={c.brandSoft} />
+            <Text style={[styles.visitDay, { flex: 1, color: c.brandSoft }]}>Add a day you were here</Text>
           </Pressable>
         )}
         {shownVisits.map((day) => {
@@ -440,7 +443,7 @@ function PlaceProfile() {
                   </Text>
                 ) : null}
               </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.soft} />
+              <Ionicons name="chevron-forward" size={16} color={c.brandFaint} />
             </Pressable>
           );
         })}
@@ -522,7 +525,7 @@ function PlaceProfile() {
         <View style={[styles.safe, { paddingTop: insets.top }]}>
           <View style={styles.pickHeader}>
             <Pressable onPress={() => setPicking(false)} hitSlop={12}>
-              <Ionicons name="close" size={26} color={colors.primary} />
+              <Ionicons name="close" size={26} color={c.brand} />
             </Pressable>
             <Text style={styles.pickTitle}>Choose a photo</Text>
             <View style={{ width: 26 }} />
@@ -556,7 +559,7 @@ function PlaceProfile() {
               value={renaming ?? ''}
               onChangeText={setRenaming}
               placeholder="Dunkin, College, Home…"
-              placeholderTextColor="#9AA3A4"
+              placeholderTextColor={c.textGhost}
               autoFocus
               returnKeyType="done"
               onSubmitEditing={saveRename}
@@ -578,33 +581,35 @@ function PlaceProfile() {
 }
 
 function Header({ onBack, onMore }: { onBack: () => void; onMore?: () => void }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <View style={styles.header}>
       <Pressable onPress={onBack} hitSlop={12} style={styles.back}>
-        <Ionicons name="arrow-back" size={28} color={colors.primary} />
+        <Ionicons name="arrow-back" size={28} color={c.brand} />
       </Pressable>
       <Text style={styles.headerTitle}>Place</Text>
       {onMore && (
         <Pressable onPress={onMore} hitSlop={12} style={styles.more}>
-          <MaterialCommunityIcons name="dots-horizontal" size={26} color={colors.primary} />
+          <MaterialCommunityIcons name="dots-horizontal" size={26} color={c.brand} />
         </Pressable>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 16,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 16 },
   more: { position: 'absolute', right: 20, top: 16 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.textBody },
   scroll: { paddingHorizontal: 24, paddingBottom: 140 },
 
   heroWrap: { marginTop: 14 },
@@ -616,31 +621,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 999,
     paddingVertical: 9,
     paddingHorizontal: 16,
   },
-  addPhotoText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
+  addPhotoText: { fontFamily: fonts.medium, fontSize: 13, color: c.brand },
 
   nameRow: { flexDirection: 'row', alignItems: 'center', marginTop: 14 },
-  name: { flex: 1, fontFamily: fonts.bold, fontSize: 34, color: '#1B1B1B', lineHeight: 42 },
-  subtitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B', marginTop: 2 },
+  name: { flex: 1, fontFamily: fonts.bold, fontSize: 34, color: c.text, lineHeight: 42 },
+  subtitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.textBody, marginTop: 2 },
   lastVisited: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
-    color: '#3A4243',
+    color: c.textSoft,
     marginTop: 12,
   },
   tagRow: { flexDirection: 'row', gap: 10 },
   tag: {
-    backgroundColor: colors.teal,
+    backgroundColor: c.tileAlt,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 18,
   },
-  tagText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.white },
+  tagText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.onTile },
 
   askCard: {
     marginTop: 22,
@@ -648,34 +653,34 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.muted,
-    backgroundColor: '#F4F8F8',
+    borderColor: c.brandLine,
+    backgroundColor: c.fillSoft,
   },
-  askTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B' },
-  askText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#4A5253', marginTop: 4 },
+  askTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text },
+  askText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textSoft, marginTop: 4 },
   askChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
   askChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderWidth: 1,
-    borderColor: colors.soft,
+    borderColor: c.brandFaint,
   },
   askChipOther: { borderStyle: 'dashed' },
-  askChipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
+  askChipText: { fontFamily: fonts.medium, fontSize: 13, color: c.brand },
 
-  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 18, color: '#1B1B1B', marginTop: 26, marginBottom: 12 },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 18, color: c.text, marginTop: 26, marginBottom: 12 },
   peopleRow: { flexDirection: 'row', gap: 16 },
   person: { width: 68, alignItems: 'center' },
-  personName: { fontFamily: fonts.medium, fontSize: 12, color: '#2B2B2B', marginTop: 6 },
-  personCount: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
+  personName: { fontFamily: fonts.medium, fontSize: 12, color: c.textBody, marginTop: 6 },
+  personCount: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
 
   memoryRow: { flexDirection: 'row', gap: 12 },
-  memoryTile: { width: 150, height: 150, borderRadius: 18, overflow: 'hidden', backgroundColor: colors.pale },
+  memoryTile: { width: 150, height: 150, borderRadius: 18, overflow: 'hidden', backgroundColor: c.chip },
 
   visit: {
     flexDirection: 'row',
@@ -683,16 +688,16 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#EEF1F1',
+    borderBottomColor: c.divider,
   },
-  visitDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal },
-  visitDay: { fontFamily: fonts.medium, fontSize: 14, color: '#1B1B1B' },
-  visitLine: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#5E6667', marginTop: 2 },
+  visitDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.tileAlt },
+  visitDay: { fontFamily: fonts.medium, fontSize: 14, color: c.text },
+  visitLine: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: 2 },
   moreVisits: { alignSelf: 'flex-start', paddingVertical: 12 },
-  moreVisitsText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
+  moreVisitsText: { fontFamily: fonts.medium, fontSize: 13, color: c.brand },
 
   missing: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32 },
-  missingText: { fontFamily: fonts.regular, fontSize: 15, color: '#4A5253', textAlign: 'center' },
+  missingText: { fontFamily: fonts.regular, fontSize: 15, color: c.textSoft, textAlign: 'center' },
 
   pickHeader: {
     flexDirection: 'row',
@@ -701,28 +706,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
   },
-  pickTitle: { fontFamily: fonts.medium, fontSize: 18, color: '#2B2B2B' },
+  pickTitle: { fontFamily: fonts.medium, fontSize: 18, color: c.textBody },
   pickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 24, paddingBottom: 60 },
-  pickTile: { borderRadius: 12, overflow: 'hidden', backgroundColor: colors.pale },
+  pickTile: { borderRadius: 12, overflow: 'hidden', backgroundColor: c.chip },
 
-  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.35)', justifyContent: 'center', padding: 28 },
-  renameCard: { backgroundColor: colors.white, borderRadius: 20, padding: 20 },
-  renameTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
+  backdrop: { flex: 1, backgroundColor: c.scrim, justifyContent: 'center', padding: 28 },
+  renameCard: { backgroundColor: c.surface, borderRadius: 20, padding: 20 },
+  renameTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
   renameInput: {
     marginTop: 14,
     borderWidth: 1,
-    borderColor: colors.soft,
+    borderColor: c.brandFaint,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: '#1B1B1B',
+    color: c.text,
   },
   renameButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, marginTop: 18 },
-  renameCancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
-  renameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
-});
+  renameCancel: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
+  renameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: c.brand },
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(PlaceProfile);

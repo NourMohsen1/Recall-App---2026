@@ -7,8 +7,11 @@ import ScreenHeader from '../../src/components/ScreenHeader';
 import { MISC } from '../../src/images';
 import { colors, fonts } from '../../src/theme';
 import { withAppNav } from '../../src/components/AppNav';
+import { makeStyles, useColors } from '../../src/appearance';
 
 function Devices() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
 
   return (
@@ -25,7 +28,7 @@ function Devices() {
             <Text style={styles.deviceSub}>Synced just now</Text>
           </View>
           <View style={styles.battery}>
-            <Ionicons name="battery-half" size={26} color={colors.primary} />
+            <Ionicons name="battery-half" size={26} color={c.brand} />
             <Text style={styles.batteryText}>88%</Text>
           </View>
         </Pressable>
@@ -50,38 +53,38 @@ function Devices() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
-  body: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  body: { flex: 1, backgroundColor: c.surface },
   scroll: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 140 },
-  section: { fontFamily: fonts.bold, fontSize: 24, color: '#1B1B1B', marginTop: 24, marginBottom: 16 },
+  section: { fontFamily: fonts.bold, fontSize: 24, color: c.text, marginTop: 24, marginBottom: 16 },
 
   connectedCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 20,
     padding: 18,
     gap: 12,
   },
   glassesImg: { width: 90, height: 60 },
   connectedInfo: { flex: 1 },
-  deviceName: { fontFamily: fonts.semiBold, fontSize: 16, color: '#1B1B1B', lineHeight: 22 },
-  deviceSub: { fontFamily: fonts.regular, fontSize: 14, color: '#5B6364', marginTop: 8 },
+  deviceName: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text, lineHeight: 22 },
+  deviceSub: { fontFamily: fonts.regular, fontSize: 14, color: c.textMuted, marginTop: 8 },
   battery: { alignItems: 'center' },
-  batteryText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#1B1B1B', marginTop: 2 },
+  batteryText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.text, marginTop: 2 },
 
   addCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 20,
     padding: 18,
     gap: 12,
   },
   airpodsImg: { width: 100, height: 100 },
   addInfo: { flex: 1 },
-  addDesc: { fontFamily: fonts.regular, fontSize: 14, color: '#3E4647', marginTop: 8, lineHeight: 21 },
+  addDesc: { fontFamily: fonts.regular, fontSize: 14, color: c.textSoft, marginTop: 8, lineHeight: 21 },
   addLink: {
     fontFamily: fonts.bold,
     fontSize: 15,
@@ -91,6 +94,6 @@ const styles = StyleSheet.create({
   },
 
   addMore: { alignSelf: 'stretch', marginTop: 40, marginHorizontal: 8 },
-});
+}));
 
 export default withAppNav(Devices);

@@ -1,3 +1,4 @@
+import { currentColors } from './appearance';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Real face recognition needs either a paid cloud vision API or ejecting out
@@ -161,11 +162,14 @@ export function isFutureDay(dayKey: string): boolean {
 
 // A stable avatar tint per person, drawn from the app palette.
 const AVATAR_TINTS = ['#336970', '#5C878D', '#4A7C83', '#85A5A9', '#29545A', '#B98A8A'];
+// The same six, deeper, for dark mode: the light ones glared on a dark page.
+const AVATAR_TINTS_DARK = ['#2B5E65', '#41696E', '#36656B', '#4C6F73', '#24525A', '#7C5B5B'];
 
 export function avatarTint(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
-  return AVATAR_TINTS[Math.abs(hash) % AVATAR_TINTS.length];
+  const tints = currentColors().scheme === 'dark' ? AVATAR_TINTS_DARK : AVATAR_TINTS;
+  return tints[Math.abs(hash) % tints.length];
 }
 
 // ---------------------------------------------------------------------------

@@ -19,6 +19,7 @@ import {
 } from '../src/photoImport';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
+import { makeStyles, useColors } from '../src/appearance';
 
 // Matches the Timeline's own "at least a year back" window — one flat sync
 // window instead of asking the user to pick a day count.
@@ -26,6 +27,8 @@ import { withAppNav } from '../src/components/AppNav';
 type Phase = 'idle' | 'scanning' | 'done' | 'error';
 
 function ImportPhotos() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const [syncOn, setSyncOn] = useState(false);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -99,14 +102,14 @@ function ImportPhotos() {
         {/* Only ever opened from Profile — explicit target for the same
             reason noted in day/[offset]/index.tsx. */}
         <Pressable onPress={() => goBack(router, '/profile')} hitSlop={12} style={styles.back}>
-          <Ionicons name="close" size={26} color={colors.primary} />
+          <Ionicons name="close" size={26} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>Import Photos</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.iconBadge}>
-          <Ionicons name="images-outline" size={36} color={colors.primary} />
+          <Ionicons name="images-outline" size={36} color={c.brand} />
         </View>
 
         <Text style={styles.title}>Bring in photos you already took</Text>
@@ -142,7 +145,7 @@ function ImportPhotos() {
 
         {phase === 'done' && result && (
           <View style={styles.statusBox}>
-            <Ionicons name="checkmark-circle" size={40} color={colors.accent} />
+            <Ionicons name="checkmark-circle" size={40} color={c.accent} />
             <Text style={styles.statusTitle}>
               {result.imported > 0
                 ? `Imported ${result.imported} photo${result.imported === 1 ? '' : 's'} across ${result.days} day${result.days === 1 ? '' : 's'}`
@@ -155,7 +158,7 @@ function ImportPhotos() {
             </Text>
             {!!result.privateSkipped && (
               <View style={styles.privateRow}>
-                <Ionicons name="lock-closed-outline" size={14} color="#8B9394" />
+                <Ionicons name="lock-closed-outline" size={14} color={c.textFaint} />
                 <Text style={styles.privateText}>
                   {result.privateSkipped} private {result.privateSkipped === 1 ? 'photo' : 'photos'} skipped
                 </Text>
@@ -174,7 +177,7 @@ function ImportPhotos() {
 
         {phase === 'error' && (
           <View style={styles.statusBox}>
-            <Ionicons name="alert-circle-outline" size={36} color="#B24545" />
+            <Ionicons name="alert-circle-outline" size={36} color={c.danger} />
             <Text style={styles.statusTitle}>Something went wrong</Text>
             <PillButton label="Try again" onPress={reset} style={styles.doneBtn} />
           </View>
@@ -184,26 +187,26 @@ function ImportPhotos() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   privateRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
-  privateText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
-  safe: { flex: 1, backgroundColor: colors.white },
+  privateText: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 18,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 14 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: c.textBody },
 
   scroll: { padding: 28, paddingBottom: 140, alignItems: 'center' },
   iconBadge: {
     width: 76,
     height: 76,
     borderRadius: 22,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 12,
@@ -211,7 +214,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: fonts.semiBold,
     fontSize: 20,
-    color: '#1B1B1B',
+    color: c.text,
     textAlign: 'center',
     marginTop: 20,
   },
@@ -219,7 +222,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
-    color: '#5B6364',
+    color: c.textMuted,
     textAlign: 'center',
     marginTop: 12,
   },
@@ -228,21 +231,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'stretch',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 18,
     paddingVertical: 16,
     paddingHorizontal: 18,
     marginTop: 32,
     gap: 12,
   },
-  toggleTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#1B1B1B' },
-  toggleSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: '#5B6364', marginTop: 2 },
+  toggleTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text },
+  toggleSubtitle: { fontFamily: fonts.regular, fontSize: 13, color: c.textMuted, marginTop: 2 },
 
   hint: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#8B9394',
+    color: c.textFaint,
     textAlign: 'center',
     marginTop: 20,
   },
@@ -251,13 +254,13 @@ const styles = StyleSheet.create({
   statusTitle: {
     fontFamily: fonts.semiBold,
     fontSize: 17,
-    color: '#1B1B1B',
+    color: c.text,
     textAlign: 'center',
   },
-  statusDetail: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', textAlign: 'center' },
+  statusDetail: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, textAlign: 'center' },
   doneRow: { flexDirection: 'row', gap: 12, marginTop: 20 },
   doneBtn: { flex: 1 },
-});
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(ImportPhotos);

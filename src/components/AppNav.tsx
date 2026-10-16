@@ -4,6 +4,7 @@ import { usePathname, useRouter } from 'expo-router';
 import MemoryFab from './MemoryFab';
 import { ICONS } from '../images';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // The app's bottom menu — Home, Timeline, Tasks, Ask and the "+" —
 // for screens opened on top of the tabs (Places, People, Recap, a day…),
@@ -21,6 +22,8 @@ const TABS = [
 export const APP_NAV_HEIGHT = 84;
 
 export default function AppNav() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const path = usePathname();
   // A sheet opened from a live voice card (app/peek/…) has no menu: every
@@ -41,7 +44,7 @@ export default function AppNav() {
               else router.dismissTo(t.href as Parameters<typeof router.dismissTo>[0]);
             }}
           >
-            <Image source={t.icon} style={styles.icon} tintColor={colors.primary} resizeMode="contain" />
+            <Image source={t.icon} style={styles.icon} tintColor={c.brand} resizeMode="contain" />
             <Text style={styles.label}>{t.label}</Text>
           </Pressable>
         ))}
@@ -65,7 +68,7 @@ export function withAppNav<P extends object>(Screen: ComponentType<P>): Componen
   return WithNav;
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   overlay: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
   bar: {
     position: 'absolute',
@@ -75,11 +78,11 @@ const styles = StyleSheet.create({
     height: APP_NAV_HEIGHT,
     paddingTop: 8,
     flexDirection: 'row',
-    backgroundColor: colors.white,
+    backgroundColor: c.bg,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.pale,
+    borderTopColor: c.divider,
   },
   tab: { flex: 1, alignItems: 'center' },
   icon: { width: 26, height: 26 },
-  label: { fontFamily: fonts.regular, fontSize: 11, color: colors.primary, marginTop: 3 },
-});
+  label: { fontFamily: fonts.regular, fontSize: 11, color: c.brand, marginTop: 3 },
+}));

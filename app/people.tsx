@@ -27,6 +27,7 @@ import { mergePersonEverywhere } from '../src/peopleMerge';
 import { DuplicateSuggestion, findDuplicatePeople } from '../src/personIdentity';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
+import { makeStyles, useColors } from '../src/appearance';
 
 // Wraps a name in Unicode direction isolates so an Arabic name dropped into
 // an English sentence doesn't drag the punctuation and surrounding words
@@ -78,6 +79,7 @@ function aliasMatch(person: PersonSummary, meta: PersonMeta | undefined, query: 
 // The design's view: a grid of faces, the name under each — many people at
 // a glance, no scrolling through cards.
 function PersonTile({ person, meta, size, query }: { person: PersonSummary; meta?: PersonMeta; size: number; query: string }) {
+  const styles = useStyles();
   const unverified = meta ? meta.verified === false : false;
   return (
     <Link href={{ pathname: '/person/[name]', params: { name: person.name } }} asChild>
@@ -104,6 +106,8 @@ function PersonCard({
   meta?: PersonMeta;
   query?: string;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const unverified = meta ? meta.verified === false : false;
 
   return (
@@ -127,19 +131,21 @@ function PersonCard({
             </Text>
           )}
           <View style={styles.metaRow}>
-            <MaterialCommunityIcons name="calendar-heart" size={13} color={colors.teal} />
+            <MaterialCommunityIcons name="calendar-heart" size={13} color={c.brandSoft} />
             <Text style={styles.metaText}>
               {person.days.length === 1 ? '1 day together' : `${person.days.length} days together`}
             </Text>
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={18} color="#B4B8B8" />
+        <Ionicons name="chevron-forward" size={18} color={c.textGhost} />
       </Pressable>
     </Link>
   );
 }
 
 function People() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const [people, setPeople] = useState<PersonSummary[]>([]);
   const [meta, setMeta] = useState<Record<string, PersonMeta>>({});
@@ -296,13 +302,13 @@ function People() {
       {people.length > 0 && (
         <View style={styles.toolbar}>
           <View style={styles.search}>
-            <Ionicons name="search" size={17} color="#7D8B8D" />
+            <Ionicons name="search" size={17} color={c.textGhost} />
             <TextInput
               style={styles.searchInput}
               value={query}
               onChangeText={setQuery}
               placeholder="Search people"
-              placeholderTextColor="#8B9394"
+              placeholderTextColor={c.textFaint}
               autoCorrect={false}
               returnKeyType="search"
               clearButtonMode="while-editing"
@@ -319,7 +325,7 @@ function People() {
                 <Ionicons
                   name={v === 'grid' ? 'grid-outline' : 'list-outline'}
                   size={18}
-                  color={view === v ? colors.white : colors.primary}
+                  color={view === v ? c.onTile : c.brand}
                 />
               </Pressable>
             ))}
@@ -331,11 +337,11 @@ function People() {
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brandSoft} colors={[c.brandSoft]} />}
       >
         {loaded && people.length === 0 && (
           <View style={styles.empty}>
-            <MaterialCommunityIcons name="account-heart-outline" size={40} color="#AEB6B7" />
+            <MaterialCommunityIcons name="account-heart-outline" size={40} color={c.textGhost} />
             <Text style={styles.emptyTitle}>No people yet</Text>
             <Text style={styles.emptyText}>
               Tag who you were with on any day in your Timeline, or add someone here with the
@@ -347,7 +353,7 @@ function People() {
         {!q && duplicates.map((d) => (
           <View key={`${d.keep}|${d.merge}`} style={styles.mergeCard}>
             <View style={styles.mergeHeader}>
-              <MaterialCommunityIcons name="account-multiple-outline" size={18} color={colors.teal} />
+              <MaterialCommunityIcons name="account-multiple-outline" size={18} color={c.brandSoft} />
               <Text style={styles.mergeTitle}>Same person?</Text>
             </View>
             <Text style={styles.mergeText}>
@@ -386,7 +392,7 @@ function People() {
         {/* Nobody by that name: offer to add them, named already. */}
         {!!q && shown.length === 0 && (
           <Pressable style={styles.noMatch} onPress={() => setAddOpen(true)}>
-            <Ionicons name="person-add-outline" size={20} color={colors.teal} />
+            <Ionicons name="person-add-outline" size={20} color={c.brandSoft} />
             <Text style={styles.noMatchText}>Add “{query.trim()}”</Text>
           </Pressable>
         )}
@@ -446,9 +452,9 @@ function People() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
-  body: { flex: 1, backgroundColor: colors.pale },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  body: { flex: 1, backgroundColor: c.bgGrouped },
   scroll: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
 
   toolbar: {
@@ -458,31 +464,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 14,
     paddingBottom: 2,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
   },
   search: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 999,
     paddingHorizontal: 14,
     height: 42,
   },
-  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 15, color: '#1B1B1B', paddingVertical: 0 },
-  viewSwitch: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 999, padding: 3 },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 15, color: c.text, paddingVertical: 0 },
+  viewSwitch: { flexDirection: 'row', backgroundColor: c.surface, borderRadius: 999, padding: 3 },
   viewBtn: { width: 38, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  viewBtnOn: { backgroundColor: colors.primary },
-  matchBold: { fontFamily: fonts.bold, color: colors.primary },
+  viewBtnOn: { backgroundColor: c.tile },
+  matchBold: { fontFamily: fonts.bold, color: c.brand },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: 18 },
   tile: { alignItems: 'center' },
   tileRing: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: colors.ink,
+    shadowColor: c.shadow,
     shadowOpacity: 0.08,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 2 },
@@ -494,41 +500,41 @@ const styles = StyleSheet.create({
     width: 14,
     height: 14,
     borderRadius: 7,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: c.surface,
   },
-  tileName: { fontFamily: fonts.regular, fontSize: 15, color: '#1B1B1B', marginTop: 8, textAlign: 'center', maxWidth: '100%' },
-  tileAlias: { fontFamily: fonts.regular, fontSize: 12, color: colors.teal, textAlign: 'center', maxWidth: '100%' },
+  tileName: { fontFamily: fonts.regular, fontSize: 15, color: c.text, marginTop: 8, textAlign: 'center', maxWidth: '100%' },
+  tileAlias: { fontFamily: fonts.regular, fontSize: 12, color: c.brandSoft, textAlign: 'center', maxWidth: '100%' },
   noMatch: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 18,
     paddingVertical: 16,
     paddingHorizontal: 18,
     marginTop: 4,
   },
-  noMatchText: { fontFamily: fonts.medium, fontSize: 15, color: colors.teal },
+  noMatchText: { fontFamily: fonts.medium, fontSize: 15, color: c.brandSoft },
 
   // Sits above the list because it's a question, not a person — the user
   // answers it once and it disappears for good either way.
   mergeCard: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 18,
     borderWidth: 2,
-    borderColor: colors.teal,
+    borderColor: c.brandSoft,
     padding: 16,
     marginBottom: 14,
   },
   mergeHeader: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  mergeTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B' },
+  mergeTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text },
   mergeText: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#3E4647',
+    color: c.textSoft,
     marginTop: 8,
     // This sentence is English copy that happens to contain names. Without
     // pinning the direction, a name like "بابا" landing first makes the
@@ -537,25 +543,25 @@ const styles = StyleSheet.create({
     writingDirection: 'ltr',
     textAlign: 'left',
   },
-  mergeName: { fontFamily: fonts.semiBold, color: '#1B1B1B' },
+  mergeName: { fontFamily: fonts.semiBold, color: c.text },
   mergeRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 14 },
   mergeBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 18,
   },
-  mergeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: colors.white },
+  mergeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: c.onTile },
   mergeSkip: { paddingVertical: 10, paddingHorizontal: 8 },
-  mergeSkipText: { fontFamily: fonts.medium, fontSize: 13, color: '#8B9394' },
+  mergeSkipText: { fontFamily: fonts.medium, fontSize: 13, color: c.textFaint },
 
   empty: { alignItems: 'center', paddingTop: 90, paddingHorizontal: 30, gap: 12 },
-  emptyTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#5B6364' },
+  emptyTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.textMuted },
   emptyText: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
-    color: '#8B9394',
+    color: c.textFaint,
     textAlign: 'center',
   },
 
@@ -563,7 +569,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 20,
     padding: 16,
     marginBottom: 14,
@@ -575,23 +581,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarText: { fontFamily: fonts.semiBold, fontSize: 20, color: colors.white },
-  cardUnverified: { borderWidth: 2, borderColor: colors.accent },
+  avatarText: { fontFamily: fonts.semiBold, fontSize: 20, color: c.onTile },
+  cardUnverified: { borderWidth: 2, borderColor: c.accent },
   cardBody: { flex: 1 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
-  personName: { fontFamily: fonts.semiBold, fontSize: 16, color: '#2B2B2B' },
-  aliasLine: { fontFamily: fonts.regular, fontSize: 13, color: colors.teal, marginTop: 1 },
+  personName: { fontFamily: fonts.semiBold, fontSize: 16, color: c.textBody },
+  aliasLine: { fontFamily: fonts.regular, fontSize: 13, color: c.brandSoft, marginTop: 1 },
   newBadge: {
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 999,
     paddingVertical: 2,
     paddingHorizontal: 8,
   },
-  newBadgeText: { fontFamily: fonts.semiBold, fontSize: 10, color: colors.ink },
-  descriptor: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal, marginTop: 1 },
+  newBadgeText: { fontFamily: fonts.semiBold, fontSize: 10, color: c.ink },
+  descriptor: { fontFamily: fonts.medium, fontSize: 12, color: c.brandSoft, marginTop: 1 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6 },
-  metaText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
-});
+  metaText: { fontFamily: fonts.medium, fontSize: 12, color: c.brandSoft },
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(People);

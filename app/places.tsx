@@ -32,6 +32,7 @@ import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
 import { syncNewPhotosIfOn } from '../src/photoImport';
+import { makeStyles, useColors } from '../src/appearance';
 
 // Every place the user has been, from their own photos and their own words
 // (src/places.ts). Most visited first: the places someone goes to are the
@@ -45,6 +46,8 @@ function cap(s: string) {
 }
 
 function Places() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { width } = useWindowDimensions();
   const tile = Math.floor((width - 40 - GAP * 2) / 3);
@@ -188,7 +191,7 @@ function Places() {
       <ScrollView
         style={styles.body}
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brandSoft} colors={[c.brandSoft]} />}
       >
         <View style={styles.filterRow}>
           <FilterPill
@@ -197,7 +200,7 @@ function Places() {
           />
           {/* A place Recall hasn't met yet, added here. */}
           <Pressable style={styles.addBtn} onPress={() => setAdding(true)}>
-            <Ionicons name="add" size={18} color={colors.white} />
+            <Ionicons name="add" size={18} color={c.onTile} />
             <Text style={styles.addText}>Add</Text>
           </Pressable>
         </View>
@@ -328,7 +331,7 @@ function Places() {
               value={naming ?? ''}
               onChangeText={setNaming}
               placeholder="Home, College, Dunkin…"
-              placeholderTextColor="#9AA3A4"
+              placeholderTextColor={c.textGhost}
               autoFocus
               returnKeyType="done"
               onSubmitEditing={() => busiest && merge(busiest.id, naming ?? '')}
@@ -349,20 +352,20 @@ function Places() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   // Same size and corners as the filter pill beside it.
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 12,
     paddingVertical: 10,
     paddingHorizontal: 16,
   },
-  addText: { color: colors.white, fontFamily: fonts.medium, fontSize: 14 },
-  safe: { flex: 1, backgroundColor: colors.white },
-  body: { flex: 1, backgroundColor: colors.pale },
+  addText: { color: c.onTile, fontFamily: fonts.medium, fontSize: 14 },
+  safe: { flex: 1, backgroundColor: c.bg },
+  body: { flex: 1, backgroundColor: c.bgGrouped },
   scroll: { paddingHorizontal: 20, paddingTop: 24, paddingBottom: 120 },
   filterRow: { flexDirection: 'row', justifyContent: 'space-between' },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 16 },
@@ -370,13 +373,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
   },
-  selectText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.primary },
+  selectText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.brand },
   summary: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#4A5253',
+    color: c.textSoft,
   },
   grid: {
     flexDirection: 'row',
@@ -386,12 +389,12 @@ const styles = StyleSheet.create({
     marginTop: 18,
   },
   empty: { marginTop: 40, alignItems: 'center', paddingHorizontal: 12 },
-  emptyTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#1B1B1B', marginBottom: 8 },
+  emptyTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text, marginBottom: 8 },
   emptyText: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#4A5253',
+    color: c.textSoft,
     textAlign: 'center',
     marginTop: 16,
   },
@@ -401,9 +404,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 18,
     borderRadius: 999,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
   },
-  onceText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
+  onceText: { fontFamily: fonts.medium, fontSize: 13, color: c.brand },
 
   // Above the bottom menu.
   mergeBar: {
@@ -414,37 +417,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 12,
     paddingBottom: 12,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderTopWidth: 1,
-    borderTopColor: '#E5E8E8',
+    borderTopColor: c.divider,
   },
   mergeBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 15,
     alignItems: 'center',
   },
-  mergeBtnOff: { backgroundColor: colors.soft },
-  mergeBtnText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.white },
+  mergeBtnOff: { backgroundColor: c.brandFaint },
+  mergeBtnText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.onTile },
 
-  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.35)', justifyContent: 'center', padding: 28 },
-  nameCard: { backgroundColor: colors.white, borderRadius: 20, padding: 20 },
-  nameTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
+  backdrop: { flex: 1, backgroundColor: c.scrim, justifyContent: 'center', padding: 28 },
+  nameCard: { backgroundColor: c.surface, borderRadius: 20, padding: 20 },
+  nameTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
   nameInput: {
     marginTop: 14,
     borderWidth: 1,
-    borderColor: colors.soft,
+    borderColor: c.brandFaint,
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: '#1B1B1B',
+    color: c.text,
   },
   nameButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 24, marginTop: 18 },
-  nameCancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
-  nameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
-});
+  nameCancel: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
+  nameSave: { fontFamily: fonts.semiBold, fontSize: 15, color: c.brand },
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(Places);

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Picking a day: the answers people give most one tap away (a task's
 // today / tomorrow / next week; a visit's today / yesterday), and the month
@@ -54,6 +55,8 @@ export default function CalendarSheet({
   onPick: (day: string | undefined) => void;
   onClose: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const today = new Date();
   const todayKey = keyOf(today);
   const [cursor, setCursor] = useState(() => (value ? fromKey(value) : today));
@@ -114,7 +117,7 @@ export default function CalendarSheet({
             const d = fromKey(q.key);
             return (
               <Pressable key={q.label} style={[styles.quickRow, on && styles.quickRowOn]} onPress={() => pick(q.key)}>
-                <MaterialCommunityIcons name={q.icon} size={22} color={on ? colors.accent : colors.teal} />
+                <MaterialCommunityIcons name={q.icon} size={22} color={on ? c.accent : c.brandSoft} />
                 <Text style={styles.quickLabel}>{q.label}</Text>
                 <Text style={styles.quickHint}>
                   {WEEKDAYS_SHORT[d.getDay()]} {d.getDate()}
@@ -131,10 +134,10 @@ export default function CalendarSheet({
             </Text>
             <View style={styles.monthNav}>
               <Pressable hitSlop={10} onPress={() => setCursor(new Date(year, month - 1, 1))}>
-                <Ionicons name="chevron-back" size={20} color={colors.teal} />
+                <Ionicons name="chevron-back" size={20} color={c.brandSoft} />
               </Pressable>
               <Pressable hitSlop={10} onPress={() => setCursor(new Date(year, month + 1, 1))}>
-                <Ionicons name="chevron-forward" size={20} color={colors.teal} />
+                <Ionicons name="chevron-forward" size={20} color={c.brandSoft} />
               </Pressable>
             </View>
           </View>
@@ -181,17 +184,17 @@ export default function CalendarSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(8,17,18,0.45)' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.scrim },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 18,
     paddingTop: 10,
     paddingBottom: 34,
   },
-  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDE2E2', alignSelf: 'center', marginBottom: 14 },
+  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: c.grabber, alignSelf: 'center', marginBottom: 14 },
   head: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -200,9 +203,9 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     minHeight: 34,
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 18, color: '#1B1B1B' },
-  clearBtn: { borderWidth: 1, borderColor: '#D5DBDB', borderRadius: 999, paddingVertical: 6, paddingHorizontal: 16 },
-  clearText: { fontFamily: fonts.medium, fontSize: 14, color: colors.teal },
+  title: { fontFamily: fonts.semiBold, fontSize: 18, color: c.text },
+  clearBtn: { borderWidth: 1, borderColor: c.border, borderRadius: 999, paddingVertical: 6, paddingHorizontal: 16 },
+  clearText: { fontFamily: fonts.medium, fontSize: 14, color: c.brandSoft },
 
   quickRow: {
     flexDirection: 'row',
@@ -212,11 +215,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 14,
   },
-  quickRowOn: { backgroundColor: '#EEF4F5' },
-  quickLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 16, color: '#1B1B1B' },
-  quickHint: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+  quickRowOn: { backgroundColor: c.fill },
+  quickLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 16, color: c.text },
+  quickHint: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint },
 
-  divider: { height: 1, backgroundColor: '#EFF1F1', marginVertical: 10 },
+  divider: { height: 1, backgroundColor: c.fill, marginVertical: 10 },
 
   monthHead: {
     flexDirection: 'row',
@@ -225,7 +228,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     marginBottom: 8,
   },
-  monthTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#1B1B1B' },
+  monthTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text },
   monthNav: { flexDirection: 'row', gap: 26 },
 
   weekRow: { flexDirection: 'row' },
@@ -234,15 +237,15 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: '#8B9394',
+    color: c.textFaint,
     paddingVertical: 6,
   },
   dayCell: { flex: 1, alignItems: 'center', paddingVertical: 3 },
   dayDot: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  dayDotOn: { backgroundColor: colors.primary },
-  dayDotToday: { borderWidth: 1.5, borderColor: colors.accent },
-  dayText: { fontFamily: fonts.regular, fontSize: 16, color: '#1B1B1B' },
-  dayTextFaint: { color: '#B9C0C1' },
-  dayTextToday: { fontFamily: fonts.semiBold, color: colors.teal },
-  dayTextOn: { fontFamily: fonts.semiBold, color: colors.white },
-});
+  dayDotOn: { backgroundColor: c.tile },
+  dayDotToday: { borderWidth: 1.5, borderColor: c.accent },
+  dayText: { fontFamily: fonts.regular, fontSize: 16, color: c.text },
+  dayTextFaint: { color: c.textGhost },
+  dayTextToday: { fontFamily: fonts.semiBold, color: c.brandSoft },
+  dayTextOn: { fontFamily: fonts.semiBold, color: c.onTile },
+}));

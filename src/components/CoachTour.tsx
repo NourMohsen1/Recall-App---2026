@@ -4,6 +4,7 @@ import Svg, { Path, Rect as SvgRect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 import type { Rect } from '../coachTargets';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // A tour of the real screen, one part at a time: everything dims except
 // the part being explained, which gets a ring, and a speech bubble points
@@ -37,6 +38,8 @@ export default function CoachTour({
   /** `finished`: went through to the end, rather than closed early. */
   onDone: (finished: boolean) => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const { width: W, height: H } = useWindowDimensions();
   const [index, setIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
@@ -141,7 +144,7 @@ export default function CoachTour({
             <View style={styles.headRow}>
               <Text style={styles.title}>{step.title}</Text>
               <Pressable onPress={() => onDone(false)} hitSlop={12} accessibilityLabel="Close the tour">
-                <Ionicons name="close" size={24} color={colors.white} />
+                <Ionicons name="close" size={24} color={c.onTile} />
               </Pressable>
             </View>
             <Text style={styles.body}>{step.body}</Text>
@@ -160,17 +163,17 @@ export default function CoachTour({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   bubble: {
     position: 'absolute',
     left: SIDE,
     right: SIDE,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 22,
     paddingTop: 18,
     paddingBottom: 16,
     paddingHorizontal: 20,
-    shadowColor: '#000',
+    shadowColor: c.shadow,
     shadowOpacity: 0.3,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },
@@ -181,16 +184,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     width: 18,
     height: 18,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     transform: [{ rotate: '45deg' }],
   },
   arrowUp: { top: -8 },
   arrowDown: { bottom: -8 },
   headRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
-  title: { flex: 1, fontFamily: fonts.bold, fontSize: 20, lineHeight: 26, color: colors.white },
-  body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: '#D6E1E2', marginTop: 6 },
+  title: { flex: 1, fontFamily: fonts.bold, fontSize: 20, lineHeight: 26, color: c.onTile },
+  body: { fontFamily: fonts.regular, fontSize: 15, lineHeight: 22, color: colors.pale, marginTop: 6 },
   footRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 16 },
   count: { fontFamily: fonts.medium, fontSize: 13, color: colors.soft },
-  nextBtn: { backgroundColor: colors.white, borderRadius: 999, paddingVertical: 10, paddingHorizontal: 26 },
-  nextText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
-});
+  // White on the teal bubble; in dark, the soft off-white, never pure white.
+  nextBtn: { backgroundColor: c.scheme === 'dark' ? c.ink : '#FFFFFF', borderRadius: 999, paddingVertical: 10, paddingHorizontal: 26 },
+  nextText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.scheme === 'dark' ? c.tile : c.brand },
+}));

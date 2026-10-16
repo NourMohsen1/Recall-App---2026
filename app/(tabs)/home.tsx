@@ -21,6 +21,7 @@ import { colors, fonts } from '../../src/theme';
 import { markWalkthroughSeen, walkthroughSeen } from '../../src/walkthrough';
 import CoachTour, { type TourStep } from '../../src/components/CoachTour';
 import { measureCoachTarget, measureView } from '../../src/coachTargets';
+import { makeStyles, useColors } from '../../src/appearance';
 
 const DAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
@@ -64,6 +65,8 @@ const PAGE_SIDE = 20;
 const DAY_SHARE = 0.68;
 
 export default function Home() {
+  const c = useColors();
+  const styles = useStyles();
   const { width: screenW } = useWindowDimensions();
   const daySize = Math.min(44, Math.round(((screenW - PAGE_SIDE * 2) / 7) * DAY_SHARE));
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
@@ -254,7 +257,7 @@ export default function Home() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />
+          <RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brandSoft} colors={[c.brandSoft]} />
         }
       >
         {/* Header */}
@@ -262,7 +265,7 @@ export default function Home() {
           <Image
             source={BRAND.symbol}
             style={styles.headerSymbol}
-            tintColor={colors.primary}
+            tintColor={c.brand}
             resizeMode="contain"
           />
           <Text style={styles.logoText}>Recall</Text>
@@ -276,7 +279,7 @@ export default function Home() {
             {myPhoto ? (
               <Image source={{ uri: myPhoto }} style={styles.profilePhoto} />
             ) : (
-              <Image source={ICONS.profile} style={styles.profileIcon} tintColor={colors.primary} resizeMode="contain" />
+              <Image source={ICONS.profile} style={styles.profileIcon} tintColor={c.brand} resizeMode="contain" />
             )}
           </Pressable>
         </View>
@@ -415,34 +418,34 @@ export default function Home() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { paddingHorizontal: PAGE_SIDE },
   header: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4 },
   headerSymbol: { width: 34, height: 34 },
-  logoText: { color: colors.primary, fontFamily: fonts.bold, fontSize: 24 },
+  logoText: { color: c.brand, fontFamily: fonts.bold, fontSize: 24 },
   profileBtn: { marginLeft: 'auto' },
   // A button and an avatar at once: big enough to read as the user's face.
   profileIcon: { width: 36, height: 36 },
-  profilePhoto: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, borderColor: colors.pale },
+  profilePhoto: { width: 42, height: 42, borderRadius: 21, borderWidth: 2, borderColor: c.divider },
 
   // 34-pt circles, 15 apart (the design), as one centred group.
   weekRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 },
   dayCol: { alignItems: 'center' },
-  dayLetter: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.ink, marginBottom: 8 },
+  dayLetter: { fontFamily: fonts.semiBold, fontSize: 14, color: c.ink, marginBottom: 8 },
   dayCircle: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dayCircleToday: { backgroundColor: colors.primary },
+  dayCircleToday: { backgroundColor: c.tile },
   // Dark on the pale circles so the dates read easily; today stays white on teal.
-  dayNum: { fontFamily: fonts.medium, fontSize: 15, color: colors.primary },
-  dayNumToday: { color: colors.white },
+  dayNum: { fontFamily: fonts.medium, fontSize: 15, color: c.brand },
+  dayNumToday: { color: c.onTile },
   // Green: logged that day. The same green for today as any other day.
-  logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: '#A9D3B6' },
+  logDot: { width: 7, height: 7, borderRadius: 4, marginTop: 8, backgroundColor: c.success },
   // Today's own marker, slightly larger, in the accent.
-  todayDot: { width: 9, height: 9, borderRadius: 5, marginTop: 7, backgroundColor: colors.accent },
+  todayDot: { width: 9, height: 9, borderRadius: 5, marginTop: 7, backgroundColor: c.accent },
 
   chatRow: { flexDirection: 'row', alignItems: 'center', marginTop: 24, gap: 10 },
   chatAvatar: {
@@ -454,7 +457,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     // White, like the design — the brain sits on the page, not on black.
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     overflow: 'hidden',
   },
   // The artwork has wide empty margins; scaled up so the brain fills the
@@ -462,49 +465,49 @@ const styles = StyleSheet.create({
   chatAvatarImg: { width: 66, height: 66 },
   chatPill: {
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     borderWidth: 2,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     paddingVertical: 12,
     paddingHorizontal: 18,
   },
-  chatPillText: { color: colors.white, fontFamily: fonts.regular, fontSize: 14 },
+  chatPillText: { color: c.onTile, fontFamily: fonts.regular, fontSize: 14 },
 
   card: {
     borderWidth: 1,
-    borderColor: '#C9CDCE',
+    borderColor: c.border,
     borderRadius: 24,
     padding: 18,
     marginTop: 24,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
   },
   lastCard: {
     borderWidth: 1,
-    borderColor: '#C9CDCE',
+    borderColor: c.border,
     borderRadius: 24,
     padding: 18,
     marginTop: 24,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     marginBottom: 110,
   },
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.ink },
+  cardTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.ink },
   // Body lines stop short of the card's edge, so they wrap into two
   // comfortable lines instead of one run edge to edge.
-  cardSubtitle: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#8B9394', marginTop: 6, maxWidth: '82%' },
+  cardSubtitle: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textFaint, marginTop: 6, maxWidth: '82%' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
-  placeChip: { backgroundColor: colors.pale, borderRadius: 6, paddingVertical: 3, paddingHorizontal: 10, maxWidth: 140 },
-  placeChipText: { fontFamily: fonts.regular, fontSize: 13, color: colors.ink },
-  duePill: { backgroundColor: colors.primary, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 10 },
-  duePillText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  placeChip: { backgroundColor: c.chip, borderRadius: 6, paddingVertical: 3, paddingHorizontal: 10, maxWidth: 140 },
+  placeChipText: { fontFamily: fonts.regular, fontSize: 13, color: c.ink },
+  duePill: { backgroundColor: c.tile, borderRadius: 8, paddingVertical: 3, paddingHorizontal: 10 },
+  duePillText: { fontFamily: fonts.semiBold, fontSize: 14, color: c.onTile },
   rail: { width: 6, alignItems: 'center', alignSelf: 'stretch' },
   railDash: {
     flex: 1,
     width: 0,
     borderLeftWidth: 1,
     borderStyle: 'dashed',
-    borderColor: colors.teal,
+    borderColor: c.brandSoft,
     marginTop: 2,
     marginBottom: -9,
   },
@@ -513,14 +516,14 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.teal,
+    backgroundColor: c.tileAlt,
     marginTop: 5,
   },
-  summaryText: { flex: 1, maxWidth: '86%', fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#7C8586' },
-  summaryEmpty: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+  summaryText: { flex: 1, maxWidth: '86%', fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: c.textFaint },
+  summaryEmpty: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint },
 
   shortcutRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 24 },
   // The gap above a part the tour rings sits outside the ringed box.
   tourGap: { marginTop: 24 },
   noTopGap: { marginTop: 0 },
-});
+}));

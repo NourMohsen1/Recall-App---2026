@@ -9,6 +9,7 @@ import Animated, {
   withTiming,
   type SharedValue,
 } from 'react-native-reanimated';
+import { useColors } from '../appearance';
 
 // Press, hold and drag to reorder — the way Notes, Reminders and most apps
 // do it: after a short hold the item lifts (a little larger, with a
@@ -136,6 +137,7 @@ function Row({
   onCancel: () => void;
   children: ReactNode;
 }) {
+  const c = useColors();
   const lift = useSharedValue(0);
 
   const onLayout = (e: LayoutChangeEvent) => onHeight(e.nativeEvent.layout.height);
@@ -198,7 +200,7 @@ function Row({
       return {
         zIndex: 10,
         transform: [{ translateY: dragY.value }, { scale: 1 + lift.value * 0.03 }],
-        shadowColor: '#081112',
+        shadowColor: c.shadow,
         shadowOpacity: lift.value * 0.18,
         shadowRadius: lift.value * 14,
         shadowOffset: { width: 0, height: lift.value * 6 },

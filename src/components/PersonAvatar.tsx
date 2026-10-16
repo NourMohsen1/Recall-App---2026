@@ -2,6 +2,7 @@ import { Image, StyleSheet, Text, View, ViewStyle } from 'react-native';
 import { avatarTint } from '../peopleTags';
 import { colors, fonts } from '../theme';
 import PhotoImage from './PhotoImage';
+import { makeStyles, useColors } from '../appearance';
 
 // One person's face, everywhere the app shows a person.
 //
@@ -37,6 +38,8 @@ export default function PersonAvatar({
   unconfirmed?: boolean;
   style?: ViewStyle;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const box: ViewStyle = {
     width: size,
     height: size,
@@ -56,7 +59,7 @@ export default function PersonAvatar({
       style={[
         box,
         styles.center,
-        { backgroundColor: unconfirmed ? colors.soft : avatarTint(name) },
+        { backgroundColor: unconfirmed ? c.brandFaint : avatarTint(name) },
         unconfirmed && styles.unconfirmedRing,
         style,
       ]}
@@ -66,7 +69,7 @@ export default function PersonAvatar({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   center: { alignItems: 'center', justifyContent: 'center' },
   clip: { overflow: 'hidden' },
   // A lighter ring in the same teal family, dashed — reads as "not settled
@@ -74,7 +77,7 @@ const styles = StyleSheet.create({
   unconfirmedRing: {
     borderWidth: 2,
     borderStyle: 'dashed',
-    borderColor: colors.muted,
+    borderColor: c.brandLine,
   },
-  initials: { fontFamily: fonts.semiBold, color: colors.white },
-});
+  initials: { fontFamily: fonts.semiBold, color: c.onTile },
+}));

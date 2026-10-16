@@ -8,6 +8,7 @@ import { getAllPersonMeta } from '../peopleTags';
 import { getAllPhotoSources } from '../photoMeta';
 import { getPlaces } from '../places';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Home's three shortcuts — Places, People, Recap — each showing a photo
 // from inside the feature itself. One photo per day: the same all day, a
@@ -70,6 +71,8 @@ async function photoFor(feature: Feature): Promise<string | undefined> {
 }
 
 export default function FeatureTile({ feature, size }: { feature: Feature; size: number }) {
+  const c = useColors();
+  const styles = useStyles();
   const [photo, setPhoto] = useState<string | undefined>();
   useFocusEffect(
     useCallback(() => {
@@ -94,7 +97,7 @@ export default function FeatureTile({ feature, size }: { feature: Feature; size:
           </View>
         ) : (
           <View style={[styles.frame, styles.empty, box]}>
-            <MaterialCommunityIcons name={ICON[feature]} size={Math.round(size * 0.4)} color={colors.white} />
+            <MaterialCommunityIcons name={ICON[feature]} size={Math.round(size * 0.4)} color={c.onTile} />
           </View>
         )}
         <Text style={styles.label}>{LABEL[feature]}</Text>
@@ -103,15 +106,16 @@ export default function FeatureTile({ feature, size }: { feature: Feature; size:
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   tile: { alignItems: 'center' },
   frame: {
     borderRadius: 18,
     borderWidth: 3,
-    borderColor: colors.white,
+    // The page's own colour: a frame that only shows round a photo's edge.
+    borderColor: c.bg,
     overflow: 'hidden',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
   },
-  empty: { backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
-  label: { fontFamily: fonts.regular, fontSize: 14, color: colors.ink, marginTop: 8 },
-});
+  empty: { backgroundColor: c.tileAlt, alignItems: 'center', justifyContent: 'center' },
+  label: { fontFamily: fonts.regular, fontSize: 14, color: c.ink, marginTop: 8 },
+}));

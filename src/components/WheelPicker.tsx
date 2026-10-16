@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 // iOS-alarm-style spinning column: snap-scrolling list with the selected
 // value framed between two hairlines and neighbors fading out above/below.
@@ -27,6 +28,7 @@ export default function WheelPicker({
   onChange: (index: number) => void;
   width?: number;
 }) {
+  const styles = useStyles();
   const ref = useRef<ScrollView>(null);
 
   // Center the initial selection once mounted.
@@ -76,19 +78,19 @@ export default function WheelPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   wrap: { height: ITEM_H * VISIBLE },
   item: { height: ITEM_H, alignItems: 'center', justifyContent: 'center' },
-  itemText: { fontFamily: fonts.regular, fontSize: 20, color: '#9AA4A5' },
-  itemTextSelected: { fontFamily: fonts.semiBold, fontSize: 22, color: '#1B1B1B' },
+  itemText: { fontFamily: fonts.regular, fontSize: 20, color: c.textGhost },
+  itemTextSelected: { fontFamily: fonts.semiBold, fontSize: 22, color: c.text },
   line: {
     position: 'absolute',
     left: 4,
     right: 4,
     height: 1,
-    backgroundColor: '#D5DBDB',
+    backgroundColor: c.fill,
   },
   fade: { position: 'absolute', left: 0, right: 0, height: ITEM_H * 1.35 },
-  fadeTop: { top: 0, backgroundColor: 'rgba(255,255,255,0.72)' },
-  fadeBottom: { bottom: 0, backgroundColor: 'rgba(255,255,255,0.72)' },
-});
+  fadeTop: { top: 0, backgroundColor: c.scheme === 'dark' ? 'rgba(14,23,24,0.72)' : 'rgba(255,255,255,0.72)' },
+  fadeBottom: { bottom: 0, backgroundColor: c.scheme === 'dark' ? 'rgba(14,23,24,0.72)' : 'rgba(255,255,255,0.72)' },
+}));

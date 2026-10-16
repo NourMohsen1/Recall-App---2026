@@ -79,6 +79,7 @@ import { rtlIfArabic } from '../../src/transcription';
 import TopicSwapSheet from '../../src/components/TopicSwapSheet';
 import { colors, fonts } from '../../src/theme';
 import { Image as ExpoImage } from 'expo-image';
+import { makeStyles, useColors } from '../../src/appearance';
 
 // One On This Day topic on the canvas, with its photo.
 const MINI_CARD_W = 264;
@@ -95,6 +96,8 @@ function MiniTopicCard({
   loading: boolean;
   onFeedback: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   // A photo on top: the story's own news photo when the search found one
   // (checked on the phone first, src/contentSafety.ts), else the topic's
   // icon on teal. Bigger than before (Nour): the canvas has the room.
@@ -116,7 +119,7 @@ function MiniTopicCard({
         <Text style={styles.miniTopicLabel}>{topic.label}</Text>
         {!future && (
           <Pressable hitSlop={10} onPress={onFeedback}>
-            <Ionicons name="ellipsis-horizontal-circle-outline" size={16} color="#B9BEBF" />
+            <Ionicons name="ellipsis-horizontal-circle-outline" size={16} color={c.textGhost} />
           </Pressable>
         )}
       </View>
@@ -155,6 +158,7 @@ function DayCell({
   isSelected: boolean;
   onPress: () => void;
 }) {
+  const styles = useStyles();
   const d = dateWithOffset(offset);
   return (
     <Pressable onPress={onPress} style={[styles.railCell, isSelected && styles.railCellSelected]}>
@@ -187,11 +191,12 @@ const FULL_H = CANVAS_H + MARGIN * 2;
 const DOT_TILE = 560; // a multiple of the 14-pt dot spacing, so tiles meet seamlessly
 
 function DotTile() {
+  const c = useColors();
   return (
     <Svg width={DOT_TILE} height={DOT_TILE}>
       <Defs>
         <Pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
-          <Circle cx="2" cy="2" r="1.2" fill="#C9CDCE" />
+          <Circle cx="2" cy="2" r="1.2" fill={c.canvasDot} />
         </Pattern>
       </Defs>
       <Rect width="100%" height="100%" fill="url(#dots)" />
@@ -249,6 +254,8 @@ const MAX_SCALE = 2.5;
 const MIN_SCALE = 0.2;
 
 export default function Timeline() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   // After midnight it opens on the evening still going (logicalDay.ts).
   const [selected, setSelected] = useState(() => (isLateNight() ? -1 : 0));
@@ -935,7 +942,7 @@ export default function Timeline() {
       <View key={bucket.key}>
         <Pressable onPress={() => toggleMonth(bucket.key)} style={styles.railHeaderRow}>
           <Text style={styles.railHeaderText}>{bucket.label}</Text>
-          <Ionicons name="chevron-down" size={13} color="#8B9394" />
+          <Ionicons name="chevron-down" size={13} color={c.textFaint} />
         </Pressable>
         {bucket.offsets.map((offset) => (
           <DayCell
@@ -955,7 +962,7 @@ export default function Timeline() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.push('/home')} hitSlop={12} style={styles.back}>
-          <Ionicons name="arrow-back" size={28} color={colors.ink} />
+          <Ionicons name="arrow-back" size={28} color={c.ink} />
         </Pressable>
         <Text style={styles.headerTitle}>Timeline</Text>
       </View>
@@ -998,7 +1005,7 @@ export default function Timeline() {
               <View key={year}>
                 <Pressable onPress={() => toggleYear(year)} style={styles.railHeaderRow}>
                   <Text style={styles.railHeaderText}>{year}</Text>
-                  <Ionicons name="chevron-down" size={13} color="#8B9394" />
+                  <Ionicons name="chevron-down" size={13} color={c.textFaint} />
                 </Pressable>
                 {buildYearMonths(year).map((bucket) => renderMonthBucket(bucket))}
               </View>
@@ -1038,7 +1045,7 @@ export default function Timeline() {
                     >
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>People</Text>
-                        <MaterialCommunityIcons name="account-multiple-outline" size={22} color={colors.primary} />
+                        <MaterialCommunityIcons name="account-multiple-outline" size={22} color={c.brand} />
                       </View>
                       <View style={{ marginTop: 12 }}>
                         <PeopleEditor
@@ -1067,7 +1074,7 @@ export default function Timeline() {
                         <MaterialCommunityIcons
                           name="image-multiple"
                           size={24}
-                          color={colors.primary}
+                          color={c.brand}
                         />
                       </View>
                       <ScrollView
@@ -1090,7 +1097,7 @@ export default function Timeline() {
                         ))}
                       </ScrollView>
                       <View style={styles.syncedRow}>
-                        <Ionicons name="link" size={14} color="#8B9394" />
+                        <Ionicons name="link" size={14} color={c.textFaint} />
                         <Text style={styles.syncedText}>
                           Added on {shortDate(new Date(latestPhotoMemory!.createdAt))} at{' '}
                           {formatClockTime(new Date(latestPhotoMemory!.createdAt))}
@@ -1136,7 +1143,7 @@ export default function Timeline() {
                                 })
                               }
                             >
-                              <MaterialCommunityIcons name={m.icon} size={18} color={colors.teal} />
+                              <MaterialCommunityIcons name={m.icon} size={18} color={c.brandSoft} />
                             </Pressable>
                           ))}
                         </View>
@@ -1155,7 +1162,7 @@ export default function Timeline() {
                       <View style={styles.cardHeaderRow}>
                         <Text style={styles.cardTitle}>Places</Text>
                         <Pressable onPress={() => router.push('/places')} hitSlop={10}>
-                          <MaterialCommunityIcons name="map-marker-outline" size={22} color={colors.primary} />
+                          <MaterialCommunityIcons name="map-marker-outline" size={22} color={c.brand} />
                         </Pressable>
                       </View>
                       <View style={styles.placeGrid}>
@@ -1178,7 +1185,7 @@ export default function Timeline() {
                         {selected <= 0 && (
                           <Pressable style={{ width: PLACE_TILE, alignItems: 'center' }} onPress={() => setAddingPlace(true)}>
                             <View style={[styles.addPlaceTile, { width: PLACE_TILE, height: PLACE_TILE }]}>
-                              <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={colors.teal} />
+                              <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={c.brandSoft} />
                             </View>
                             <Text style={styles.addPlaceLabel}>Add</Text>
                           </Pressable>
@@ -1196,7 +1203,7 @@ export default function Timeline() {
                       <View style={[styles.cardHeaderRow, styles.otdCardHeader]}>
                         <Text style={styles.cardTitle}>On This Day</Text>
                         <Pressable onPress={() => router.push('/on-this-day')}>
-                          <Ionicons name="expand-outline" size={20} color={colors.primary} />
+                          <Ionicons name="expand-outline" size={20} color={c.brand} />
                         </Pressable>
                       </View>
                       <ScrollView
@@ -1235,11 +1242,11 @@ export default function Timeline() {
                     >
                       <View style={styles.cardHeaderRow}>
                         <View style={styles.assumedTitleRow}>
-                          <Ionicons name="sparkles-outline" size={16} color={colors.teal} />
+                          <Ionicons name="sparkles-outline" size={16} color={c.brandSoft} />
                           <Text style={styles.assumedTitle}>Assumed Memory</Text>
                         </View>
                         <Pressable hitSlop={10} onPress={dismissAssumed}>
-                          <Ionicons name="close" size={16} color="#9AA4A5" />
+                          <Ionicons name="close" size={16} color={c.textGhost} />
                         </Pressable>
                       </View>
                       <Text style={styles.assumedSub}>The AI's best guess from this day's photos</Text>
@@ -1258,7 +1265,7 @@ export default function Timeline() {
                         onPress={toggleAssumedLang}
                         disabled={translating}
                       >
-                        <Ionicons name="language-outline" size={13} color={colors.teal} />
+                        <Ionicons name="language-outline" size={13} color={c.brandSoft} />
                         <Text style={styles.assumedTranslateText}>
                           {translating ? 'Translating…' : assumedLang === 'ar' ? 'Show original' : 'Translate to Arabic'}
                         </Text>
@@ -1282,7 +1289,7 @@ export default function Timeline() {
                     <DraggableCard id="assumed" rect={rects.assumed!} onLayout={measure('assumed')} {...drag}>
                     <Pressable style={[styles.assumedCard, styles.assumedCardFailed, IN_SLOT]} onPress={retryAssumed}>
                       <View style={styles.assumedTitleRow}>
-                        <Ionicons name="refresh" size={16} color="#8B9394" />
+                        <Ionicons name="refresh" size={16} color={c.textFaint} />
                         <Text style={styles.assumedTitle}>Assumed Memory</Text>
                       </View>
                       <Text style={styles.assumedSub}>
@@ -1333,7 +1340,7 @@ export default function Timeline() {
             hitSlop={8}
             accessibilityLabel="Add to this day"
           >
-            <Ionicons name="add" size={24} color={colors.white} />
+            <Ionicons name="add" size={24} color={c.onTile} />
           </Pressable>
         </View>
 
@@ -1371,29 +1378,29 @@ export default function Timeline() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   addPlaceTile: {
     borderRadius: 16,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.muted,
+    borderColor: c.brandLine,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#2B2B2B', marginTop: 6, textAlign: 'center' },
+  addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: c.textBody, marginTop: 6, textAlign: 'center' },
   canvasContent: { position: 'absolute', left: MARGIN, top: MARGIN, width: CANVAS_W, height: CANVAS_H },
-  safe: { flex: 1, backgroundColor: colors.muted },
+  safe: { flex: 1, backgroundColor: c.band },
   header: {
-    backgroundColor: colors.muted,
+    backgroundColor: c.band,
     paddingVertical: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   back: { position: 'absolute', left: 20, top: 20 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#22292A' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.scheme === 'dark' ? c.text : c.textBody },
   analyzingFloat: { position: 'absolute', top: 76, left: 16, zIndex: 10 },
 
-  bodyRow: { flex: 1, flexDirection: 'row', backgroundColor: colors.white },
+  bodyRow: { flex: 1, flexDirection: 'row', backgroundColor: c.bg },
   viewport: { flex: 1, overflow: 'hidden' },
   markDay: {
     position: 'absolute',
@@ -1404,26 +1411,26 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
-    shadowColor: '#0B2A2E',
+    backgroundColor: c.tile,
+    shadowColor: c.shadow,
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
-  rail: { width: 88, backgroundColor: colors.white, flexGrow: 0 },
+  rail: { width: 88, backgroundColor: c.surface, flexGrow: 0 },
   railCell: {
     minHeight: 70,
     paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     borderBottomWidth: 3,
-    borderBottomColor: colors.white,
-    backgroundColor: '#F0F0F0',
+    borderBottomColor: c.surface,
+    backgroundColor: c.fill,
     flexDirection: 'row',
     gap: 2,
   },
-  railCellSelected: { backgroundColor: colors.accent },
+  railCellSelected: { backgroundColor: c.accent },
   railWeekdayWrap: {
     position: 'absolute',
     left: -10,
@@ -1431,13 +1438,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     transform: [{ rotate: '-90deg' }],
   },
-  railWeekday: { fontFamily: fonts.semiBold, fontSize: 11, color: '#22292A' },
-  railMonth: { fontFamily: fonts.semiBold, fontSize: 13, color: '#22292A', lineHeight: 17 },
-  railDay: { fontFamily: fonts.bold, fontSize: 22, color: '#22292A', lineHeight: 26 },
+  railWeekday: { fontFamily: fonts.semiBold, fontSize: 11, color: c.textBody },
+  railMonth: { fontFamily: fonts.semiBold, fontSize: 13, color: c.textBody, lineHeight: 17 },
+  railDay: { fontFamily: fonts.bold, fontSize: 22, color: c.textBody, lineHeight: 26 },
 
   // Collapsed month/year — same flat tile as a day cell, just a centered
   // label, so the whole rail reads as one continuous list.
-  railTileLabel: { fontFamily: fonts.bold, fontSize: 15, color: '#000000' },
+  railTileLabel: { fontFamily: fonts.bold, fontSize: 15, color: c.text },
 
   // Expanded month/year — a small, quiet divider (no tint, no border) that
   // sits between the rail cells above and below it.
@@ -1448,37 +1455,37 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingVertical: 8,
   },
-  railHeaderText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#8B9394', letterSpacing: 0.3 },
+  railHeaderText: { fontFamily: fonts.semiBold, fontSize: 11, color: c.textFaint, letterSpacing: 0.3 },
 
   card: {
     position: 'absolute',
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 22,
     padding: 16,
-    shadowColor: colors.ink,
+    shadowColor: c.shadow,
     shadowOpacity: 0.12,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 3,
   },
   cardHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  cardTitle: { fontFamily: fonts.medium, fontSize: 16, color: '#2B2B2B' },
+  cardTitle: { fontFamily: fonts.medium, fontSize: 16, color: c.textBody },
   thumbRow: { flexDirection: 'row', gap: 8, marginTop: 12 },
   syncedRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
-  syncedText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
+  syncedText: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
 
   dayCard: {
     position: 'absolute',
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 24,
     borderWidth: 2.5,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     padding: 18,
   },
-  dayCardTitle: { fontFamily: fonts.medium, fontSize: 16, color: '#2B2B2B', flex: 1 },
+  dayCardTitle: { fontFamily: fonts.medium, fontSize: 16, color: c.textBody, flex: 1 },
   bulletRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8 },
-  bulletDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.teal, marginTop: 7 },
-  bulletText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#7C8586' },
+  bulletDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.tileAlt, marginTop: 7 },
+  bulletText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: c.textFaint },
   // How the day was logged, bottom-right of the day card: icons only, no
   // sentence — see captureMethods above for why.
   methodRow: {
@@ -1503,22 +1510,22 @@ const styles = StyleSheet.create({
   // from the solid-white "real" cards around it: a guess, not a record.
   assumedCard: {
     position: 'absolute',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 20,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.slate,
+    borderColor: c.brandMuted,
     padding: 14,
   },
-  assumedCardFailed: { backgroundColor: '#F0F0F0', borderColor: '#C9CDCE' },
+  assumedCardFailed: { backgroundColor: c.fill, borderColor: c.border },
   assumedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  assumedTitle: { fontFamily: fonts.medium, fontSize: 14, color: colors.primary },
-  assumedSub: { fontFamily: fonts.regular, fontSize: 11, color: '#5B7377', marginTop: 2 },
+  assumedTitle: { fontFamily: fonts.medium, fontSize: 14, color: c.brand },
+  assumedSub: { fontFamily: fonts.regular, fontSize: 11, color: c.textMuted, marginTop: 2 },
   assumedText: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#324547',
+    color: c.textSoft,
     marginTop: 10,
   },
   assumedTranslateBtn: {
@@ -1529,25 +1536,25 @@ const styles = StyleSheet.create({
     marginTop: 10,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#C7D6D8',
+    borderTopColor: c.border,
   },
-  assumedTranslateText: { fontFamily: fonts.medium, fontSize: 11, color: colors.teal },
+  assumedTranslateText: { fontFamily: fonts.medium, fontSize: 11, color: c.brandSoft },
   otdScrollContent: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 6, gap: 12 },
   miniTopicCard: {
     width: MINI_CARD_W,
     borderWidth: 1,
-    borderColor: '#E4E8E8',
+    borderColor: c.divider,
     borderRadius: 18,
     padding: 10,
     paddingBottom: 14,
   },
-  miniTopicPhoto: { width: '100%', height: 150, borderRadius: 12, marginBottom: 10, backgroundColor: colors.pale },
-  miniTopicNoPhoto: { backgroundColor: colors.teal, alignItems: 'center', justifyContent: 'center' },
+  miniTopicPhoto: { width: '100%', height: 150, borderRadius: 12, marginBottom: 10, backgroundColor: c.chip },
+  miniTopicNoPhoto: { backgroundColor: c.tileAlt, alignItems: 'center', justifyContent: 'center' },
   miniTopicHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
-  miniTopicLabel: { fontFamily: fonts.medium, fontSize: 13, color: '#5B6364' },
-  miniTopicMuted: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginTop: 6, paddingHorizontal: 4 },
-  miniTopicHeadline: { fontFamily: fonts.semiBold, fontSize: 15, lineHeight: 21, color: '#1B1B1B', marginTop: 4, paddingHorizontal: 4 },
-  miniTopicSummary: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#4A5253', marginTop: 4, paddingHorizontal: 4 },
+  miniTopicLabel: { fontFamily: fonts.medium, fontSize: 13, color: c.textMuted },
+  miniTopicMuted: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, marginTop: 6, paddingHorizontal: 4 },
+  miniTopicHeadline: { fontFamily: fonts.semiBold, fontSize: 15, lineHeight: 21, color: c.text, marginTop: 4, paddingHorizontal: 4 },
+  miniTopicSummary: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textSoft, marginTop: 4, paddingHorizontal: 4 },
 
-  emptyHint: { fontFamily: fonts.regular, fontSize: 14, color: '#9AA4A5', marginTop: 14 },
-});
+  emptyHint: { fontFamily: fonts.regular, fontSize: 14, color: c.textGhost, marginTop: 14 },
+}));

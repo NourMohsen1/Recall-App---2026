@@ -17,9 +17,11 @@ import { PHOTO_READER, getPhotoReading, type PhotoReading } from '../../src/phot
 import { AI_COMPANIES, getAiConsent, onAiConsentChanged, type AiConsent } from '../../src/aiConsent';
 import { getPositiveFocus, setPositiveFocus } from '../../src/positiveFocus';
 import Toggle from '../../src/components/Toggle';
+import AppearancePicker from '../../src/components/AppearancePicker';
 import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
 import { colors, fonts } from '../../src/theme';
+import { makeStyles, useColors } from '../../src/appearance';
 
 // The Devices card (Meta glasses): a mockup, not connected to anything yet.
 const SHOW_DEVICES = false;
@@ -37,13 +39,15 @@ function InfoRow({
   muted?: boolean;
   onPress?: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const body = (
     <View style={[styles.infoRow, !last && styles.rowDivider]}>
       <View style={styles.infoIcon}>
-        <Ionicons name={icon} size={20} color={colors.white} />
+        <Ionicons name={icon} size={20} color={c.onTile} />
       </View>
       <Text style={[styles.infoText, muted && styles.infoTextMuted]}>{label}</Text>
-      {onPress && <Ionicons name="chevron-forward" size={18} color="#B4B8B8" />}
+      {onPress && <Ionicons name="chevron-forward" size={18} color={c.textGhost} />}
     </View>
   );
   return onPress ? <Pressable onPress={onPress}>{body}</Pressable> : body;
@@ -55,6 +59,8 @@ const MONTHS_LONG = [
 ];
 
 export default function Profile() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile>({});
   const [joined, setJoined] = useState<Date | null>(null);
@@ -125,7 +131,7 @@ export default function Profile() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Pressable onPress={() => router.push('/home')} hitSlop={12} style={styles.back}>
-          <Ionicons name="arrow-back" size={26} color={colors.primary} />
+          <Ionicons name="arrow-back" size={26} color={c.brand} />
         </Pressable>
 
         {/* Header block — the whole thing opens the user's own profile,
@@ -170,6 +176,12 @@ export default function Profile() {
           />
         </View>
 
+        {/* Light or dark (src/appearance.ts). */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Appearance</Text>
+          <AppearancePicker />
+        </View>
+
         {/* Memories */}
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Memories</Text>
@@ -178,7 +190,7 @@ export default function Profile() {
             onPress={() => router.push('/import-photos' as Parameters<typeof router.push>[0])}
           >
             <Text style={styles.toggleLabel}>Import from Photos</Text>
-            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
+            <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
           </Pressable>
           {/* Whether notes and voice may go to the AI — asked once, changeable
               here. See src/aiConsent.ts. */}
@@ -192,7 +204,7 @@ export default function Profile() {
                 {aiConsent === 'on' ? `On · ${AI_COMPANIES}` : 'Off · nothing is sent'}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
+            <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
           </Pressable>
           {/* Whether photos may be read to write each day's story — the
               user's choice, changeable any time. See src/photoReading.ts. */}
@@ -212,7 +224,7 @@ export default function Profile() {
                       : 'Not chosen yet'}
               </Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#8B9394" />
+            <Ionicons name="chevron-forward" size={20} color={c.textFaint} />
           </Pressable>
           {/* Recaps leave painful moments out; Timeline and Ask keep them.
               See src/positiveFocus.ts. */}
@@ -318,28 +330,28 @@ export default function Profile() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   aboutLink: { alignSelf: 'center', marginTop: 28, paddingVertical: 6 },
-  aboutText: { fontFamily: fonts.medium, fontSize: 13, color: '#8B9394', textDecorationLine: 'underline' },
+  aboutText: { fontFamily: fonts.medium, fontSize: 13, color: c.textFaint, textDecorationLine: 'underline' },
   devLink: { marginTop: 12, paddingVertical: 10, alignItems: 'center' },
-  devLinkText: { fontFamily: fonts.medium, fontSize: 12, color: '#8B9394', textDecorationLine: 'underline' },
-  rowHint: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
-  safe: { flex: 1, backgroundColor: colors.pale },
+  devLinkText: { fontFamily: fonts.medium, fontSize: 12, color: c.textFaint, textDecorationLine: 'underline' },
+  rowHint: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint, marginTop: 2 },
+  safe: { flex: 1, backgroundColor: c.bgGrouped },
   scroll: { paddingHorizontal: 20, paddingBottom: 130 },
   back: { marginTop: 12 },
 
   headerBlock: { alignItems: 'center', marginTop: 8 },
   avatar: { width: 150, height: 150, borderRadius: 75, overflow: 'hidden' },
-  name: { fontFamily: fonts.bold, fontSize: 24, color: '#1B1B1B', marginTop: 16 },
-  joined: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394', marginTop: 4 },
+  name: { fontFamily: fonts.bold, fontSize: 24, color: c.text, marginTop: 16 },
+  joined: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint, marginTop: 4 },
 
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 24,
     padding: 22,
     marginTop: 24,
   },
-  cardTitle: { fontFamily: fonts.bold, fontSize: 20, color: '#1B1B1B', marginBottom: 8 },
+  cardTitle: { fontFamily: fonts.bold, fontSize: 20, color: c.text, marginBottom: 8 },
 
   infoRow: {
     flexDirection: 'row',
@@ -347,17 +359,17 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingVertical: 16,
   },
-  rowDivider: { borderBottomWidth: 1, borderBottomColor: '#EAEDED' },
+  rowDivider: { borderBottomWidth: 1, borderBottomColor: c.divider },
   infoIcon: {
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  infoText: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: '#2B2B2B' },
-  infoTextMuted: { color: '#9AA4A5' },
+  infoText: { flex: 1, fontFamily: fonts.regular, fontSize: 16, color: c.textBody },
+  infoTextMuted: { color: c.textGhost },
 
   toggleRow: {
     flexDirection: 'row',
@@ -365,5 +377,5 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
   },
-  toggleLabel: { fontFamily: fonts.semiBold, fontSize: 16, color: '#2B2B2B' },
-});
+  toggleLabel: { fontFamily: fonts.semiBold, fontSize: 16, color: c.textBody },
+}));

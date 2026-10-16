@@ -22,6 +22,7 @@ import {
 import { rtlIfArabic } from '../transcription';
 import { colors, fonts } from '../theme';
 import { HOLD_MS } from './CanvasCards';
+import { makeStyles, useColors } from '../appearance';
 
 // Smart Icon Reminders, drawn on the Timeline canvas. See src/dayMarkers.ts
 // for what they are and where they come from.
@@ -95,6 +96,7 @@ export default function SirCluster({
   scale: SharedValue<number>;
   onRemove: (marker: ShownMarker) => void;
 }) {
+  const styles = useStyles();
   const [open, setOpen] = useState<string | null>(null);
   const [saved, setSaved] = useState<Record<string, Spot>>({});
   useEffect(() => {
@@ -161,10 +163,12 @@ export default function SirCluster({
 /** What an icon is — its name, the user's note, where it came from — with
  *  the way into editing it. */
 function SirDetails({ marker, onEdit }: { marker: ShownMarker; onEdit: () => void }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <>
       <View style={styles.bubbleHeader}>
-        <MaterialCommunityIcons name={SIR_KINDS[marker.kind].icon} size={18} color={colors.primary} />
+        <MaterialCommunityIcons name={SIR_KINDS[marker.kind].icon} size={18} color={c.brand} />
         <Text style={[styles.bubbleTitle, rtlIfArabic(marker.label)]} numberOfLines={2}>
           {marker.label}
         </Text>
@@ -172,7 +176,7 @@ function SirDetails({ marker, onEdit }: { marker: ShownMarker; onEdit: () => voi
       {marker.note ? <Text style={[styles.bubbleNote, rtlIfArabic(marker.note)]}>{marker.note}</Text> : null}
       <Text style={styles.bubbleSub}>{describe(marker)}</Text>
       <Pressable onPress={onEdit} hitSlop={8} style={styles.editBtn}>
-        <MaterialCommunityIcons name="pencil-outline" size={14} color={colors.primary} />
+        <MaterialCommunityIcons name="pencil-outline" size={14} color={c.brand} />
         <Text style={styles.editText}>{marker.note ? 'Edit' : 'Add a note'}</Text>
       </Pressable>
     </>
@@ -195,6 +199,8 @@ function SirIcon({
   onPress: () => void;
   onMoved: (spot: Spot) => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const dx = useSharedValue(0);
   const dy = useSharedValue(0);
   const lift = useSharedValue(0);
@@ -239,7 +245,7 @@ function SirIcon({
         <MaterialCommunityIcons
           name={SIR_KINDS[marker.kind].icon}
           size={26}
-          color={open ? colors.primary : colors.white}
+          color={open ? c.brand : c.onTile}
         />
       </Animated.View>
     </GestureDetector>
@@ -260,6 +266,8 @@ export function SirRow({
   onRemove: (marker: ShownMarker) => void;
   onNote: (marker: ShownMarker, note: string) => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<ShownMarker | null>(null);
   return (
@@ -267,7 +275,7 @@ export function SirRow({
       {markers.map((m) => (
         <View key={m.id} style={styles.rowItem}>
           <Pressable onPress={() => setOpen(open === m.id ? null : m.id)} style={styles.chip}>
-            <MaterialCommunityIcons name={SIR_KINDS[m.kind].icon} size={18} color={colors.primary} />
+            <MaterialCommunityIcons name={SIR_KINDS[m.kind].icon} size={18} color={c.brand} />
             <Text style={[styles.chipLabel, rtlIfArabic(m.note ?? m.label)]} numberOfLines={1}>
               {m.note ? `${m.label} · ${m.note}` : m.label}
             </Text>
@@ -286,8 +294,8 @@ export function SirRow({
         </View>
       ))}
       <Pressable onPress={onAdd} style={[styles.chip, styles.chipAdd]}>
-        <MaterialCommunityIcons name="plus" size={18} color={colors.slate} />
-        <Text style={[styles.chipLabel, { color: colors.slate }]}>Mark this day</Text>
+        <MaterialCommunityIcons name="plus" size={18} color={c.brandMuted} />
+        <Text style={[styles.chipLabel, { color: c.brandMuted }]}>Mark this day</Text>
       </Pressable>
       <SirWindow
         marker={editing}
@@ -342,6 +350,8 @@ function SirWindow({
   onSave: (note: string) => void;
   onRemove: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [text, setText] = useState('');
   useEffect(() => setText(marker?.note ?? ''), [marker?.id, marker?.note]);
 
@@ -359,7 +369,7 @@ function SirWindow({
           <View style={styles.window}>
             <View style={styles.windowHead}>
               <View style={styles.windowIcon}>
-                <MaterialCommunityIcons name={SIR_KINDS[marker.kind].icon} size={22} color={colors.white} />
+                <MaterialCommunityIcons name={SIR_KINDS[marker.kind].icon} size={22} color={c.onTile} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.bubbleTitle, rtlIfArabic(marker.label)]} numberOfLines={2}>
@@ -372,7 +382,7 @@ function SirWindow({
               value={text}
               onChangeText={setText}
               placeholder={NOTE_HINT[marker.kind] ?? 'Add a note'}
-              placeholderTextColor="#9AA4A5"
+              placeholderTextColor={c.textGhost}
               style={[styles.noteInput, rtlIfArabic(text)]}
               multiline
               maxLength={140}
@@ -412,6 +422,8 @@ export function SirPicker({
    *  with nothing logged needs a note before it needs an icon. */
   onWrite?: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.scrim} onPress={onClose} />
@@ -421,13 +433,13 @@ export function SirPicker({
         {onWrite && (
           <Pressable onPress={onWrite} style={styles.writeRow}>
             <View style={styles.writeIcon}>
-              <MaterialCommunityIcons name="pencil-outline" size={22} color={colors.white} />
+              <MaterialCommunityIcons name="pencil-outline" size={22} color={c.onTile} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.writeTitle}>Write about this day</Text>
               <Text style={styles.writeHint}>A note, filed on this date</Text>
             </View>
-            <MaterialCommunityIcons name="chevron-right" size={22} color={colors.slate} />
+            <MaterialCommunityIcons name="chevron-right" size={22} color={c.brandMuted} />
           </Pressable>
         )}
         <Text style={styles.sheetHint}>
@@ -447,7 +459,7 @@ export function SirPicker({
               {column.map((kind) => (
                 <Pressable key={kind} onPress={() => onPick(kind)} style={styles.choice}>
                   <View style={styles.choiceIcon}>
-                    <MaterialCommunityIcons name={SIR_KINDS[kind].icon} size={24} color={colors.primary} />
+                    <MaterialCommunityIcons name={SIR_KINDS[kind].icon} size={24} color={c.brand} />
                   </View>
                   <Text style={styles.choiceLabel} numberOfLines={2}>
                     {SIR_KINDS[kind].label}
@@ -462,7 +474,7 @@ export function SirPicker({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   // Solid teal with a white icon and a white edge, so a small thing reads
   // clearly on the dotted canvas (Nour's original design, larger and
   // inverted from the first build's white circles).
@@ -471,29 +483,29 @@ const styles = StyleSheet.create({
     width: SIR_SIZE,
     height: SIR_SIZE,
     borderRadius: SIR_SIZE / 2,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderWidth: 2.5,
-    borderColor: colors.white,
+    borderColor: c.surface,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#0B2A2E',
+    shadowColor: c.shadow,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
     elevation: 4,
   },
   // Tapped: the colours swap back, so it reads as selected.
-  iconOpen: { backgroundColor: colors.white, borderColor: colors.primary },
+  iconOpen: { backgroundColor: c.surface, borderColor: c.brand },
   bubble: {
     position: 'absolute',
     // Above every card, including one that was just moved to the top.
     zIndex: 2000,
     width: 210,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E1E7E8',
-    shadowColor: '#000',
+    borderColor: c.divider,
+    shadowColor: c.shadow,
     shadowOpacity: 0.12,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
@@ -502,27 +514,27 @@ const styles = StyleSheet.create({
   },
   // On the day screen the details open under the chip, in the flow.
   bubbleInline: { position: 'relative', zIndex: 0, width: 230 },
-  bubbleNote: { color: colors.ink, fontFamily: fonts.regular, fontSize: 13, lineHeight: 18 },
+  bubbleNote: { color: c.ink, fontFamily: fonts.regular, fontSize: 13, lineHeight: 18 },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     alignSelf: 'flex-start',
     marginTop: 6,
-    backgroundColor: '#EEF3F3',
+    backgroundColor: c.fill,
     borderRadius: 999,
     paddingVertical: 5,
     paddingHorizontal: 11,
   },
-  editText: { fontFamily: fonts.medium, fontSize: 12, color: colors.primary },
+  editText: { fontFamily: fonts.medium, fontSize: 12, color: c.brand },
   bubbleHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   windowWrap: { flex: 1, justifyContent: 'center', paddingHorizontal: 28, backgroundColor: 'rgba(8,17,18,0.25)' },
   window: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 22,
     padding: 18,
     gap: 14,
-    shadowColor: '#000',
+    shadowColor: c.shadow,
     shadowOpacity: 0.18,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
@@ -533,7 +545,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -541,22 +553,22 @@ const styles = StyleSheet.create({
     minHeight: 64,
     maxHeight: 120,
     borderRadius: 14,
-    backgroundColor: '#EEF3F3',
+    backgroundColor: c.fill,
     paddingHorizontal: 14,
     paddingTop: 12,
     paddingBottom: 12,
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: colors.ink,
+    color: c.ink,
     textAlignVertical: 'top',
   },
   windowActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  doneBtn: { backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 22 },
-  doneText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
-  bubbleTitle: { flex: 1, color: colors.ink, fontFamily: fonts.semiBold, fontSize: 14 },
-  bubbleSub: { color: colors.slate, fontFamily: fonts.regular, fontSize: 12 },
+  doneBtn: { backgroundColor: c.tile, borderRadius: 999, paddingVertical: 9, paddingHorizontal: 22 },
+  doneText: { fontFamily: fonts.semiBold, fontSize: 14, color: c.onTile },
+  bubbleTitle: { flex: 1, color: c.ink, fontFamily: fonts.semiBold, fontSize: 14 },
+  bubbleSub: { color: c.brandMuted, fontFamily: fonts.regular, fontSize: 12 },
   bubbleRemove: {
-    color: '#B4574F',
+    color: c.danger,
     fontFamily: fonts.medium,
     fontSize: 12,
     marginTop: 6,
@@ -571,18 +583,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: '#EEF3F3',
+    backgroundColor: c.fill,
   },
   chipAdd: {
     backgroundColor: 'transparent',
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: colors.soft,
+    borderColor: c.brandFaint,
   },
-  chipLabel: { color: colors.primary, fontFamily: fonts.medium, fontSize: 13, flexShrink: 1 },
-  scrim: { flex: 1, backgroundColor: 'rgba(8,17,18,0.35)' },
+  chipLabel: { color: c.brand, fontFamily: fonts.medium, fontSize: 13, flexShrink: 1 },
+  scrim: { flex: 1, backgroundColor: c.scrim },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     paddingTop: 10,
@@ -595,10 +607,10 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     marginBottom: 14,
   },
-  sheetTitle: { color: colors.ink, fontFamily: fonts.semiBold, fontSize: 18 },
+  sheetTitle: { color: c.ink, fontFamily: fonts.semiBold, fontSize: 18 },
   writeRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -606,20 +618,20 @@ const styles = StyleSheet.create({
     marginTop: 14,
     padding: 12,
     borderRadius: 16,
-    backgroundColor: '#EEF3F3',
+    backgroundColor: c.fill,
   },
   writeIcon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  writeTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.ink },
-  writeHint: { fontFamily: fonts.regular, fontSize: 12, color: colors.slate, marginTop: 1 },
+  writeTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.ink },
+  writeHint: { fontFamily: fonts.regular, fontSize: 12, color: c.brandMuted, marginTop: 1 },
   sheetHint: {
-    color: colors.slate,
+    color: c.brandMuted,
     fontFamily: fonts.regular,
     fontSize: 13,
     marginTop: 4,
@@ -636,17 +648,17 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: '#EEF3F3',
+    backgroundColor: c.fill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   // Always two lines tall, so both rows line up whatever the labels say.
   choiceLabel: {
-    color: colors.primary,
+    color: c.brand,
     fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 15,
     height: 30,
     textAlign: 'center',
   },
-});
+}));

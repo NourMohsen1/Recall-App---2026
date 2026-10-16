@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { PhotoMeta } from '../photoMeta';
 import { AnySourceKey, MANUAL_SOURCE_OPTIONS, SOURCE_LABEL_STYLES } from '../photoSource';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 type Props = {
   visible: boolean;
@@ -28,6 +29,8 @@ type Props = {
 // photo's source themselves. Whatever's set here is 100% correct, unlike
 // any detector.
 export default function PhotoSourceSheet({ visible, current, onSet, onClear, onClose }: Props) {
+  const c = useColors();
+  const styles = useStyles();
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
 
@@ -91,7 +94,7 @@ export default function PhotoSourceSheet({ visible, current, onSet, onClear, onC
                   value={customText}
                   onChangeText={setCustomText}
                   placeholder="App name…"
-                  placeholderTextColor="#9AA4A5"
+                  placeholderTextColor={c.textGhost}
                   autoFocus
                   onSubmitEditing={saveCustom}
                   returnKeyType="done"
@@ -102,7 +105,7 @@ export default function PhotoSourceSheet({ visible, current, onSet, onClear, onC
               </View>
             ) : (
               <Pressable style={styles.otherRow} onPress={() => setCustomOpen(true)}>
-                <Ionicons name="add-circle-outline" size={18} color={colors.teal} />
+                <Ionicons name="add-circle-outline" size={18} color={c.brandSoft} />
                 <Text style={styles.otherText}>Other app…</Text>
               </Pressable>
             )}
@@ -129,10 +132,10 @@ export default function PhotoSourceSheet({ visible, current, onSet, onClear, onC
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.55)', justifyContent: 'flex-end' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, backgroundColor: c.scrim, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
@@ -143,12 +146,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#DDE2E2',
+    backgroundColor: c.grabber,
     alignSelf: 'center',
     marginBottom: 18,
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 19, color: '#1B1B1B' },
-  subtitle: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#8B9394', marginTop: 6 },
+  title: { fontFamily: fonts.semiBold, fontSize: 19, color: c.text },
+  subtitle: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: c.textFaint, marginTop: 6 },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 18 },
   chip: {
@@ -163,34 +166,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0,0,0,0.1)',
   },
-  chipActive: { borderWidth: 2, borderColor: colors.teal },
+  chipActive: { borderWidth: 2, borderColor: c.brandSoft },
   chipText: { fontFamily: fonts.semiBold, fontSize: 13 },
 
   otherRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 16 },
-  otherText: { fontFamily: fonts.medium, fontSize: 14, color: colors.teal },
+  otherText: { fontFamily: fonts.medium, fontSize: 14, color: c.brandSoft },
 
   customRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16 },
   customInput: {
     flex: 1,
     borderWidth: 1.5,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 14,
     fontFamily: fonts.regular,
     fontSize: 14,
-    color: '#2B2B2B',
+    color: c.textBody,
   },
   customSaveBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 14,
     paddingVertical: 12,
     paddingHorizontal: 18,
   },
-  customSaveText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  customSaveText: { fontFamily: fonts.semiBold, fontSize: 14, color: c.onTile },
 
   clearBtn: { alignItems: 'center', marginTop: 22 },
-  clearText: { fontFamily: fonts.medium, fontSize: 13, color: '#B24545' },
+  clearText: { fontFamily: fonts.medium, fontSize: 13, color: c.danger },
   cancelBtn: { alignItems: 'center', marginTop: 14 },
-  cancelText: { fontFamily: fonts.medium, fontSize: 14, color: '#8B9394' },
-});
+  cancelText: { fontFamily: fonts.medium, fontSize: 14, color: c.textFaint },
+}));

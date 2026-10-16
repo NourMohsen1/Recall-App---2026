@@ -6,6 +6,7 @@ import { PlaceCover } from './PlaceTile';
 import { getAllPersonMeta } from '../peopleTags';
 import { recapCompany, type RecapPerson, type RecapPlace } from '../recap';
 import { colors, fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 // The end of a day's or a week's recap: everyone the user was with and
 // everywhere they went, each once, as a row to swipe through. A person the
@@ -27,6 +28,7 @@ export default function RecapCompany({
   to: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const styles = useStyles();
   const router = useRouter();
   const [people, setPeople] = useState<RecapPerson[]>([]);
   const [places, setPlaces] = useState<RecapPlace[]>([]);
@@ -109,6 +111,7 @@ export default function RecapCompany({
 }
 
 function Section({ title, count, children }: { title: string; count: number; children: React.ReactNode }) {
+  const styles = useStyles();
   return (
     <View style={styles.section}>
       <View style={styles.head}>
@@ -131,9 +134,9 @@ function Section({ title, count, children }: { title: string; count: number; chi
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   // A line under the timeline, like the ones between its rows.
-  wrap: { marginTop: 22, borderTopWidth: 1, borderTopColor: '#A9C0C3' },
+  wrap: { marginTop: 22, borderTopWidth: 1, borderTopColor: c.brandLine },
   section: { marginTop: 18 },
   head: {
     flexDirection: 'row',
@@ -141,9 +144,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   // Same title and chip as the recap's rows above.
-  title: { fontFamily: fonts.semiBold, fontSize: 17, color: '#111' },
+  title: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
   chip: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 8,
     paddingVertical: 3,
     paddingHorizontal: 10,
@@ -151,7 +154,7 @@ const styles = StyleSheet.create({
   chipText: {
     fontFamily: fonts.semiBold,
     fontSize: 13,
-    color: colors.white,
+    color: c.onTile,
     letterSpacing: 0.5,
   },
   scroller: { marginHorizontal: -INSET },
@@ -161,9 +164,9 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: fonts.regular,
     fontSize: 12,
-    color: '#4A5253',
+    color: c.textSoft,
     marginTop: 6,
     maxWidth: '100%',
   },
-  labelGuess: { color: colors.slate, fontStyle: 'italic' },
-});
+  labelGuess: { color: c.brandMuted, fontStyle: 'italic' },
+}));

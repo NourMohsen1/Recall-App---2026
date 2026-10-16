@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { TranscriptWord } from '../memoryLog';
 import { rtlIfArabic } from '../transcription';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 function formatTime(seconds: number) {
   const s = Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
@@ -35,6 +36,8 @@ export default function VoicePlayer({
   note,
   variant = 'light',
 }: Props) {
+  const c = useColors();
+  const styles = useStyles();
   const dark = variant === 'dark';
   const [trackWidth, setTrackWidth] = useState(0);
   const [dragFrac, setDragFrac] = useState<number | null>(null);
@@ -158,7 +161,7 @@ export default function VoicePlayer({
         <Ionicons
           name={playing ? 'pause' : 'play'}
           size={28}
-          color={colors.white}
+          color={c.onTile}
           style={{ marginLeft: playing ? 0 : 3 }}
         />
       </Pressable>
@@ -166,7 +169,7 @@ export default function VoicePlayer({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   wrap: { alignItems: 'center' },
 
   transcriptBox: {
@@ -182,40 +185,40 @@ const styles = StyleSheet.create({
   },
   transcriptBoxLight: {
     borderWidth: 1,
-    borderColor: '#BFC9CA',
-    backgroundColor: colors.white,
+    borderColor: c.border,
+    backgroundColor: c.surface,
   },
   transcriptLine: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 24 },
   wordDark: { color: 'rgba(255,255,255,0.75)' },
-  wordLight: { color: colors.teal },
-  wordActive: { color: colors.accent, fontFamily: fonts.semiBold },
-  hint: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394', textAlign: 'center' },
+  wordLight: { color: c.brandSoft },
+  wordActive: { color: c.accent, fontFamily: fonts.semiBold },
+  hint: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint, textAlign: 'center' },
   hintDark: { color: 'rgba(255,255,255,0.6)' },
   note: {
     fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 20,
-    color: '#5B6364',
+    color: c.textMuted,
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#E5E8E8',
+    borderTopColor: c.divider,
   },
   noteDark: { color: 'rgba(255,255,255,0.7)', borderTopColor: 'rgba(255,255,255,0.15)' },
 
   barsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, height: 40, marginBottom: 16 },
   bar: { width: 4, borderRadius: 2 },
-  barDark: { backgroundColor: colors.accent },
-  barLight: { backgroundColor: colors.primary },
+  barDark: { backgroundColor: c.accent },
+  barLight: { backgroundColor: c.tile },
 
   track: { alignSelf: 'stretch', height: 24, justifyContent: 'center' },
   trackBg: { height: 6, borderRadius: 3, position: 'absolute', left: 0, right: 0 },
   trackBgDark: { backgroundColor: 'rgba(255,255,255,0.2)' },
-  trackBgLight: { backgroundColor: '#DCE6E7' },
+  trackBgLight: { backgroundColor: c.chip },
   trackFill: {
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     position: 'absolute',
     left: 0,
   },
@@ -224,22 +227,22 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: c.surface,
   },
 
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'stretch', marginTop: 8 },
-  timeText: { fontFamily: fonts.medium, fontSize: 12, color: colors.primary },
+  timeText: { fontFamily: fonts.medium, fontSize: 12, color: c.brand },
   timeTextDark: { color: 'rgba(255,255,255,0.7)' },
 
   playBtn: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 20,
   },
-});
+}));

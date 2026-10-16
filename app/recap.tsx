@@ -26,6 +26,7 @@ import {
 } from '../src/memoryLog';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
+import { makeStyles, useColors } from '../src/appearance';
 
 const PERIODS = ['Today', 'Weekly', 'Monthly', 'Yearly'] as const;
 type Period = (typeof PERIODS)[number];
@@ -54,9 +55,11 @@ function firstPhotoUri(memories: LoggedMemory[]): string | undefined {
 // A small placeholder icon shown when there's no logged photo for a slot —
 // never a stock/demo photo, just an honest "nothing here" mark.
 function EmptyTile({ style }: { style?: object }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <View style={[style as any, styles.emptyTile]}>
-      <MaterialCommunityIcons name="image-off-outline" size={18} color="#A9B0B1" />
+      <MaterialCommunityIcons name="image-off-outline" size={18} color={c.textGhost} />
     </View>
   );
 }
@@ -70,6 +73,7 @@ function TodayRecap({
   onDragging: (d: boolean) => void;
   onReordered: () => void;
 }) {
+  const styles = useStyles();
   const router = useRouter();
   // The day still going: after midnight, the evening before (logicalDay.ts).
   const today = logDayKey();
@@ -136,6 +140,8 @@ function TodayRecap({
 const KIND: Record<Exclude<Period, 'Today'>, RecapKind> = { Weekly: 'week', Monthly: 'month', Yearly: 'year' };
 
 function Recap() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   // A recap notification opens straight onto its own tab.
   const params = useLocalSearchParams<{ period?: string; offset?: string }>();
@@ -214,7 +220,7 @@ function Recap() {
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
           scrollEnabled={!dragging}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brandSoft} colors={[c.brandSoft]} />}
         >
           {analyzing && <AnalyzingBanner />}
 
@@ -256,14 +262,14 @@ function Recap() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
-  body: { flex: 1, backgroundColor: colors.pale },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  body: { flex: 1, backgroundColor: c.bgGrouped },
   scroll: { padding: 16, paddingBottom: 140 },
 
   switcher: {
     flexDirection: 'row',
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 999,
     padding: 6,
     justifyContent: 'space-between',
@@ -274,19 +280,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  switchBtnActive: { backgroundColor: colors.primary },
-  switchText: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B' },
-  switchTextActive: { color: colors.white },
+  switchBtnActive: { backgroundColor: c.tile },
+  switchText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text },
+  switchTextActive: { color: c.onTile },
 
   // Today
   todayCard: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 26,
     padding: 22,
     marginTop: 18,
     position: 'relative',
   },
-  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint },
   spine: {
     position: 'absolute',
     left: 8,
@@ -294,41 +300,41 @@ const styles = StyleSheet.create({
     bottom: 88,
     width: 10,
     borderRadius: 5,
-    backgroundColor: '#8FA6A9',
+    backgroundColor: c.brandLine,
   },
   segment: { flexDirection: 'row', gap: 14, marginBottom: 30 },
-  spineDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.primary, marginTop: 2 },
+  spineDot: { width: 26, height: 26, borderRadius: 13, backgroundColor: c.tile, marginTop: 2 },
   segmentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  segmentTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111' },
-  timePill: { backgroundColor: colors.primary, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 9 },
-  timePillText: { fontFamily: fonts.regular, fontSize: 12, color: colors.white },
-  segmentText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#5B6364', marginTop: 5 },
+  segmentTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text },
+  timePill: { backgroundColor: c.tile, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 9 },
+  timePillText: { fontFamily: fonts.regular, fontSize: 12, color: c.onTile },
+  segmentText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: c.textMuted, marginTop: 5 },
   sourceBtn: {
     alignSelf: 'flex-end',
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 24,
     marginTop: 6,
   },
-  sourceBtnText: { fontFamily: fonts.regular, fontSize: 14, color: '#0E1B1C' },
+  sourceBtnText: { fontFamily: fonts.regular, fontSize: 14, color: c.ink },
 
   // Weekly
-  weekCard: { backgroundColor: colors.white, borderRadius: 26, padding: 18, marginTop: 18 },
+  weekCard: { backgroundColor: c.surface, borderRadius: 26, padding: 18, marginTop: 18 },
   weekHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  weekTitle: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 24, color: '#1B1B1B' },
-  weekRange: { fontFamily: fonts.bold, fontSize: 17, lineHeight: 21, color: '#1B1B1B', textAlign: 'right' },
+  weekTitle: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 24, color: c.text },
+  weekRange: { fontFamily: fonts.bold, fontSize: 17, lineHeight: 21, color: c.text, textAlign: 'right' },
   weekDays: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14 },
   dayPill: {
     width: '13%',
     borderWidth: 1,
-    borderColor: '#C9D2D3',
+    borderColor: c.border,
     borderRadius: 999,
     alignItems: 'center',
     paddingTop: 6,
     overflow: 'hidden',
   },
-  dayPillNum: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.teal, marginBottom: 5 },
+  dayPillNum: { fontFamily: fonts.semiBold, fontSize: 13, color: c.brandSoft, marginBottom: 5 },
   dayPillPhoto: {
     width: '100%',
     aspectRatio: 0.45,
@@ -337,8 +343,8 @@ const styles = StyleSheet.create({
   },
 
   // Monthly / Yearly
-  monthCard: { backgroundColor: colors.white, borderRadius: 26, padding: 18, marginTop: 18 },
-  monthTitle: { fontFamily: fonts.bold, fontSize: 22, color: '#1B1B1B' },
+  monthCard: { backgroundColor: c.surface, borderRadius: 26, padding: 18, marginTop: 18 },
+  monthTitle: { fontFamily: fonts.bold, fontSize: 22, color: c.text },
   monthPhoto: {
     width: '100%',
     height: 220,
@@ -361,13 +367,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  yearText: { fontFamily: fonts.bold, fontSize: 64, color: colors.accent },
+  yearText: { fontFamily: fonts.bold, fontSize: 64, color: c.accent },
   emptyTile: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(Recap);

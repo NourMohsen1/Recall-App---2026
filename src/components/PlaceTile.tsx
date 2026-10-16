@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
 import { PLACE_KINDS, getPlace, getPlaces, type PlaceKind, type PlaceSummary } from '../places';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // A place's picture: the user's own photo from there, or — when there is
 // none yet — a quiet tile with the kind of place it is, the grey storefront
@@ -21,6 +22,8 @@ export function PlaceCover({
   radius?: number;
   style?: StyleProp<ViewStyle>;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const frame = [
     styles.frame,
     size != null && { width: size, height: size },
@@ -40,7 +43,7 @@ export function PlaceCover({
       <MaterialCommunityIcons
         name={icon}
         size={size ? Math.round(size * 0.42) : 48}
-        color="#B9C1C2"
+        color={c.textGhost}
       />
     </View>
   );
@@ -104,6 +107,8 @@ export default function PlaceTile({
    *  the grid is not in choosing mode. */
   selected?: boolean;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <Pressable
       onPress={onPress}
@@ -116,7 +121,7 @@ export default function PlaceTile({
         <PlaceCover cover={cover} kind={kind} size={size} radius={radius} />
         {selected !== undefined && (
           <View style={[styles.check, selected && styles.checkOn]}>
-            {selected && <MaterialCommunityIcons name="check" size={16} color={colors.white} />}
+            {selected && <MaterialCommunityIcons name="check" size={16} color={c.onTile} />}
           </View>
         )}
       </View>
@@ -132,12 +137,12 @@ export default function PlaceTile({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   frame: {
     overflow: 'hidden',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderWidth: 3,
-    borderColor: colors.white,
+    borderColor: c.surface,
   },
   check: {
     position: 'absolute',
@@ -147,20 +152,20 @@ const styles = StyleSheet.create({
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: c.surface,
     backgroundColor: 'rgba(8,17,18,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkOn: { backgroundColor: colors.teal },
+  checkOn: { backgroundColor: c.tileAlt },
   empty: {
-    backgroundColor: '#EEF1F1',
+    backgroundColor: c.fill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
     fontFamily: fonts.regular,
-    color: '#2B2B2B',
+    color: c.textBody,
     marginTop: 6,
     textAlign: 'center',
     maxWidth: '100%',
@@ -168,7 +173,7 @@ const styles = StyleSheet.create({
   caption: {
     fontFamily: fonts.regular,
     fontSize: 12,
-    color: '#8B9394',
+    color: c.textFaint,
     marginTop: 1,
   },
-});
+}));

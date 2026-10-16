@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import PhotoImage from './PhotoImage';
 import { recapPeriod, unitsWithContent, type RecapKind, type RecapUnit } from '../recap';
 import { colors, fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 // The first screen of each Recap tab, as designed: a card per week (with a
 // photo tile for each day), per month (one photo), or per year (one photo,
@@ -13,6 +14,7 @@ type Card = { offset: number; title: string; range: string; tiles: RecapUnit[]; 
 const HOW_MANY: Record<RecapKind, number> = { week: 8, month: 12, year: 6 };
 
 export default function RecapOverview({ kind, onOpen }: { kind: RecapKind; onOpen: (offset: number) => void }) {
+  const styles = useStyles();
   const [cards, setCards] = useState<Card[] | null>(null);
 
   useEffect(() => {
@@ -95,21 +97,21 @@ export default function RecapOverview({ kind, onOpen }: { kind: RecapKind; onOpe
   );
 }
 
-const styles = StyleSheet.create({
-  card: { backgroundColor: colors.white, borderRadius: 26, padding: 16, marginTop: 18 },
+const useStyles = makeStyles((c) => ({
+  card: { backgroundColor: c.surface, borderRadius: 26, padding: 16, marginTop: 18 },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: '#1B1B1B' },
-  range: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: '#1B1B1B', textAlign: 'right' },
+  title: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: c.text },
+  range: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 22, color: c.text, textAlign: 'right' },
   days: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
   pill: {
     width: '13%',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 999,
     alignItems: 'center',
     paddingTop: 6,
     overflow: 'hidden',
   },
-  pillNum: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.teal, marginBottom: 5 },
+  pillNum: { fontFamily: fonts.semiBold, fontSize: 15, color: c.brandSoft, marginBottom: 5 },
   pillPhoto: { width: '100%', aspectRatio: 0.6, borderRadius: 999, overflow: 'hidden' },
   monthPhoto: { width: '100%', aspectRatio: 2.4, borderRadius: 18, marginTop: 12, overflow: 'hidden' },
   yearPhoto: { width: '100%', aspectRatio: 1.95, borderRadius: 18, overflow: 'hidden' },
@@ -120,6 +122,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(8,17,18,0.28)',
     borderRadius: 18,
   },
-  yearText: { fontFamily: fonts.bold, fontSize: 56, color: colors.accent },
-  empty: { backgroundColor: '#E7EDEE' },
-});
+  yearText: { fontFamily: fonts.bold, fontSize: 56, color: c.accent },
+  empty: { backgroundColor: c.fill },
+}));

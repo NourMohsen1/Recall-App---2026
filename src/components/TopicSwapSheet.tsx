@@ -2,6 +2,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Topic, TopicKey, TOPIC_OPTIONS, topicIcon } from '../onThisDay';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 type Props = {
   visible: boolean;
@@ -12,6 +13,8 @@ type Props = {
 };
 
 export default function TopicSwapSheet({ visible, topic, selectedKeys, onSelect, onClose }: Props) {
+  const c = useColors();
+  const styles = useStyles();
   if (!topic) return null;
   const choices = TOPIC_OPTIONS.filter((t) => t.key !== topic.key && !selectedKeys.includes(t.key));
 
@@ -29,11 +32,11 @@ export default function TopicSwapSheet({ visible, topic, selectedKeys, onSelect,
                 <MaterialCommunityIcons
                   name={topicIcon(t.key) as any}
                   size={20}
-                  color={colors.teal}
+                  color={c.brandSoft}
                 />
               </View>
               <Text style={styles.rowLabel}>{t.label}</Text>
-              <Ionicons name="chevron-forward" size={18} color="#B9BEBF" />
+              <Ionicons name="chevron-forward" size={18} color={c.textGhost} />
             </Pressable>
           ))}
 
@@ -46,10 +49,10 @@ export default function TopicSwapSheet({ visible, topic, selectedKeys, onSelect,
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.45)', justifyContent: 'flex-end' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, backgroundColor: c.scrim, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
@@ -60,29 +63,29 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#DDE2E2',
+    backgroundColor: c.grabber,
     alignSelf: 'center',
     marginBottom: 18,
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 19, color: '#1B1B1B' },
-  subtitle: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginTop: 4, marginBottom: 16 },
+  title: { fontFamily: fonts.semiBold, fontSize: 19, color: c.text },
+  subtitle: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, marginTop: 4, marginBottom: 16 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
     borderTopWidth: 1,
-    borderTopColor: '#F0F2F2',
+    borderTopColor: c.divider,
   },
   rowIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: '#2B2B2B' },
+  rowLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: c.textBody },
   cancelBtn: { alignItems: 'center', marginTop: 18 },
-  cancelText: { fontFamily: fonts.medium, fontSize: 14, color: '#8B9394' },
-});
+  cancelText: { fontFamily: fonts.medium, fontSize: 14, color: c.textFaint },
+}));

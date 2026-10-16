@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { rtlIfArabic } from '../transcription';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Editing who someone is: their name, and how the user knows them.
 //
@@ -37,6 +38,8 @@ export default function PersonEditSheet({
   onSave: (name: string, descriptor: string) => Promise<void>;
   onClose: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [draftName, setDraftName] = useState(name);
   const [draftDescriptor, setDraftDescriptor] = useState(descriptor ?? '');
   const [saving, setSaving] = useState(false);
@@ -90,7 +93,7 @@ export default function PersonEditSheet({
               value={draftName}
               onChangeText={setDraftName}
               placeholder={mode === 'add' ? 'Who are they?' : mode === 'self' ? 'Your name' : 'Their name'}
-              placeholderTextColor="#A8B0B1"
+              placeholderTextColor={c.textGhost}
               style={[styles.input, rtlIfArabic(draftName)]}
               autoCorrect={false}
             />
@@ -111,7 +114,7 @@ export default function PersonEditSheet({
                   ? 'A product designer. I built Recall.'
                   : 'Brother · College friend · From work'
               }
-              placeholderTextColor="#A8B0B1"
+              placeholderTextColor={c.textGhost}
               style={[styles.input, styles.inputMultiline, rtlIfArabic(draftDescriptor)]}
               multiline
             />
@@ -128,14 +131,14 @@ export default function PersonEditSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: c.backdrop,
   },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 22,
@@ -148,7 +151,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#DDE3E3',
+    backgroundColor: c.grabber,
     marginBottom: 12,
   },
   headerRow: {
@@ -157,36 +160,36 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
-  cancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
-  done: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.teal },
-  doneOff: { color: '#C2C9C9' },
+  title: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
+  cancel: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
+  done: { fontFamily: fonts.semiBold, fontSize: 15, color: c.brandSoft },
+  doneOff: { color: c.textGhost },
 
   body: { paddingTop: 12, paddingBottom: 10 },
   label: {
     fontFamily: fonts.semiBold,
     fontSize: 13,
-    color: '#8B9394',
+    color: c.textFaint,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginTop: 16,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontFamily: fonts.regular,
     fontSize: 16,
-    color: '#1B1B1B',
+    color: c.text,
   },
   inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
   hint: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#9AA4A5',
+    color: c.textGhost,
     marginTop: 8,
   },
-});
+}));

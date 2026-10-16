@@ -4,6 +4,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import PersonAvatar from './PersonAvatar';
 import { getAllPersonMeta, getAllTaggedPeople } from '../peopleTags';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 function initials(name: string) {
   return name
@@ -21,6 +22,7 @@ function fold(s: string): string {
 
 /** The name with the typed part in bold, like a search bar's suggestions. */
 function Highlight({ text, query }: { text: string; query: string }) {
+  const styles = useStyles();
   const at = fold(text).indexOf(fold(query));
   if (!query || at < 0) return <Text style={styles.suggestText}>{text}</Text>;
   return (
@@ -61,6 +63,8 @@ export default function PeopleEditor({
   /** The search opened — the screen can lift it above the keyboard. */
   onSearchOpen?: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
 
@@ -117,7 +121,7 @@ export default function PeopleEditor({
           <View>
             <PersonAvatar name={name} photoUri={photos?.[name]} size={pinSize} />
             <Pressable style={styles.removeBtn} onPress={() => onRemove(name)} hitSlop={8}>
-              <Ionicons name="close-circle" size={18} color="#B24545" />
+              <Ionicons name="close-circle" size={18} color={c.danger} />
             </Pressable>
           </View>
           <Text numberOfLines={1} style={styles.label}>
@@ -140,10 +144,10 @@ export default function PeopleEditor({
           </Text>
           <View style={styles.confirmRow}>
             <Pressable onPress={() => onConfirm?.(s.name)} hitSlop={14}>
-              <Ionicons name="checkmark-circle" size={22} color={colors.teal} />
+              <Ionicons name="checkmark-circle" size={22} color={c.brandSoft} />
             </Pressable>
             <Pressable onPress={() => onDismiss?.(s.name)} hitSlop={14}>
-              <Ionicons name="close-circle" size={22} color="#B4B8B8" />
+              <Ionicons name="close-circle" size={22} color={c.textGhost} />
             </Pressable>
           </View>
         </View>
@@ -152,7 +156,7 @@ export default function PeopleEditor({
       {adding ? (
         <View style={styles.searchCell}>
           <View style={styles.searchRow}>
-            <Ionicons name="search" size={15} color={colors.teal} />
+            <Ionicons name="search" size={15} color={c.brandSoft} />
             <TextInput
               autoFocus
               value={draft}
@@ -165,12 +169,12 @@ export default function PeopleEditor({
               // half-typed text being saved first.
               onBlur={() => !draft.trim() && setAdding(false)}
               placeholder="Who were you with?"
-              placeholderTextColor="#A9B0B1"
+              placeholderTextColor={c.textGhost}
               style={styles.searchInput}
               returnKeyType="done"
             />
             <Pressable onPress={() => { setDraft(''); setAdding(false); }} hitSlop={10}>
-              <Ionicons name="close-circle" size={18} color="#B4B8B8" />
+              <Ionicons name="close-circle" size={18} color={c.textGhost} />
             </Pressable>
           </View>
           {(ranked.length > 0 || (q && !exact)) && (
@@ -194,7 +198,7 @@ export default function PeopleEditor({
               {q && !exact ? (
                 <Pressable style={styles.suggestRow} onPress={() => commit(draft)}>
                   <View style={styles.newIcon}>
-                    <Ionicons name="add" size={18} color={colors.teal} />
+                    <Ionicons name="add" size={18} color={c.brandSoft} />
                   </View>
                   <Text style={styles.suggestText}>
                     Add <Text style={styles.suggestBold}>“{draft.trim()}”</Text>
@@ -217,7 +221,7 @@ export default function PeopleEditor({
               onSearchOpen?.();
             }}
           >
-            <MaterialCommunityIcons name="account-plus-outline" size={26} color={colors.teal} />
+            <MaterialCommunityIcons name="account-plus-outline" size={26} color={c.brandSoft} />
           </Pressable>
           <Text style={styles.label}>Add</Text>
         </View>
@@ -226,32 +230,32 @@ export default function PeopleEditor({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   cell: { alignItems: 'center' },
   pin: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addPin: { borderWidth: 1.5, borderColor: colors.teal, borderStyle: 'dashed', backgroundColor: 'transparent' },
-  initials: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.teal },
+  addPin: { borderWidth: 1.5, borderColor: c.brandSoft, borderStyle: 'dashed', backgroundColor: 'transparent' },
+  initials: { fontFamily: fonts.semiBold, fontSize: 16, color: c.brandSoft },
   removeBtn: {
     position: 'absolute',
     top: -4,
     right: -4,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 9,
   },
-  labelUnconfirmed: { color: colors.slate, fontStyle: 'italic' },
+  labelUnconfirmed: { color: c.brandMuted, fontStyle: 'italic' },
   confirmRow: { flexDirection: 'row', gap: 10, marginTop: 4, justifyContent: 'center' },
-  label: { fontFamily: fonts.regular, fontSize: 12, color: '#4A5253', marginTop: 6 },
+  label: { fontFamily: fonts.regular, fontSize: 12, color: c.textSoft, marginTop: 6 },
   input: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#2B2B2B',
+    color: c.textBody,
     borderBottomWidth: 1,
-    borderBottomColor: colors.teal,
+    borderBottomColor: c.brandSoft,
     paddingVertical: 4,
     width: '100%',
   },
@@ -263,18 +267,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     borderWidth: 1.5,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     borderRadius: 999,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 14, color: '#2B2B2B', padding: 0 },
+  searchInput: { flex: 1, fontFamily: fonts.regular, fontSize: 14, color: c.textBody, padding: 0 },
   suggestList: {
     marginTop: 8,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#E4E8E8',
-    backgroundColor: colors.white,
+    borderColor: c.divider,
+    backgroundColor: c.surface,
     overflow: 'hidden',
   },
   suggestRow: {
@@ -284,19 +288,19 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F2F2',
+    borderBottomColor: c.divider,
   },
-  suggestText: { fontFamily: fonts.regular, fontSize: 14, color: '#2B2B2B' },
-  suggestBold: { fontFamily: fonts.semiBold, color: colors.primary },
-  suggestSub: { fontFamily: fonts.regular, fontSize: 11, color: '#8B9394', marginTop: 1 },
+  suggestText: { fontFamily: fonts.regular, fontSize: 14, color: c.textBody },
+  suggestBold: { fontFamily: fonts.semiBold, color: c.brand },
+  suggestSub: { fontFamily: fonts.regular, fontSize: 11, color: c.textFaint, marginTop: 1 },
   newIcon: {
     width: 30,
     height: 30,
     borderRadius: 15,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.teal,
+    borderColor: c.brandSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-});
+}));

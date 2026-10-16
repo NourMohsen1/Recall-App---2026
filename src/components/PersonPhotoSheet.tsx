@@ -2,6 +2,7 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'rea
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // What you can do with a person's face: set it, use it to search your
 // photos, or clear it.
@@ -41,6 +42,8 @@ export default function PersonPhotoSheet({
   onRemove: () => void;
   onClose: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const firstName = personName.trim().split(/\s+/)[0];
 
   return (
@@ -63,9 +66,9 @@ export default function PersonPhotoSheet({
               ) : (
                 <View style={[styles.faceThumb, styles.faceThumbEmpty]}>
                   {cuttingFace ? (
-                    <ActivityIndicator size="small" color={colors.teal} />
+                    <ActivityIndicator size="small" color={c.brandSoft} />
                   ) : (
-                    <MaterialCommunityIcons name="face-recognition" size={20} color="#A9B0B1" />
+                    <MaterialCommunityIcons name="face-recognition" size={20} color={c.textGhost} />
                   )}
                 </View>
               )}
@@ -89,7 +92,7 @@ export default function PersonPhotoSheet({
           )}
 
           <Pressable style={styles.action} onPress={onPickFromLibrary}>
-            <MaterialCommunityIcons name="image-outline" size={22} color={colors.teal} />
+            <MaterialCommunityIcons name="image-outline" size={22} color={c.brandSoft} />
             <View style={{ flex: 1 }}>
               <Text style={styles.actionText}>
                 {hasPhoto ? 'Change photo' : 'Choose a photo'}
@@ -109,7 +112,7 @@ export default function PersonPhotoSheet({
             <MaterialCommunityIcons
               name="account-search-outline"
               size={22}
-              color={!hasPhoto || scanning ? '#B4BBBB' : colors.teal}
+              color={!hasPhoto || scanning ? c.textGhost : c.brandSoft}
             />
             <View style={{ flex: 1 }}>
               <Text style={[styles.actionText, (!hasPhoto || scanning) && styles.actionTextOff]}>
@@ -127,8 +130,8 @@ export default function PersonPhotoSheet({
 
           {hasPhoto && (
             <Pressable style={styles.action} onPress={onRemove}>
-              <MaterialCommunityIcons name="trash-can-outline" size={22} color="#B24545" />
-              <Text style={[styles.actionText, { color: '#B24545' }]}>Remove photo</Text>
+              <MaterialCommunityIcons name="trash-can-outline" size={22} color={c.danger} />
+              <Text style={[styles.actionText, { color: c.danger }]}>Remove photo</Text>
             </Pressable>
           )}
 
@@ -141,7 +144,7 @@ export default function PersonPhotoSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   faceRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -149,13 +152,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 4,
   },
-  faceThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: colors.pale },
+  faceThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: c.chip },
   faceThumbEmpty: { alignItems: 'center', justifyContent: 'center' },
-  faceTitle: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.primary },
-  faceHint: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2, lineHeight: 16 },
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+  faceTitle: { fontFamily: fonts.semiBold, fontSize: 14, color: c.brand },
+  faceHint: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint, marginTop: 2, lineHeight: 16 },
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.backdrop },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 22,
@@ -167,10 +170,10 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#DDE3E3',
+    backgroundColor: c.grabber,
     marginBottom: 14,
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 19, color: '#1B1B1B', marginBottom: 6 },
+  title: { fontFamily: fonts.semiBold, fontSize: 19, color: c.text, marginBottom: 6 },
 
   action: {
     flexDirection: 'row',
@@ -178,19 +181,19 @@ const styles = StyleSheet.create({
     gap: 14,
     paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: '#EDF1F1',
+    borderTopColor: c.divider,
   },
   actionOff: { opacity: 0.6 },
-  actionText: { fontFamily: fonts.medium, fontSize: 16, color: '#2B2B2B' },
-  actionTextOff: { color: '#8B9394' },
+  actionText: { fontFamily: fonts.medium, fontSize: 16, color: c.textBody },
+  actionTextOff: { color: c.textFaint },
   actionHint: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#8B9394',
+    color: c.textFaint,
     marginTop: 3,
   },
 
   cancel: { alignItems: 'center', paddingTop: 18 },
-  cancelText: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
-});
+  cancelText: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
+}));

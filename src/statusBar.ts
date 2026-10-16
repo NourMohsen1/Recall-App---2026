@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { AppState, StatusBar } from 'react-native';
 import { useFocusEffect, usePathname } from 'expo-router';
+import { currentColors, useScheme } from './appearance';
 
 // The phone's top bar (clock, signal, battery) follows the screen under it:
 // dark on the app's light screens, which is most of them, and white on the
@@ -26,8 +27,9 @@ const claims = new Set<number>();
 const listeners = new Set<() => void>();
 let nextClaim = 1;
 
+// In dark mode every screen is dark, so the bar is white throughout.
 function wanted(): Style {
-  return claims.size > 0 ? 'light-content' : 'dark-content';
+  return claims.size > 0 || currentColors().scheme === 'dark' ? 'light-content' : 'dark-content';
 }
 
 function changed(): void {
@@ -53,6 +55,7 @@ export function useLightStatusBar(enabled = true): void {
 /** Mounted once, in the root layout. Renders nothing. */
 export function StatusBarKeeper(): null {
   const pathname = usePathname();
+  const scheme = useScheme();
 
   useEffect(() => {
     let shown: Style | undefined;
@@ -87,7 +90,7 @@ export function StatusBarKeeper(): null {
   // a moment after the route has changed.
   useEffect(() => {
     StatusBar.setBarStyle(wanted(), true);
-  }, [pathname]);
+  }, [pathname, scheme]);
 
   return null;
 }

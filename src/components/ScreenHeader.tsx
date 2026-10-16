@@ -3,6 +3,7 @@ import { useRouter, type Href } from 'expo-router';
 import { goBack } from '../navigation';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // White page header with a teal back arrow and centered title,
 // used by People / Places / On This Day / Recap.
@@ -23,6 +24,8 @@ export default function ScreenHeader({
   /** Optional top-right control, mirroring the back arrow on the left. */
   action?: { icon: keyof typeof Ionicons.glyphMap; onPress: () => void; label?: string };
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   return (
     <View style={styles.header}>
@@ -31,7 +34,7 @@ export default function ScreenHeader({
         hitSlop={12}
         style={styles.back}
       >
-        <Ionicons name="arrow-back" size={28} color={colors.primary} />
+        <Ionicons name="arrow-back" size={28} color={c.brand} />
       </Pressable>
       <Text style={styles.title}>{title}</Text>
       {action && (
@@ -41,16 +44,16 @@ export default function ScreenHeader({
           style={styles.action}
           accessibilityLabel={action.label}
         >
-          <Ionicons name={action.icon} size={24} color={colors.primary} />
+          <Ionicons name={action.icon} size={24} color={c.brand} />
         </Pressable>
       )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   header: {
-    backgroundColor: colors.white,
+    backgroundColor: c.bg,
     paddingTop: 12,
     paddingBottom: 20,
     alignItems: 'center',
@@ -58,5 +61,5 @@ const styles = StyleSheet.create({
   },
   back: { position: 'absolute', left: 20, top: 14 },
   action: { position: 'absolute', right: 20, top: 16 },
-  title: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
-});
+  title: { fontFamily: fonts.medium, fontSize: 24, color: c.textBody },
+}));

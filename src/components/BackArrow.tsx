@@ -2,19 +2,22 @@ import { Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 /** `onPress` replaces going back a screen — a step back inside one screen,
  *  like the setup questions. */
 export default function BackArrow({ onPress }: { onPress?: () => void } = {}) {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   if (!onPress && !router.canGoBack()) return null;
   return (
     <Pressable onPress={onPress ?? (() => router.back())} style={styles.btn} hitSlop={12}>
-      <Ionicons name="arrow-back" size={32} color={colors.white} />
+      <Ionicons name="arrow-back" size={32} color={c.onTile} />
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   btn: { marginTop: 24, alignSelf: 'flex-start' },
-});
+}));

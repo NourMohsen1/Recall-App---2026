@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import ScreenHeader from '../src/components/ScreenHeader';
 import { colors, fonts } from '../src/theme';
+import { makeStyles, useColors } from '../src/appearance';
 
 // About Recall: the version, the privacy and support pages, and the credits
 // the 3D models' licences ask for (CC BY 4.0). They used to sit as two lines
@@ -17,16 +18,19 @@ const CREDITS = [
 ];
 
 function LinkRow({ icon, label, url }: { icon: keyof typeof Ionicons.glyphMap; label: string; url: string }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <Pressable style={styles.row} onPress={() => Linking.openURL(url).catch(() => {})}>
-      <Ionicons name={icon} size={20} color={colors.teal} />
+      <Ionicons name={icon} size={20} color={c.brandSoft} />
       <Text style={styles.rowLabel}>{label}</Text>
-      <Ionicons name="open-outline" size={16} color="#A3ABAC" />
+      <Ionicons name="open-outline" size={16} color={c.textGhost} />
     </Pressable>
   );
 }
 
 export default function About() {
+  const styles = useStyles();
   const version = Constants.expoConfig?.version ?? '';
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
@@ -63,18 +67,18 @@ export default function About() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
-  body: { flex: 1, backgroundColor: colors.pale },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
+  body: { flex: 1, backgroundColor: c.bgGrouped },
   scroll: { padding: 20, paddingBottom: 60, gap: 14 },
-  card: { backgroundColor: colors.white, borderRadius: 22, paddingHorizontal: 18, paddingVertical: 6 },
-  appName: { fontFamily: fonts.semiBold, fontSize: 17, color: colors.ink, paddingTop: 12 },
-  version: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', paddingBottom: 12, marginTop: 2 },
+  card: { backgroundColor: c.surface, borderRadius: 22, paddingHorizontal: 18, paddingVertical: 6 },
+  appName: { fontFamily: fonts.semiBold, fontSize: 17, color: c.ink, paddingTop: 12 },
+  version: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, paddingBottom: 12, marginTop: 2 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
-  rowLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: colors.ink },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: '#D9E0E0' },
-  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#5B6364', marginTop: 8, marginLeft: 6 },
+  rowLabel: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: c.ink },
+  divider: { height: StyleSheet.hairlineWidth, backgroundColor: c.divider },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.textMuted, marginTop: 8, marginLeft: 6 },
   credit: { paddingVertical: 12 },
-  creditWhat: { fontFamily: fonts.medium, fontSize: 14, color: colors.ink },
-  creditText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#6B7475', marginTop: 2 },
-});
+  creditWhat: { fontFamily: fonts.medium, fontSize: 14, color: c.ink },
+  creditText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: 2 },
+}));

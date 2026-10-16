@@ -20,6 +20,7 @@ import {
 import { rtlIfArabic, transcribeAudio, transcriptionAvailable } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
 import { withAppNav } from '../../../src/components/AppNav';
+import { makeStyles, useColors } from '../../../src/appearance';
 
 const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -36,10 +37,12 @@ function enteredAt(m: { createdAt: string; takenAt: string }): string {
 }
 
 function Header({ onBack }: { onBack: () => void }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <View style={styles.header}>
       <Pressable onPress={onBack} hitSlop={12} style={styles.back}>
-        <Ionicons name="arrow-back" size={28} color={colors.primary} />
+        <Ionicons name="arrow-back" size={28} color={c.brand} />
       </Pressable>
       <Text style={styles.headerTitle}>Source</Text>
     </View>
@@ -62,6 +65,8 @@ function RealSource({
   onRemoved: () => void;
   onUpdated: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   // Repaired before it is opened: a recording saved by a previous install
   // is still on disk, but under a container path that no longer exists.
   // Without this it reads as "this recording can't be found", which is how
@@ -147,7 +152,7 @@ function RealSource({
 
       {unavailable ? (
         <View style={styles.unavailableBox}>
-          <Ionicons name="alert-circle-outline" size={28} color="#8B9394" />
+          <Ionicons name="alert-circle-outline" size={28} color={c.textFaint} />
           <Text style={styles.unavailableText}>
             This recording isn’t on your device any more. The words are kept either way.
             Only the audio is gone.
@@ -177,7 +182,7 @@ function RealSource({
           />
           {!voice.text && transcriptionAvailable() && (
             <Pressable style={styles.transcribeBtn} onPress={generateTranscript} disabled={transcribing}>
-              <Ionicons name="text-outline" size={16} color={colors.teal} />
+              <Ionicons name="text-outline" size={16} color={c.brandSoft} />
               <Text style={styles.transcribeBtnText}>
                 {transcribing ? 'Transcribing…' : 'Generate transcript'}
               </Text>
@@ -192,6 +197,7 @@ function RealSource({
 // A typed entry's own source: the words the user actually typed, before the
 // intake brain reorganized them. No player — the typing IS the recording.
 function TypedSource({ memory }: { memory: LoggedMemory }) {
+  const styles = useStyles();
   const original = memory.rawText ?? memory.text;
   return (
     <View style={styles.typedBlock}>
@@ -210,15 +216,19 @@ function TypedSource({ memory }: { memory: LoggedMemory }) {
 
 // Nothing was logged by voice or typing on this day.
 function EmptySource() {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <View style={styles.emptyBox}>
-      <MaterialCommunityIcons name="microphone-off" size={28} color="#8B9394" />
+      <MaterialCommunityIcons name="microphone-off" size={28} color={c.textFaint} />
       <Text style={styles.emptyText}>Nothing was logged by voice or typing on this day.</Text>
     </View>
   );
 }
 
 function SourceScreen() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
@@ -259,7 +269,7 @@ function SourceScreen() {
       <Header onBack={backToDay} />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.waveBadge}>
-          <MaterialCommunityIcons name="waveform" size={40} color={colors.primary} />
+          <MaterialCommunityIcons name="waveform" size={40} color={c.brand} />
         </View>
 
         {loaded &&
@@ -286,11 +296,11 @@ function SourceScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: { paddingTop: 12, paddingBottom: 20, alignItems: 'center' },
   back: { position: 'absolute', left: 20, top: 16 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.textBody },
   scroll: { paddingHorizontal: 28, paddingBottom: 140 },
 
   waveBadge: {
@@ -298,17 +308,17 @@ const styles = StyleSheet.create({
     height: 80,
     borderRadius: 22,
     borderWidth: 3,
-    borderColor: colors.primary,
+    borderColor: c.brand,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 24,
   },
-  title: { fontFamily: fonts.medium, fontSize: 24, lineHeight: 34, color: '#111', marginTop: 24 },
+  title: { fontFamily: fonts.medium, fontSize: 24, lineHeight: 34, color: c.text, marginTop: 24 },
 
   unavailableBox: {
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E8E8',
+    borderColor: c.divider,
     borderRadius: 18,
     padding: 24,
     marginTop: 28,
@@ -318,16 +328,16 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#5B6364',
+    color: c.textMuted,
     textAlign: 'center',
   },
   removeBtn: {
-    backgroundColor: '#F3E9E9',
+    backgroundColor: c.dangerWash,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 20,
   },
-  removeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: '#B24545' },
+  removeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: c.danger },
 
   transcribeBtn: {
     flexDirection: 'row',
@@ -336,27 +346,27 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 18,
   },
-  transcribeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: colors.teal },
+  transcribeBtnText: { fontFamily: fonts.medium, fontSize: 13, color: c.brandSoft },
 
   emptyBox: { alignItems: 'center', marginTop: 60, gap: 12 },
-  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint },
 
   typedBlock: { marginBottom: 8 },
   typedText: {
     fontFamily: fonts.regular,
     fontSize: 15,
     lineHeight: 24,
-    color: '#3D4546',
+    color: c.textSoft,
     marginTop: 18,
   },
   typedNote: {
     fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 20,
-    color: '#7C8586',
+    color: c.textFaint,
     marginTop: 10,
   },
-});
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(SourceScreen);

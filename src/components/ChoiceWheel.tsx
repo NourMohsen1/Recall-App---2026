@@ -5,6 +5,7 @@ import * as Haptics from 'expo-haptics';
 // own scroll — React Native's lets the page move instead of the wheel.
 import { ScrollView } from 'react-native-gesture-handler';
 import { colors, fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 // A wheel of choices, like Apple's time wheel: swipe up or down, the one in
 // the middle band is chosen, with a tick as each one passes. Used for a
@@ -23,6 +24,7 @@ export default function ChoiceWheel<K extends string>({
   value: K;
   onChange: (key: K) => void;
 }) {
+  const styles = useStyles();
   const ref = useRef<ScrollView>(null);
   const index = Math.max(0, options.findIndex((o) => o.key === value));
   const shown = useRef(index);
@@ -86,7 +88,7 @@ export default function ChoiceWheel<K extends string>({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   wrap: { height: ROW * VISIBLE, marginHorizontal: 16, marginBottom: 12, overflow: 'hidden' },
   // The middle row, where the choice sits — the same pale band as the
   // time wheel.
@@ -97,9 +99,9 @@ const styles = StyleSheet.create({
     top: ((VISIBLE - 1) / 2) * ROW,
     height: ROW,
     borderRadius: 10,
-    backgroundColor: '#EEF3F3',
+    backgroundColor: c.fill,
   },
   row: { height: ROW, alignItems: 'center', justifyContent: 'center' },
-  label: { fontFamily: fonts.regular, fontSize: 17, color: '#9AA4A5' },
-  labelOn: { fontFamily: fonts.medium, color: colors.ink },
-});
+  label: { fontFamily: fonts.regular, fontSize: 17, color: c.textGhost },
+  labelOn: { fontFamily: fonts.medium, color: c.ink },
+}));

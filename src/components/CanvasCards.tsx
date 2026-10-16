@@ -15,6 +15,7 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
+import { makeStyles } from '../appearance';
 
 // The Timeline's cards, movable: hold one, it lifts and follows the finger
 // anywhere on the canvas, and the dashed lines stay joined to it the whole
@@ -118,6 +119,7 @@ export function DraggableCard({
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
   children: ReactNode;
 }) {
+  const styles = useStyles();
   const o = offsets[id];
   const startX = useSharedValue(0);
   const startY = useSharedValue(0);
@@ -199,6 +201,7 @@ export function Connectors({
   origin: { x: number; y: number };
   size: { w: number; h: number };
 }) {
+  const styles = useStyles();
   return (
     <View pointerEvents="none" style={[styles.layer, { left: origin.x, top: origin.y, width: size.w, height: size.h }]}>
       <Svg width={size.w} height={size.h}>
@@ -318,7 +321,7 @@ function Line({
   );
 }
 
-const styles = StyleSheet.create({
-  slot: { position: 'absolute', shadowColor: '#0B2A2E', borderRadius: 24 },
+const useStyles = makeStyles((c) => ({
+  slot: { position: 'absolute', shadowColor: c.shadow, borderRadius: 24 },
   layer: { position: 'absolute' },
-});
+}));

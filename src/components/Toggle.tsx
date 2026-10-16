@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { colors } from '../theme';
+import { makeStyles } from '../appearance';
 
 export default function Toggle({
   value,
@@ -9,6 +10,7 @@ export default function Toggle({
   value?: boolean;
   onChange?: (v: boolean) => void;
 }) {
+  const styles = useStyles();
   const [internal, setInternal] = useState(value ?? false);
   const on = value ?? internal;
 
@@ -25,7 +27,7 @@ export default function Toggle({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   track: {
     width: 58,
     height: 30,
@@ -33,9 +35,9 @@ const styles = StyleSheet.create({
     padding: 3,
     justifyContent: 'center',
   },
-  trackOn: { backgroundColor: '#DCE6E7' },
-  trackOff: { backgroundColor: '#E4E6E6' },
+  trackOn: { backgroundColor: c.toggleOn },
+  trackOff: { backgroundColor: c.toggleOff },
   knob: { width: 24, height: 24, borderRadius: 12 },
-  knobOn: { alignSelf: 'flex-end', backgroundColor: colors.accent },
-  knobOff: { alignSelf: 'flex-start', backgroundColor: '#AEB6B7' },
-});
+  knobOn: { alignSelf: 'flex-end', backgroundColor: c.accent },
+  knobOff: { alignSelf: 'flex-start', backgroundColor: c.knobOff },
+}));

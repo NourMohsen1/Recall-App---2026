@@ -3,6 +3,7 @@ import { ColorValue, Image, StyleSheet, View } from 'react-native';
 import MemoryFab from '../../src/components/MemoryFab';
 import { ICONS } from '../../src/images';
 import { colors, fonts } from '../../src/theme';
+import { useColors } from '../../src/appearance';
 
 // `color` is whatever the tab bar hands us, which is a ColorValue — it can
 // be a platform color object, not just a string. Image's tintColor accepts
@@ -14,17 +15,18 @@ function TabIcon({ source, color }: { source: any; color: ColorValue }) {
 }
 
 export default function TabsLayout() {
+  const c = useColors();
   const router = useRouter();
   return (
     <View style={{ flex: 1 }}>
       <Tabs
         screenOptions={{
           headerShown: false,
-          tabBarActiveTintColor: colors.primary,
-          tabBarInactiveTintColor: colors.primary,
+          tabBarActiveTintColor: c.brand,
+          tabBarInactiveTintColor: c.brand,
           tabBarStyle: {
-            backgroundColor: colors.white,
-            borderTopColor: colors.pale,
+            backgroundColor: c.bg,
+            borderTopColor: c.divider,
             height: 84,
             paddingTop: 8,
           },

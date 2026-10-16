@@ -5,6 +5,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { explorePastAsked, markExplorePastAsked, startExplorePast } from '../explorePast';
 import { quietSyncRunning, watchQuietSync } from '../photoImport';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // "Explore your past" on Home, once, for anyone who never saw it in setup
 // (everyone who had Recall before it existed). Tapping it brings the past
@@ -12,6 +13,8 @@ import { colors, fonts } from '../theme';
 // The × hides it for good; Profile → Import photos stays the way in.
 
 export default function ExplorePastCard({ onDone }: { onDone?: () => void }) {
+  const c = useColors();
+  const styles = useStyles();
   const [show, setShow] = useState(false);
   const [running, setRunning] = useState(false);
   const [imported, setImported] = useState(0);
@@ -70,9 +73,9 @@ export default function ExplorePastCard({ onDone }: { onDone?: () => void }) {
     <Pressable style={styles.card} onPress={running ? undefined : start}>
       <View style={styles.icon}>
         {running ? (
-          <ActivityIndicator color={colors.white} />
+          <ActivityIndicator color={c.onTile} />
         ) : (
-          <MaterialCommunityIcons name="image-multiple-outline" size={22} color={colors.white} />
+          <MaterialCommunityIcons name="image-multiple-outline" size={22} color={c.onTile} />
         )}
       </View>
       <View style={styles.body}>
@@ -87,34 +90,34 @@ export default function ExplorePastCard({ onDone }: { onDone?: () => void }) {
       </View>
       {!running && (
         <Pressable onPress={dismiss} hitSlop={10} accessibilityLabel="Not now">
-          <Ionicons name="close" size={20} color="#8B9394" />
+          <Ionicons name="close" size={20} color={c.textFaint} />
         </Pressable>
       )}
     </Pressable>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     borderWidth: 1.5,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     borderRadius: 24,
     padding: 16,
     marginTop: 24,
-    backgroundColor: '#F2F8F8',
+    backgroundColor: c.fill,
   },
   icon: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: colors.teal,
+    backgroundColor: c.tileAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
   body: { flex: 1 },
-  title: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.ink },
-  text: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#5B6364', marginTop: 2 },
-});
+  title: { fontFamily: fonts.semiBold, fontSize: 16, color: c.ink },
+  text: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textMuted, marginTop: 2 },
+}));

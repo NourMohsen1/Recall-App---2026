@@ -44,6 +44,7 @@ import { getAllDayPlaces, type DayPlace } from '../src/places';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
+import { makeStyles, useColors } from '../src/appearance';
 
 // On This Day: each day of the user's life beside what happened in the
 // world that same day — "the day you went to the doctor was the day
@@ -95,6 +96,8 @@ function DayCard({
    *  wrote nothing, and drawn as the guess it is. */
   guess?: string;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const lines = memories.map(memoryDisplayText).filter(Boolean) as string[];
   // The card is a fixed height, and notes vary — three two-line notes don't
@@ -128,14 +131,14 @@ function DayCard({
             <PhotoImage uri={photo} style={StyleSheet.absoluteFill} />
             {isScreenshot && (
               <View style={styles.mediaTag}>
-                <MaterialCommunityIcons name="cellphone-screenshot" size={12} color={colors.ink} />
+                <MaterialCommunityIcons name="cellphone-screenshot" size={12} color={c.ink} />
                 <Text style={styles.mediaTagText}>Screenshot</Text>
               </View>
             )}
           </>
         ) : (
           <View style={styles.mediaEmpty}>
-            <MaterialCommunityIcons name="notebook-heart-outline" size={34} color={colors.soft} />
+            <MaterialCommunityIcons name="notebook-heart-outline" size={34} color={c.brandFaint} />
           </View>
         )}
       </View>
@@ -147,7 +150,7 @@ function DayCard({
           // for something the user logged.
           <View style={styles.guessBox}>
             <View style={styles.guessHead}>
-              <Ionicons name="sparkles-outline" size={14} color={colors.teal} />
+              <Ionicons name="sparkles-outline" size={14} color={c.brandSoft} />
               <Text style={styles.guessTitle}>Recall’s guess from your photos</Text>
             </View>
             <Text numberOfLines={4} style={[styles.guessText, rtlIfArabic(guess)]}>
@@ -195,7 +198,7 @@ function DayCard({
           </View>
         ) : empty ? (
           <View style={styles.action}>
-            <Ionicons name="add" size={15} color={colors.primary} />
+            <Ionicons name="add" size={15} color={c.brand} />
             <Text style={styles.actionText}>{offset === 0 ? 'Log today' : 'Add to this day'}</Text>
           </View>
         ) : (
@@ -203,7 +206,7 @@ function DayCard({
         )}
         {company.place && (
           <View style={styles.placeRow}>
-            <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.teal} />
+            <MaterialCommunityIcons name="map-marker-outline" size={14} color={c.brandSoft} />
             <Text numberOfLines={1} style={styles.placeText}>
               {company.place}
             </Text>
@@ -217,10 +220,12 @@ function DayCard({
 // ── The world that day ─────────────────────────────────────────────────────
 
 function NewsImage({ uri, topicKey }: { uri?: string; topicKey: string }) {
+  const c = useColors();
+  const styles = useStyles();
   if (uri) return <PhotoImage uri={uri} style={StyleSheet.absoluteFill} />;
   return (
     <View style={styles.mediaEmpty}>
-      <MaterialCommunityIcons name={topicIcon(topicKey) as any} size={38} color={colors.teal} />
+      <MaterialCommunityIcons name={topicIcon(topicKey) as any} size={38} color={c.brandSoft} />
     </View>
   );
 }
@@ -246,6 +251,8 @@ function NewsCard({
   onMore: () => void;
   onMix: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [liked, setLiked] = useState(false);
   const [hidden, setHidden] = useState(false);
   // A long headline leaves less room: the summary gets the lines that are
@@ -258,7 +265,7 @@ function NewsCard({
 
   const topicChip = (
     <View style={styles.topicChip}>
-      <MaterialCommunityIcons name={topicIcon(topic.key) as any} size={13} color={colors.teal} />
+      <MaterialCommunityIcons name={topicIcon(topic.key) as any} size={13} color={c.brandSoft} />
       <Text style={styles.topicChipText}>{topic.label}</Text>
     </View>
   );
@@ -274,7 +281,7 @@ function NewsCard({
           <View style={[styles.skelLine, { width: '55%' }]} />
         </View>
         <View style={styles.footer}>
-          <ActivityIndicator size="small" color={colors.soft} />
+          <ActivityIndicator size="small" color={c.brandFaint} />
         </View>
       </View>
     );
@@ -285,12 +292,12 @@ function NewsCard({
     return (
       <View style={[styles.card, styles.quietCard, { width }]}>
         <View style={styles.quietIcon}>
-          <MaterialCommunityIcons name={topicIcon(topic.key) as any} size={30} color={colors.teal} />
+          <MaterialCommunityIcons name={topicIcon(topic.key) as any} size={30} color={c.brandSoft} />
         </View>
         <Text style={styles.quietTitle}>{item.headline}</Text>
         <Text style={styles.quietText}>{item.summary}</Text>
         <Pressable style={[styles.action, { marginTop: 18 }]} onPress={onMix}>
-          <Ionicons name="options-outline" size={15} color={colors.primary} />
+          <Ionicons name="options-outline" size={15} color={c.brand} />
           <Text style={styles.actionText}>Your mix</Text>
         </Pressable>
       </View>
@@ -300,7 +307,7 @@ function NewsCard({
   if (hidden) {
     return (
       <View style={[styles.card, styles.quietCard, { width }]}>
-        <MaterialCommunityIcons name="eye-off-outline" size={28} color={colors.soft} />
+        <MaterialCommunityIcons name="eye-off-outline" size={28} color={c.brandFaint} />
         <Text style={styles.quietTitle}>Got it, no more {item.about}</Text>
         <Text style={styles.quietText}>Recall won’t show stories about it again.</Text>
         <Pressable
@@ -311,7 +318,7 @@ function NewsCard({
             setHidden(false);
           }}
         >
-          <Ionicons name="arrow-undo-outline" size={15} color={colors.primary} />
+          <Ionicons name="arrow-undo-outline" size={15} color={c.brand} />
           <Text style={styles.actionText}>Undo</Text>
         </Pressable>
       </View>
@@ -359,7 +366,7 @@ function NewsCard({
                 <Ionicons
                   name={liked ? 'thumbs-up' : 'thumbs-up-outline'}
                   size={16}
-                  color={liked ? colors.white : colors.primary}
+                  color={liked ? c.onTile : c.brand}
                 />
               </Pressable>
               <Pressable
@@ -372,7 +379,7 @@ function NewsCard({
                   setHidden(true);
                 }}
               >
-                <Ionicons name="thumbs-down-outline" size={16} color={colors.primary} />
+                <Ionicons name="thumbs-down-outline" size={16} color={c.brand} />
               </Pressable>
               {liked && (
                 <Text numberOfLines={1} style={styles.likedText}>
@@ -384,7 +391,7 @@ function NewsCard({
         </View>
         <Pressable style={styles.action} onPress={onMore} hitSlop={6}>
           <Text style={styles.actionText}>More</Text>
-          <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+          <Ionicons name="chevron-forward" size={14} color={c.brand} />
         </Pressable>
       </View>
     </View>
@@ -394,6 +401,8 @@ function NewsCard({
 // ── More from that day, in a sheet ────────────────────────────────────────
 
 function MoreSheet({ target, onClose }: { target: { topic: Topic; date: Date } | null; onClose: () => void }) {
+  const c = useColors();
+  const styles = useStyles();
   const [events, setEvents] = useState<TopicItem[] | null>(null);
   useEffect(() => {
     if (!target) return;
@@ -414,7 +423,7 @@ function MoreSheet({ target, onClose }: { target: { topic: Topic; date: Date } |
           <Text style={styles.sheetSub}>What happened that day</Text>
           <ScrollView style={{ maxHeight: 460, marginTop: 14 }} showsVerticalScrollIndicator={false}>
             {!events ? (
-              <ActivityIndicator color={colors.teal} style={{ marginVertical: 40 }} />
+              <ActivityIndicator color={c.brandSoft} style={{ marginVertical: 40 }} />
             ) : real.length === 0 ? (
               <Text style={[styles.muted, { marginVertical: 30, textAlign: 'center' }]}>
                 Nothing else happened that day.
@@ -442,6 +451,8 @@ function MoreSheet({ target, onClose }: { target: { topic: Topic; date: Date } |
 // ── The screen ─────────────────────────────────────────────────────────────
 
 function OnThisDay() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { width: screenW } = useWindowDimensions();
   const cardW = screenW - SIDE - GAP - PEEK;
@@ -671,13 +682,13 @@ function OnThisDay() {
       <View key={bucket.key}>
         <Pressable onPress={() => toggleMonth(bucket.key)} style={styles.banner}>
           <View style={styles.bannerIcon}>
-            <MaterialCommunityIcons name="calendar-month-outline" size={22} color={colors.teal} />
+            <MaterialCommunityIcons name="calendar-month-outline" size={22} color={c.brandSoft} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.bannerLabel}>{bucket.label}</Text>
             <Text style={styles.bannerSub}>{bucket.offsets.length} days</Text>
           </View>
-          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color="#9AA4A5" />
+          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={c.textGhost} />
         </Pressable>
         {open && bucket.offsets.map(renderDay)}
       </View>
@@ -717,7 +728,7 @@ function OnThisDay() {
             onPress={() => router.push(`/day/${yearAgo.offset}` as Parameters<typeof router.push>[0])}
           >
             {yearAgoPhoto ? <PhotoImage uri={yearAgoPhoto} style={StyleSheet.absoluteFill} /> : null}
-            <View style={[styles.flashbackShade, !yearAgoPhoto && { backgroundColor: colors.primary }]} />
+            <View style={[styles.flashbackShade, !yearAgoPhoto && { backgroundColor: c.tile }]} />
             <View style={styles.flashbackBody}>
               <Text style={styles.flashbackKicker}>
                 {yearAgo.years === 1 ? 'A YEAR AGO TODAY' : `${yearAgo.years} YEARS AGO TODAY`} ·{' '}
@@ -730,7 +741,7 @@ function OnThisDay() {
               )}
               {yearAgo.item && (
                 <View style={styles.flashbackWorld}>
-                  <MaterialCommunityIcons name={topicIcon(yearAgo.item.topic) as any} size={14} color={colors.accent} />
+                  <MaterialCommunityIcons name={topicIcon(yearAgo.item.topic) as any} size={14} color={c.accent} />
                   <Text numberOfLines={2} style={styles.flashbackWorldText}>
                     That day: {yearAgo.item.headline}
                   </Text>
@@ -756,13 +767,13 @@ function OnThisDay() {
             <View key={year}>
               <Pressable onPress={() => toggleYear(year)} style={styles.banner}>
                 <View style={styles.bannerIcon}>
-                  <MaterialCommunityIcons name="calendar-outline" size={22} color={colors.teal} />
+                  <MaterialCommunityIcons name="calendar-outline" size={22} color={c.brandSoft} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.bannerLabel}>{year}</Text>
                   <Text style={styles.bannerSub}>A full year</Text>
                 </View>
-                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color="#9AA4A5" />
+                <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={20} color={c.textGhost} />
               </Pressable>
               {open && buildYearMonths(year).map((b) => renderMonth(b))}
             </View>
@@ -794,65 +805,65 @@ function OnThisDay() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   // Above the + button and the bar.
   arrangeBar: { position: 'absolute', left: 0, right: 0, bottom: 176, alignItems: 'center', gap: 10 },
   arrangeHint: {
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: colors.white,
+    color: c.onTile,
     backgroundColor: 'rgba(8,17,18,0.75)',
     borderRadius: 999,
     overflow: 'hidden',
     paddingVertical: 6,
     paddingHorizontal: 14,
   },
-  arrangeDone: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 42 },
-  arrangeDoneText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.ink },
-  safe: { flex: 1, backgroundColor: colors.white },
-  page: { flex: 1, backgroundColor: colors.pale },
+  arrangeDone: { backgroundColor: c.accent, borderRadius: 999, paddingVertical: 12, paddingHorizontal: 42 },
+  arrangeDoneText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.ink },
+  safe: { flex: 1, backgroundColor: c.bg },
+  page: { flex: 1, backgroundColor: c.bgGrouped },
 
   day: { paddingTop: 20, paddingBottom: 6 },
   // The reference: weekday on the left, "Today" between, the date stacked
   // on the right — aligned with the card edges below.
   dayHeader: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: SIDE + 6, marginBottom: 12 },
-  dayWeekday: { flex: 1, fontFamily: fonts.bold, fontSize: 22, color: colors.primary },
+  dayWeekday: { flex: 1, fontFamily: fonts.bold, fontSize: 22, color: c.brand },
   todayPill: {
-    backgroundColor: colors.muted,
+    backgroundColor: c.brandLine,
     borderRadius: 6,
     paddingVertical: 3,
     paddingHorizontal: 12,
   },
-  todayPillText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.ink },
+  todayPillText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.ink },
   // Weekday and date take equal sides, so "Today" sits in the middle.
   dayDate: { flex: 1, alignItems: 'flex-end' },
-  dayMonth: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 17, color: colors.primary, letterSpacing: 0.5 },
-  dayNum: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 28, color: colors.primary },
+  dayMonth: { fontFamily: fonts.medium, fontSize: 15, lineHeight: 17, color: c.brand, letterSpacing: 0.5 },
+  dayNum: { fontFamily: fonts.bold, fontSize: 24, lineHeight: 28, color: c.brand },
 
   guessBox: {
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.slate,
-    backgroundColor: colors.pale,
+    borderColor: c.brandMuted,
+    backgroundColor: c.chip,
     borderRadius: 16,
     padding: 12,
   },
   guessHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  guessTitle: { fontFamily: fonts.medium, fontSize: 12, color: colors.primary },
-  guessText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#324547', marginTop: 8 },
+  guessTitle: { fontFamily: fonts.medium, fontSize: 12, color: c.brand },
+  guessText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: c.textSoft, marginTop: 8 },
 
   sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: SIDE + 6, marginTop: 28 },
-  sectionLabel: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: colors.teal },
-  sectionLine: { flex: 1, height: 1, backgroundColor: '#B7C8CA' },
+  sectionLabel: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: c.brandSoft },
+  sectionLine: { flex: 1, height: 1, backgroundColor: c.brandLine },
 
   card: {
     height: CARD_H,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 24,
     overflow: 'hidden',
   },
-  media: { height: MEDIA_H, backgroundColor: '#EEF3F3' },
-  mediaEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EEF3F3' },
+  media: { height: MEDIA_H, backgroundColor: c.fill },
+  mediaEmpty: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: c.fill },
   mediaTag: {
     position: 'absolute',
     left: 12,
@@ -860,36 +871,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 999,
     paddingVertical: 3,
     paddingHorizontal: 9,
   },
-  mediaTagText: { fontFamily: fonts.semiBold, fontSize: 11, color: colors.ink },
+  mediaTagText: { fontFamily: fonts.semiBold, fontSize: 11, color: c.ink },
   body: { flex: 1, paddingHorizontal: 18, paddingTop: 16 },
   // Cards are a fixed height; nothing may spill into the footer.
   clipBody: { overflow: 'hidden' },
-  kicker: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: colors.teal, marginBottom: 10 },
+  kicker: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: c.brandSoft, marginBottom: 10 },
   lineRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
   // Still laid out (so it stays measured), just not seen.
   lineHidden: { opacity: 0 },
-  lineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.teal, marginTop: 8 },
-  lineText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#3E4647' },
-  muted: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#8B9394' },
+  lineDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: c.tileAlt, marginTop: 8 },
+  lineText: { flex: 1, fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: c.textSoft },
+  muted: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: c.textFaint },
 
   topicChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     alignSelf: 'flex-start',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 999,
     paddingVertical: 4,
     paddingHorizontal: 10,
   },
-  topicChipText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.teal },
-  headline: { fontFamily: fonts.semiBold, fontSize: 17, lineHeight: 24, color: '#1B1B1B', marginTop: 10 },
-  summary: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#5B6364', marginTop: 6 },
+  topicChipText: { fontFamily: fonts.semiBold, fontSize: 12, color: c.brandSoft },
+  headline: { fontFamily: fonts.semiBold, fontSize: 17, lineHeight: 24, color: c.text, marginTop: 10 },
+  summary: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: c.textMuted, marginTop: 6 },
 
   footer: {
     height: 58,
@@ -898,58 +909,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: '#F0F2F2',
+    borderTopColor: c.divider,
   },
   feedback: { flexDirection: 'row', alignItems: 'center', gap: 8, flexShrink: 1 },
   iconBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconBtnOn: { backgroundColor: colors.primary },
-  likedText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal, flexShrink: 1 },
+  iconBtnOn: { backgroundColor: c.tile },
+  likedText: { fontFamily: fonts.medium, fontSize: 12, color: c.brandSoft, flexShrink: 1 },
   action: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 999,
     paddingVertical: 8,
     paddingHorizontal: 14,
   },
-  actionText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.primary },
+  actionText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.brand },
 
   faces: { flexDirection: 'row', alignItems: 'center' },
-  face: { borderRadius: 16, borderWidth: 2, borderColor: colors.white },
-  moreFaces: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.teal, marginLeft: 6 },
+  face: { borderRadius: 16, borderWidth: 2, borderColor: c.surface },
+  moreFaces: { fontFamily: fonts.semiBold, fontSize: 12, color: c.brandSoft, marginLeft: 6 },
   placeRow: { flexDirection: 'row', alignItems: 'center', gap: 3, flexShrink: 1, maxWidth: '55%' },
-  placeText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal, flexShrink: 1 },
+  placeText: { fontFamily: fonts.medium, fontSize: 12, color: c.brandSoft, flexShrink: 1 },
 
   quietCard: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 },
   quietIcon: {
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
-  quietTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#1B1B1B', textAlign: 'center', marginTop: 6 },
+  quietTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text, textAlign: 'center', marginTop: 6 },
   quietText: {
     fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 20,
-    color: '#8B9394',
+    color: c.textFaint,
     textAlign: 'center',
     marginTop: 6,
   },
 
-  skeleton: { backgroundColor: '#EEF3F3' },
-  skelLine: { height: 12, borderRadius: 6, backgroundColor: '#EEF3F3', marginTop: 10 },
+  skeleton: { backgroundColor: c.fill },
+  skelLine: { height: 12, borderRadius: 6, backgroundColor: c.fill, marginTop: 10 },
 
   flashback: {
     marginHorizontal: SIDE,
@@ -959,10 +970,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     justifyContent: 'flex-end',
   },
-  flashbackShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(8,17,18,0.45)' },
+  flashbackShade: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: c.scrim },
   flashbackBody: { padding: 18 },
-  flashbackKicker: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: colors.accent },
-  flashbackLine: { fontFamily: fonts.semiBold, fontSize: 17, lineHeight: 24, color: colors.white, marginTop: 6 },
+  flashbackKicker: { fontFamily: fonts.semiBold, fontSize: 11, letterSpacing: 1, color: c.accent },
+  flashbackLine: { fontFamily: fonts.semiBold, fontSize: 17, lineHeight: 24, color: c.onTile, marginTop: 6 },
   flashbackWorld: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: 10 },
   flashbackWorldText: {
     flex: 1,
@@ -979,37 +990,37 @@ const styles = StyleSheet.create({
     marginHorizontal: SIDE,
     marginTop: 14,
     padding: 14,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 18,
   },
   bannerIcon: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  bannerLabel: { fontFamily: fonts.bold, fontSize: 16, color: colors.primary },
-  bannerSub: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
+  bannerLabel: { fontFamily: fonts.bold, fontSize: 16, color: c.brand },
+  bannerSub: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint, marginTop: 2 },
 
-  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.45)', justifyContent: 'flex-end' },
+  backdrop: { flex: 1, backgroundColor: c.scrim, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
     paddingTop: 12,
     paddingBottom: 34,
   },
-  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDE2E2', alignSelf: 'center', marginBottom: 18 },
-  sheetTitle: { fontFamily: fonts.semiBold, fontSize: 18, color: '#1B1B1B' },
-  sheetSub: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginTop: 3 },
-  event: { flexDirection: 'row', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F2F2' },
-  eventThumb: { width: 72, height: 72, borderRadius: 14, overflow: 'hidden', backgroundColor: '#EEF3F3' },
-  eventHeadline: { fontFamily: fonts.semiBold, fontSize: 14, lineHeight: 20, color: '#1B1B1B' },
-  eventSummary: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: '#5B6364', marginTop: 4 },
-});
+  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: c.grabber, alignSelf: 'center', marginBottom: 18 },
+  sheetTitle: { fontFamily: fonts.semiBold, fontSize: 18, color: c.text },
+  sheetSub: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, marginTop: 3 },
+  event: { flexDirection: 'row', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: c.divider },
+  eventThumb: { width: 72, height: 72, borderRadius: 14, overflow: 'hidden', backgroundColor: c.fill },
+  eventHeadline: { fontFamily: fonts.semiBold, fontSize: 14, lineHeight: 20, color: c.text },
+  eventSummary: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: c.textMuted, marginTop: 4 },
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(OnThisDay);

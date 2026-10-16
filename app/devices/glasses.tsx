@@ -4,8 +4,10 @@ import ScreenHeader from '../../src/components/ScreenHeader';
 import { MISC } from '../../src/images';
 import { colors, fonts } from '../../src/theme';
 import { withAppNav } from '../../src/components/AppNav';
+import { makeStyles } from '../../src/appearance';
 
 function GlassesDetail() {
+  const styles = useStyles();
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <ScreenHeader title="Devices" />
@@ -29,21 +31,21 @@ function GlassesDetail() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   scroll: { paddingHorizontal: 24, paddingBottom: 140 },
-  title: { fontFamily: fonts.bold, fontSize: 24, color: '#1B1B1B', marginTop: 20 },
+  title: { fontFamily: fonts.bold, fontSize: 24, color: c.text, marginTop: 20 },
   hero: { width: '100%', height: 260, marginTop: 40 },
   statsCard: {
     flexDirection: 'row',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 20,
     paddingVertical: 26,
     marginTop: 40,
   },
   stat: { flex: 1, alignItems: 'center' },
-  statNum: { fontFamily: fonts.bold, fontSize: 30, color: '#1B1B1B' },
-  statLabel: { fontFamily: fonts.regular, fontSize: 14, color: '#5B6364', marginTop: 6 },
-});
+  statNum: { fontFamily: fonts.bold, fontSize: 30, color: c.text },
+  statLabel: { fontFamily: fonts.regular, fontSize: 14, color: c.textMuted, marginTop: 6 },
+}));
 
 export default withAppNav(GlassesDetail);

@@ -2,12 +2,15 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Visible proof that the AI is reading and polishing a memory — shown while
 // useMemoryPolish() is sweeping. Without this the whole pipeline looks like
 // nothing is happening, even though notes/tasks/people are being rewritten
 // underneath.
 export default function AnalyzingBanner() {
+  const c = useColors();
+  const styles = useStyles();
   const spin = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -30,14 +33,14 @@ export default function AnalyzingBanner() {
           transform: [{ rotate: spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }) }],
         }}
       >
-        <MaterialCommunityIcons name="creation" size={15} color={colors.teal} />
+        <MaterialCommunityIcons name="creation" size={15} color={c.brandSoft} />
       </Animated.View>
       <Text style={styles.text}>Analyzing your memory…</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   wrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -49,5 +52,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginBottom: 14,
   },
-  text: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
-});
+  text: { fontFamily: fonts.medium, fontSize: 12, color: c.brandSoft },
+}));

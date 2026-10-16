@@ -14,6 +14,7 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { rtlIfArabic } from '../transcription';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Writing or rewriting one memory on a day.
 //
@@ -39,6 +40,8 @@ export default function MemoryEditSheet({
   onDelete?: () => Promise<void>;
   onClose: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [text, setText] = useState(initialText);
   const [saving, setSaving] = useState(false);
 
@@ -96,7 +99,7 @@ export default function MemoryEditSheet({
               value={text}
               onChangeText={setText}
               placeholder="What happened?"
-              placeholderTextColor="#A8B0B1"
+              placeholderTextColor={c.textGhost}
               style={[styles.input, rtlIfArabic(text)]}
               multiline
               autoFocus
@@ -116,7 +119,7 @@ export default function MemoryEditSheet({
 
             {mode === 'edit' && onDelete && (
               <Pressable style={styles.delete} onPress={confirmDelete}>
-                <MaterialCommunityIcons name="trash-can-outline" size={18} color="#B24545" />
+                <MaterialCommunityIcons name="trash-can-outline" size={18} color={c.danger} />
                 <Text style={styles.deleteText}>Delete this memory</Text>
               </Pressable>
             )}
@@ -128,14 +131,14 @@ export default function MemoryEditSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   backdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: c.backdrop,
   },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 22,
@@ -148,7 +151,7 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#DDE3E3',
+    backgroundColor: c.grabber,
     marginBottom: 12,
   },
   headerRow: {
@@ -156,29 +159,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
-  cancel: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
-  done: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.teal },
-  doneOff: { color: '#C2C9C9' },
+  title: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
+  cancel: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
+  done: { fontFamily: fonts.semiBold, fontSize: 15, color: c.brandSoft },
+  doneOff: { color: c.textGhost },
 
   body: { paddingTop: 16, paddingBottom: 10 },
   day: {
     fontFamily: fonts.semiBold,
     fontSize: 13,
-    color: '#8B9394',
+    color: c.textFaint,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
     marginBottom: 10,
   },
   input: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontFamily: fonts.regular,
     fontSize: 16,
     lineHeight: 24,
-    color: '#1B1B1B',
+    color: c.text,
     minHeight: 150,
     textAlignVertical: 'top',
   },
@@ -186,7 +189,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#9AA4A5',
+    color: c.textGhost,
     marginTop: 10,
   },
   delete: {
@@ -196,7 +199,7 @@ const styles = StyleSheet.create({
     marginTop: 22,
     paddingTop: 16,
     borderTopWidth: 1,
-    borderTopColor: '#EDF1F1',
+    borderTopColor: c.divider,
   },
-  deleteText: { fontFamily: fonts.medium, fontSize: 14, color: '#B24545' },
-});
+  deleteText: { fontFamily: fonts.medium, fontSize: 14, color: c.danger },
+}));

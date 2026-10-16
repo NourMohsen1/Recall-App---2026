@@ -1,6 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // A short list of things a screen can do, from its top-right menu button.
 //
@@ -29,6 +30,8 @@ export default function ActionMenuSheet({
   actions: MenuAction[];
   onClose: () => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.backdrop} onPress={onClose}>
@@ -47,7 +50,7 @@ export default function ActionMenuSheet({
                 <MaterialCommunityIcons
                   name={a.icon}
                   size={22}
-                  color={a.disabled ? '#B4BBBB' : colors.teal}
+                  color={a.disabled ? c.textGhost : c.brandSoft}
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -66,10 +69,10 @@ export default function ActionMenuSheet({
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.35)' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: c.backdrop },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
     paddingHorizontal: 22,
@@ -81,10 +84,10 @@ const styles = StyleSheet.create({
     width: 42,
     height: 5,
     borderRadius: 3,
-    backgroundColor: '#DDE3E3',
+    backgroundColor: c.grabber,
     marginBottom: 14,
   },
-  title: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B', marginBottom: 6 },
+  title: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text, marginBottom: 6 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16 },
   rowOff: { opacity: 0.55 },
@@ -92,14 +95,14 @@ const styles = StyleSheet.create({
     width: 42,
     height: 42,
     borderRadius: 21,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  label: { fontFamily: fonts.medium, fontSize: 16, color: '#1B1B1B' },
-  labelOff: { color: '#8B9394' },
-  hint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: '#8B9394', marginTop: 2 },
+  label: { fontFamily: fonts.medium, fontSize: 16, color: c.text },
+  labelOff: { color: c.textFaint },
+  hint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 18, color: c.textFaint, marginTop: 2 },
 
   cancel: { alignItems: 'center', paddingTop: 14, marginTop: 6 },
-  cancelText: { fontFamily: fonts.medium, fontSize: 15, color: '#8B9394' },
-});
+  cancelText: { fontFamily: fonts.medium, fontSize: 15, color: c.textFaint },
+}));

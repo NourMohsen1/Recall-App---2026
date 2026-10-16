@@ -24,6 +24,7 @@ import { classifyFile, photoGuardAvailable } from '../../src/photoGuard';
 import { notePhotoLocations, recordCurrentLocationForDay, whereAmI } from '../../src/places';
 import { colors, fonts } from '../../src/theme';
 import { useReturnTo } from '../../src/useReturnTo';
+import { makeStyles, useColors } from '../../src/appearance';
 
 type Picked = {
   uri: string;
@@ -84,6 +85,8 @@ function dayLabel(d: Date) {
 }
 
 export default function LogPhoto() {
+  const c = useColors();
+  const styles = useStyles();
   const returnTo = useReturnTo();
   const router = useRouter();
   const { from } = useLocalSearchParams<{ from?: string }>();
@@ -222,7 +225,7 @@ export default function LogPhoto() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => returnTo()} hitSlop={12} style={styles.back}>
-          <Ionicons name="close" size={26} color={colors.primary} />
+          <Ionicons name="close" size={26} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>Add Photos</Text>
       </View>
@@ -231,11 +234,11 @@ export default function LogPhoto() {
         {/* Upload sources */}
         <View style={styles.sourceRow}>
           <Pressable style={styles.sourceBtn} onPress={pickFromLibrary}>
-            <Image source={ICONS.upload} style={styles.sourceIcon} tintColor={colors.white} />
+            <Image source={ICONS.upload} style={styles.sourceIcon} tintColor={c.onTile} />
             <Text style={styles.sourceLabel}>Photo Library</Text>
           </Pressable>
           <Pressable style={styles.sourceBtn} onPress={takePhoto}>
-            <Ionicons name="camera" size={28} color={colors.white} />
+            <Ionicons name="camera" size={28} color={c.onTile} />
             <Text style={styles.sourceLabel}>Take Photo</Text>
           </Pressable>
         </View>
@@ -247,12 +250,12 @@ export default function LogPhoto() {
             style={styles.docBtn}
             onPress={() => router.replace({ pathname: '/log/attachment', params: from ? { from } : {} })}
           >
-            <MaterialCommunityIcons name="file-document-outline" size={24} color={colors.teal} />
+            <MaterialCommunityIcons name="file-document-outline" size={24} color={c.brandSoft} />
             <View style={{ flex: 1 }}>
               <Text style={styles.docTitle}>Screenshot or file to read</Text>
               <Text style={styles.docHint}>Appointments, tickets, bills: anything coming up goes to Tasks</Text>
             </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.soft} />
+            <Ionicons name="chevron-forward" size={18} color={c.brandFaint} />
           </Pressable>
         )}
 
@@ -268,7 +271,7 @@ export default function LogPhoto() {
                     <Text style={styles.thumbDateText}>{dayLabel(logicalToday(p.takenAt))}</Text>
                   </View>
                   <Pressable style={styles.removeBtn} onPress={() => removeAt(i)}>
-                    <Ionicons name="close" size={14} color={colors.white} />
+                    <Ionicons name="close" size={14} color={c.onTile} />
                   </Pressable>
                 </View>
               ))}
@@ -276,7 +279,7 @@ export default function LogPhoto() {
 
             {/* Where these will go on the Timeline */}
             <View style={styles.destCard}>
-              <Ionicons name="calendar-outline" size={18} color={colors.teal} />
+              <Ionicons name="calendar-outline" size={18} color={c.brandSoft} />
               <Text style={styles.destText}>
                 {[...dayCounts.values()]
                   .map((d) => `${d.count} photo${d.count > 1 ? 's' : ''} → ${d.label}`)
@@ -290,7 +293,7 @@ export default function LogPhoto() {
               value={caption}
               onChangeText={setCaption}
               placeholder="What's happening in these photos?"
-              placeholderTextColor="#9AA4A5"
+              placeholderTextColor={c.textGhost}
               multiline
             />
           </>
@@ -308,17 +311,17 @@ export default function LogPhoto() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 18,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 14 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: c.textBody },
 
   scroll: { padding: 24, paddingBottom: 40 },
   docBtn: {
@@ -329,28 +332,28 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: colors.pale,
-    backgroundColor: '#F7FAFA',
+    borderColor: c.divider,
+    backgroundColor: c.fillSoft,
   },
-  docTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B' },
-  docHint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 17, color: '#6B7475', marginTop: 2 },
+  docTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text },
+  docHint: { fontFamily: fonts.regular, fontSize: 12, lineHeight: 17, color: c.textMuted, marginTop: 2 },
 
   sourceRow: { flexDirection: 'row', gap: 14 },
   sourceBtn: {
     flex: 1,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 20,
     paddingVertical: 24,
     alignItems: 'center',
     gap: 10,
   },
   sourceIcon: { width: 28, height: 28 },
-  sourceLabel: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
+  sourceLabel: { fontFamily: fonts.medium, fontSize: 14, color: c.onTile },
 
   sectionTitle: {
     fontFamily: fonts.semiBold,
     fontSize: 16,
-    color: '#1B1B1B',
+    color: c.text,
     marginTop: 28,
     marginBottom: 14,
   },
@@ -367,7 +370,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
     alignItems: 'center',
   },
-  thumbDateText: { fontFamily: fonts.medium, fontSize: 10, color: colors.white },
+  thumbDateText: { fontFamily: fonts.medium, fontSize: 10, color: c.onTile },
   removeBtn: {
     position: 'absolute',
     top: -6,
@@ -379,29 +382,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: c.surface,
   },
 
   destCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 14,
     padding: 14,
     marginTop: 18,
   },
-  destText: { flex: 1, fontFamily: fonts.medium, fontSize: 13, lineHeight: 20, color: '#2B4A4E' },
+  destText: { flex: 1, fontFamily: fonts.medium, fontSize: 13, lineHeight: 20, color: c.textSoft },
 
   caption: {
     borderWidth: 1.5,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     borderRadius: 18,
     padding: 16,
     minHeight: 90,
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: '#2B2B2B',
+    color: c.textBody,
     textAlignVertical: 'top',
   },
 
@@ -410,7 +413,7 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#E5E8E8',
+    borderTopColor: c.divider,
   },
   saveDisabled: { opacity: 0.5 },
-});
+}));

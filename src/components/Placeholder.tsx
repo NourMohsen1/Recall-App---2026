@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, fonts } from '../theme';
+import { makeStyles } from '../appearance';
 
 export default function Placeholder({ title }: { title: string }) {
+  const styles = useStyles();
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{title}</Text>
@@ -10,7 +12,7 @@ export default function Placeholder({ title }: { title: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   container: {
     flex: 1,
     backgroundColor: colors.ink,
@@ -23,9 +25,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   subtitle: {
-    color: colors.slate,
+    color: c.brandMuted,
     fontFamily: fonts.regular,
     fontSize: 13,
     marginTop: 8,
   },
-});
+}));

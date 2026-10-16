@@ -22,6 +22,7 @@ import {
 } from '../../src/tasks';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
+import { makeStyles, useColors } from '../../src/appearance';
 
 function dueDateParts(dueDate: string): { month: string; day: string } {
   const [, m, d] = dueDate.split('-').map(Number);
@@ -161,6 +162,8 @@ function nextUpId(tasks: StoredTask[], now: Date): string | null {
 // tick is done. It replaced a switch that was ON for "to do", which a
 // tester read the wrong way round.
 function CheckCircle({ done, onPress }: { done: boolean; onPress: () => void }) {
+  const c = useColors();
+  const styles = useStyles();
   const pop = useRef(new Animated.Value(1)).current;
   const press = () => {
     if (!done) {
@@ -181,7 +184,7 @@ function CheckCircle({ done, onPress }: { done: boolean; onPress: () => void }) 
       accessibilityLabel={done ? 'Done. Tap to mark as not done' : 'Mark as done'}
     >
       <Animated.View style={[styles.check, done && styles.checkDone, { transform: [{ scale: pop }] }]}>
-        {done && <Ionicons name="checkmark" size={17} color={colors.white} />}
+        {done && <Ionicons name="checkmark" size={17} color={c.onTile} />}
       </Animated.View>
     </Pressable>
   );
@@ -204,6 +207,8 @@ function TaskCard({
   onEdit: () => void;
   onOpenSource: (() => void) | null;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const [viewing, setViewing] = useState(false);
   const muted = task.done;
   const overdue = isOverdue(task);
@@ -241,7 +246,7 @@ function TaskCard({
           </Text>
           {icon && (
             <Pressable onPress={icon.onPress} hitSlop={10}>
-              <MaterialCommunityIcons name={icon.name} size={15} color={muted ? '#C2C7C8' : '#9AA4A5'} />
+              <MaterialCommunityIcons name={icon.name} size={15} color={muted ? c.textGhost : c.textGhost} />
             </Pressable>
           )}
         </View>
@@ -258,7 +263,7 @@ function TaskCard({
         {/* One line of status under the words: done, overdue, or when. */}
         {task.done ? (
           <View style={styles.doneBadge}>
-            <MaterialCommunityIcons name="check" size={13} color={colors.teal} />
+            <MaterialCommunityIcons name="check" size={13} color={c.brandSoft} />
             <Text style={styles.doneBadgeText}>Done</Text>
           </View>
         ) : overdue || time ? (
@@ -287,7 +292,7 @@ function TaskCard({
       ) : task.needsDueDate && !task.done ? (
         // The user never said when: a soft nudge to give it a date.
         <View style={[styles.dateChip, styles.dateChipAsk]}>
-          <MaterialCommunityIcons name="calendar-question" size={20} color="#8A6D3B" />
+          <MaterialCommunityIcons name="calendar-question" size={20} color={c.warn} />
           <Text style={styles.dateAskText}>Set date</Text>
         </View>
       ) : null}
@@ -300,6 +305,8 @@ function TaskCard({
 }
 
 export default function Tasks() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const [tasks, setTasks] = useState<StoredTask[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -470,11 +477,11 @@ export default function Tasks() {
           hitSlop={12}
           style={styles.back}
         >
-          <Ionicons name="arrow-back" size={28} color={colors.primary} />
+          <Ionicons name="arrow-back" size={28} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>Tasks</Text>
         <Pressable onPress={() => router.push('/log/task-edit')} hitSlop={12} style={styles.addBtn}>
-          <Ionicons name="add" size={26} color={colors.white} />
+          <Ionicons name="add" size={26} color={c.onTile} />
         </Pressable>
       </View>
 
@@ -482,11 +489,11 @@ export default function Tasks() {
         ref={scrollRef}
         style={styles.body}
         contentContainerStyle={styles.scroll}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.teal} colors={[colors.teal]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={c.brandSoft} colors={[c.brandSoft]} />}
       >
         {loaded && tasks.length === 0 && (
           <View style={styles.empty}>
-            <MaterialCommunityIcons name="checkbox-marked-circle-plus-outline" size={40} color="#AEB6B7" />
+            <MaterialCommunityIcons name="checkbox-marked-circle-plus-outline" size={40} color={c.textGhost} />
             <Text style={styles.emptyTitle}>No tasks yet</Text>
             <Text style={styles.emptyText}>
               Tap + to add one, or just log a memory like “I have to get some fruits tomorrow
@@ -556,7 +563,7 @@ export default function Tasks() {
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <View style={styles.modalIcon}>
-              <MaterialCommunityIcons name="calendar-question" size={26} color={colors.teal} />
+              <MaterialCommunityIcons name="calendar-question" size={26} color={c.brandSoft} />
             </View>
             <Text style={styles.modalTitle}>New task from your memory</Text>
             <Text style={[styles.modalTask, askTask ? rtlIfArabic(askTask.title) : undefined]}>
@@ -578,17 +585,17 @@ export default function Tasks() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     paddingTop: 12,
     paddingBottom: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   back: { position: 'absolute', left: 20, top: 14 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.textBody },
   addBtn: {
     position: 'absolute',
     right: 20,
@@ -596,21 +603,21 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  body: { flex: 1, backgroundColor: '#EFF3F3' },
+  body: { flex: 1, backgroundColor: c.bgSoft },
   scroll: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 120 },
 
   empty: { alignItems: 'center', paddingTop: 90, paddingHorizontal: 30, gap: 12 },
-  emptyTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#5B6364' },
+  emptyTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.textMuted },
   emptyText: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
-    color: '#8B9394',
+    color: c.textFaint,
     textAlign: 'center',
   },
 
@@ -622,14 +629,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#AEB6B7',
+    borderColor: c.border,
     paddingVertical: 12,
     marginTop: 22,
   },
-  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#2B2B2B' },
-  sectionRange: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B' },
-  sectionPast: { color: '#8B9394' },
-  mutedText: { color: '#A6ACAD' },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.textBody },
+  sectionRange: { fontFamily: fonts.semiBold, fontSize: 15, color: c.textBody },
+  sectionPast: { color: c.textFaint },
+  mutedText: { color: c.textGhost },
 
   // The gap above each task belongs to its swipe row, so the red Delete
   // behind a card is exactly the card's height.
@@ -639,57 +646,60 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18,
-    backgroundColor: colors.ink,
+    // A dark toast in light; in dark, a raised one with a faint edge.
+    backgroundColor: c.scheme === 'dark' ? c.raised : colors.ink,
+    borderWidth: c.scheme === 'dark' ? 1 : 0,
+    borderColor: c.edge,
     borderRadius: 999,
     paddingVertical: 12,
     paddingHorizontal: 20,
   },
-  undoText: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
-  undoAction: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.accent },
+  undoText: { fontFamily: fonts.medium, fontSize: 14, color: c.onTile },
+  undoAction: { fontFamily: fonts.semiBold, fontSize: 14, color: c.accent },
   // Tick | words | date: the tick where the thumb is, the date where the
   // eye lands to scan a week.
   card: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 20,
     paddingVertical: 16,
     paddingLeft: 16,
     paddingRight: 14,
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: c.surface,
   },
   // Finished: still readable, clearly stepped back.
-  cardDone: { backgroundColor: '#F7F9F9', borderColor: '#F7F9F9' },
+  cardDone: { backgroundColor: c.fillSoft, borderColor: c.fillSoft },
   cardBody: { flex: 1, gap: 4 },
   check: {
     width: 26,
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: colors.slate,
+    borderColor: c.brandMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkDone: { backgroundColor: colors.teal, borderColor: colors.teal },
+  checkDone: { backgroundColor: c.tileAlt, borderColor: c.brandSoft },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  overduePill: { backgroundColor: '#F6E3E3', borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 },
-  dateChipOverdue: { backgroundColor: '#F6E3E3' },
+  overduePill: { backgroundColor: c.dangerWash, borderRadius: 999, paddingVertical: 2, paddingHorizontal: 8 },
+  dateChipOverdue: { backgroundColor: c.dangerWash },
   // What is next: the design's teal outline, on one task at a time.
-  cardNext: { borderColor: colors.accent },
-  newDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.accent },
+  cardNext: { borderColor: c.accent },
+  newDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: c.accent },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
-  taskTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#2B2B2B', flexShrink: 1 },
+  taskTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.textBody, flexShrink: 1 },
   description: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#5B6364',
+    color: c.textMuted,
   },
-  taskTime: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.teal },
-  overdueTime: { color: '#B24545' },
-  overdueText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#B24545' },
+  taskTime: { fontFamily: fonts.semiBold, fontSize: 14, color: c.brandSoft },
+  overdueTime: { color: c.danger },
+  overdueText: { fontFamily: fonts.semiBold, fontSize: 11, color: c.danger },
   doneTitle: { textDecorationLine: 'line-through' },
   doneBadge: {
     flexDirection: 'row',
@@ -697,16 +707,16 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
     gap: 3,
     marginTop: 2,
-    backgroundColor: '#E2EDEE',
+    backgroundColor: c.fill,
     borderRadius: 999,
     paddingVertical: 3,
     paddingLeft: 7,
     paddingRight: 9,
   },
-  doneBadgeText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.teal },
+  doneBadgeText: { fontFamily: fonts.semiBold, fontSize: 12, color: c.brandSoft },
 
   dateChip: {
-    backgroundColor: '#DCE3E3',
+    backgroundColor: c.fill,
     borderRadius: 12,
     paddingVertical: 6,
     paddingHorizontal: 12,
@@ -714,22 +724,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minWidth: 54,
   },
-  dateChipMuted: { backgroundColor: '#EEF1F1' },
-  dateChipAsk: { backgroundColor: '#F5EEDC', gap: 2 },
-  dateAskText: { fontFamily: fonts.medium, fontSize: 11, color: '#8A6D3B' },
-  dateMonth: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.primary },
-  dateDay: { fontFamily: fonts.bold, fontSize: 20, color: colors.primary, lineHeight: 24 },
+  dateChipMuted: { backgroundColor: c.fill },
+  dateChipAsk: { backgroundColor: c.warnWash, gap: 2 },
+  dateAskText: { fontFamily: fonts.medium, fontSize: 11, color: c.warn },
+  dateMonth: { fontFamily: fonts.semiBold, fontSize: 12, color: c.brand },
+  dateDay: { fontFamily: fonts.bold, fontSize: 20, color: c.brand, lineHeight: 24 },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(8,17,18,0.55)',
+    backgroundColor: c.scrim,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 28,
   },
   modalCard: {
     alignSelf: 'stretch',
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
@@ -738,16 +748,16 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 14,
   },
-  modalTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: '#1B1B1B' },
+  modalTitle: { fontFamily: fonts.semiBold, fontSize: 17, color: c.text },
   modalTask: {
     fontFamily: fonts.medium,
     fontSize: 15,
-    color: colors.teal,
+    color: c.brandSoft,
     textAlign: 'center',
     marginTop: 10,
   },
@@ -755,19 +765,19 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 20,
-    color: '#5B6364',
+    color: c.textMuted,
     textAlign: 'center',
     marginTop: 10,
   },
   modalPrimary: {
     alignSelf: 'stretch',
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 13,
     alignItems: 'center',
     marginTop: 20,
   },
-  modalPrimaryText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.white },
+  modalPrimaryText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.onTile },
   modalSecondary: { paddingVertical: 12, alignItems: 'center' },
-  modalSecondaryText: { fontFamily: fonts.medium, fontSize: 14, color: '#8B9394' },
-});
+  modalSecondaryText: { fontFamily: fonts.medium, fontSize: 14, color: c.textFaint },
+}));

@@ -5,6 +5,7 @@ import FollowSheet from './FollowSheet';
 import { getFollows, getMuted, unmuteSubject, type Follow } from '../follows';
 import { allTopics, getInterestTopics, setInterestTopics, topicIcon, type Topic } from '../onThisDay';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // "Your mix": everything that shapes On This Day, in one sheet — the topics
 // shown, what is followed inside each (learned from memories, marked with
@@ -15,6 +16,8 @@ import { colors, fonts } from '../theme';
 const MAX_TOPICS = 4;
 
 export default function MixSheet({ visible, onClose }: { visible: boolean; onClose: (changed: boolean) => void }) {
+  const c = useColors();
+  const styles = useStyles();
   const [options, setOptions] = useState<Topic[]>([]);
   const [chosen, setChosen] = useState<string[]>([]);
   const [follows, setFollows] = useState<Follow[]>([]);
@@ -76,7 +79,7 @@ export default function MixSheet({ visible, onClose }: { visible: boolean; onClo
                 const on = chosen.includes(t.key);
                 return (
                   <Pressable key={t.key} onPress={() => toggle(t.key)} style={[styles.chip, on && styles.chipOn]}>
-                    <MaterialCommunityIcons name={topicIcon(t.key) as any} size={15} color={on ? colors.white : colors.teal} />
+                    <MaterialCommunityIcons name={topicIcon(t.key) as any} size={15} color={on ? c.onTile : c.brandSoft} />
                     <Text style={[styles.chipText, on && styles.chipTextOn]}>{t.label}</Text>
                   </Pressable>
                 );
@@ -89,7 +92,7 @@ export default function MixSheet({ visible, onClose }: { visible: boolean; onClo
               return (
                 <Pressable key={t.key} style={styles.followRow} onPress={() => setFollowTopic(t)}>
                   <View style={styles.followIcon}>
-                    <MaterialCommunityIcons name={topicIcon(t.key) as any} size={18} color={colors.teal} />
+                    <MaterialCommunityIcons name={topicIcon(t.key) as any} size={18} color={c.brandSoft} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.followLabel}>{t.label}</Text>
@@ -97,7 +100,7 @@ export default function MixSheet({ visible, onClose }: { visible: boolean; onClo
                       {mine.length ? mine.map((f) => f.name).join(', ') : `Anything notable in ${t.label.toLowerCase()}`}
                     </Text>
                   </View>
-                  <Ionicons name="chevron-forward" size={18} color="#B4B8B8" />
+                  <Ionicons name="chevron-forward" size={18} color={c.textGhost} />
                 </Pressable>
               );
             })}
@@ -110,7 +113,7 @@ export default function MixSheet({ visible, onClose }: { visible: boolean; onClo
                     <View key={m} style={styles.mutedChip}>
                       <Text style={styles.mutedText}>{m}</Text>
                       <Pressable onPress={() => unmute(m)} hitSlop={10}>
-                        <Ionicons name="close" size={14} color="#8B9394" />
+                        <Ionicons name="close" size={14} color={c.textFaint} />
                       </Pressable>
                     </View>
                   ))}
@@ -139,21 +142,21 @@ export default function MixSheet({ visible, onClose }: { visible: boolean; onClo
   );
 }
 
-const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: 'rgba(8,17,18,0.45)', justifyContent: 'flex-end' },
+const useStyles = makeStyles((c) => ({
+  backdrop: { flex: 1, backgroundColor: c.scrim, justifyContent: 'flex-end' },
   sheet: {
-    backgroundColor: colors.white,
+    backgroundColor: c.raised,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 22,
     paddingTop: 12,
     paddingBottom: 32,
   },
-  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: '#DDE2E2', alignSelf: 'center', marginBottom: 18 },
-  title: { fontFamily: fonts.semiBold, fontSize: 20, color: '#1B1B1B' },
-  subtitle: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginTop: 4 },
-  section: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B', marginTop: 22, marginBottom: 12 },
-  sectionNote: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
+  grabber: { width: 40, height: 4, borderRadius: 2, backgroundColor: c.grabber, alignSelf: 'center', marginBottom: 18 },
+  title: { fontFamily: fonts.semiBold, fontSize: 20, color: c.text },
+  subtitle: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, marginTop: 4 },
+  section: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text, marginTop: 22, marginBottom: 12 },
+  sectionNote: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     flexDirection: 'row',
@@ -161,42 +164,42 @@ const styles = StyleSheet.create({
     gap: 6,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: '#D3DCDD',
+    borderColor: c.divider,
     paddingVertical: 8,
     paddingHorizontal: 13,
   },
-  chipOn: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
-  chipTextOn: { color: colors.white },
+  chipOn: { backgroundColor: c.tile, borderColor: c.brand },
+  chipText: { fontFamily: fonts.medium, fontSize: 13, color: c.brand },
+  chipTextOn: { color: c.onTile },
   followRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F2F2',
+    borderBottomColor: c.divider,
   },
   followIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  followLabel: { fontFamily: fonts.semiBold, fontSize: 14, color: '#1B1B1B' },
-  followNames: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 2 },
+  followLabel: { fontFamily: fonts.semiBold, fontSize: 14, color: c.text },
+  followNames: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint, marginTop: 2 },
   mutedChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#F2F4F4',
+    backgroundColor: c.fillSoft,
     borderRadius: 999,
     paddingVertical: 7,
     paddingLeft: 12,
     paddingRight: 9,
   },
-  mutedText: { fontFamily: fonts.medium, fontSize: 13, color: '#8B9394', textDecorationLine: 'line-through' },
-  doneBtn: { backgroundColor: colors.accent, borderRadius: 999, paddingVertical: 13, alignItems: 'center', marginTop: 18 },
-  doneText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.ink },
-});
+  mutedText: { fontFamily: fonts.medium, fontSize: 13, color: c.textFaint, textDecorationLine: 'line-through' },
+  doneBtn: { backgroundColor: c.accent, borderRadius: 999, paddingVertical: 13, alignItems: 'center', marginTop: 18 },
+  doneText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.ink },
+}));

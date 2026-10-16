@@ -6,6 +6,7 @@ import { NO_EMBEDDER_REASON, faceEmbedderAvailable } from '../faceEmbedder';
 import { IndexStatus, getIndexStatus } from '../faceIndex';
 import { IndexingState, getIndexingState, onIndexingStateChange } from '../faceIndexing';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Whether the app has finished reading your photos for faces.
 //
@@ -23,6 +24,8 @@ function plural(n: number, one: string, many: string): string {
 }
 
 export default function FaceIndexCard() {
+  const c = useColors();
+  const styles = useStyles();
   const [status, setStatus] = useState<IndexStatus | null>(null);
   const [indexing, setIndexing] = useState<IndexingState>(getIndexingState());
   const available = faceEmbedderAvailable();
@@ -57,7 +60,7 @@ export default function FaceIndexCard() {
 
       {!available ? (
         <View style={styles.row}>
-          <Ionicons name="phone-portrait-outline" size={18} color="#8B9394" />
+          <Ionicons name="phone-portrait-outline" size={18} color={c.textFaint} />
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Not in this version</Text>
             <Text style={styles.hint}>{NO_EMBEDDER_REASON}</Text>
@@ -66,7 +69,7 @@ export default function FaceIndexCard() {
       ) : running ? (
         <>
           <View style={styles.row}>
-            <ActivityIndicator size="small" color={colors.teal} />
+            <ActivityIndicator size="small" color={c.brandSoft} />
             <View style={{ flex: 1 }}>
               <Text style={styles.label}>Reading your photos…</Text>
               <Text style={styles.hint}>
@@ -81,7 +84,7 @@ export default function FaceIndexCard() {
         </>
       ) : status?.upToDate ? (
         <View style={styles.row}>
-          <Ionicons name="checkmark-circle" size={18} color={colors.teal} />
+          <Ionicons name="checkmark-circle" size={18} color={c.brandSoft} />
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>Up to date</Text>
             <Text style={styles.hint}>
@@ -92,7 +95,7 @@ export default function FaceIndexCard() {
         </View>
       ) : status && status.remaining > 0 ? (
         <View style={styles.row}>
-          <Ionicons name="time-outline" size={18} color="#8B9394" />
+          <Ionicons name="time-outline" size={18} color={c.textFaint} />
           <View style={{ flex: 1 }}>
             <Text style={styles.label}>
               {plural(status.remaining, 'photo', 'photos')} still to read
@@ -104,7 +107,7 @@ export default function FaceIndexCard() {
         </View>
       ) : (
         <View style={styles.row}>
-          <Ionicons name="images-outline" size={18} color="#8B9394" />
+          <Ionicons name="images-outline" size={18} color={c.textFaint} />
           <Text style={styles.label}>No photos to read yet</Text>
         </View>
       )}
@@ -112,9 +115,9 @@ export default function FaceIndexCard() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 14,
@@ -123,24 +126,24 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontFamily: fonts.semiBold,
     fontSize: 15,
-    color: colors.primary,
+    color: c.brand,
     marginBottom: 10,
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  label: { fontFamily: fonts.medium, fontSize: 14, color: colors.primary },
+  label: { fontFamily: fonts.medium, fontSize: 14, color: c.brand },
   hint: {
     fontFamily: fonts.regular,
     fontSize: 12,
-    color: '#8B9394',
+    color: c.textFaint,
     marginTop: 2,
     lineHeight: 16,
   },
   track: {
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E4EAEA',
+    backgroundColor: c.fill,
     overflow: 'hidden',
     marginTop: 12,
   },
-  fill: { height: 4, borderRadius: 2, backgroundColor: colors.teal },
-});
+  fill: { height: 4, borderRadius: 2, backgroundColor: c.tileAlt },
+}));

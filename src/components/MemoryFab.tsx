@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { ICONS } from '../images';
 import { registerCoachTarget } from '../coachTargets';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // The + in the middle of the bar: the three ways to log a memory.
 //
@@ -31,6 +32,8 @@ const HIT = BUBBLE / 2 + 16;
 const tick = (style: Haptics.ImpactFeedbackStyle) => Haptics.impactAsync(style).catch(() => {});
 
 export default function MemoryFab() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   // The logging screen needs to know which tab to return to (see useReturnTo).
   const pathname = usePathname();
@@ -188,7 +191,7 @@ export default function MemoryFab() {
                 style={[
                   styles.bubble,
                   {
-                    backgroundColor: hv.interpolate({ inputRange: [0, 1], outputRange: [colors.soft, colors.primary] }),
+                    backgroundColor: hv.interpolate({ inputRange: [0, 1], outputRange: c.scheme === 'dark' ? ['#28403F', c.accent] : [colors.soft, colors.primary] }),
                     transform: [{ scale: hv.interpolate({ inputRange: [0, 1], outputRange: [1, 1.14] }) }],
                   },
                 ]}
@@ -196,13 +199,14 @@ export default function MemoryFab() {
                 <Animated.Image
                   source={a.icon}
                   style={[styles.glyph, { width: a.iconSize, height: a.iconSize, opacity: Animated.subtract(1, hv) }]}
-                  tintColor={colors.primary}
+                  tintColor={c.scheme === 'dark' ? c.onChip : colors.primary}
                   resizeMode="contain"
                 />
                 <Animated.Image
                   source={a.lit}
                   style={[styles.glyph, { width: a.iconSize, height: a.iconSize, opacity: hv }]}
-                  tintColor={colors.soft}
+                  // Lit: the bubble turns aqua in dark, so the glyph goes deep.
+                  tintColor={c.scheme === 'dark' ? c.bg : colors.soft}
                   resizeMode="contain"
                 />
               </Animated.View>
@@ -234,7 +238,7 @@ export default function MemoryFab() {
 
 const FAB_BOTTOM = 60;
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   // See the note in app/log/voice.tsx — neither absoluteFill nor
   // absoluteFillObject is safe to spread across both native and web after
   // RN 0.85, so the four properties are written out.
@@ -244,7 +248,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    backgroundColor: 'rgba(8,17,18,0.35)',
+    backgroundColor: c.scrim,
   },
   fab: {
     position: 'absolute',
@@ -253,18 +257,18 @@ const styles = StyleSheet.create({
     width: FAB,
     height: FAB,
     borderRadius: FAB / 2,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 8,
-    shadowColor: colors.ink,
+    shadowColor: c.shadow,
     shadowOpacity: 0.3,
     shadowRadius: 6,
     shadowOffset: { width: 0, height: 3 },
   },
   plus: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
-  plusH: { position: 'absolute', width: 30, height: 2.5, borderRadius: 1.25, backgroundColor: colors.white },
-  plusV: { position: 'absolute', width: 2.5, height: 30, borderRadius: 1.25, backgroundColor: colors.white },
+  plusH: { position: 'absolute', width: 30, height: 2.5, borderRadius: 1.25, backgroundColor: c.onTile },
+  plusV: { position: 'absolute', width: 2.5, height: 30, borderRadius: 1.25, backgroundColor: c.onTile },
   // Each bubble starts at the + button's centre and springs out from there.
   slot: {
     position: 'absolute',
@@ -278,11 +282,11 @@ const styles = StyleSheet.create({
     height: BUBBLE,
     borderRadius: BUBBLE / 2,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'rgba(8,17,18,0.35)',
+    borderColor: c.scheme === 'dark' ? c.edge : 'rgba(8,17,18,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 6,
-    shadowColor: colors.ink,
+    shadowColor: c.shadow,
     shadowOpacity: 0.2,
     shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
@@ -296,6 +300,6 @@ const styles = StyleSheet.create({
     width: 100,
     alignItems: 'center',
   },
-  labelPill: { backgroundColor: colors.ink, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 10 },
-  labelText: { fontFamily: fonts.semiBold, fontSize: 12, color: colors.white },
-});
+  labelPill: { backgroundColor: c.scheme === 'dark' ? c.raised : colors.ink, borderRadius: 999, paddingVertical: 4, paddingHorizontal: 10 },
+  labelText: { fontFamily: fonts.semiBold, fontSize: 12, color: c.onTile },
+}));

@@ -72,6 +72,7 @@ import { DayPlace, getAllDayPlaces } from '../../src/places';
 import { rtlIfArabic } from '../../src/transcription';
 import { colors, fonts } from '../../src/theme';
 import { withAppNav } from '../../src/components/AppNav';
+import { makeStyles, useColors } from '../../src/appearance';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -133,6 +134,8 @@ function reachLabel(dayKey: string): string {
 }
 
 function PersonProfile() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { name } = useLocalSearchParams<{ name: string }>();
 
@@ -428,12 +431,12 @@ function PersonProfile() {
         {/* Primary entry is the People list — explicit target for the same
             reason noted in day/[offset]/index.tsx. */}
         <Pressable onPress={() => goBack(router, '/people')} hitSlop={12} style={styles.back}>
-          <Ionicons name="arrow-back" size={28} color={colors.primary} />
+          <Ionicons name="arrow-back" size={28} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>Person</Text>
         {person && (
           <Pressable onPress={() => setEditOpen(true)} hitSlop={12} style={styles.headerAction}>
-            <Ionicons name="create-outline" size={24} color={colors.primary} />
+            <Ionicons name="create-outline" size={24} color={c.brand} />
           </Pressable>
         )}
       </View>
@@ -447,7 +450,7 @@ function PersonProfile() {
       >
         {loaded && !person && (
           <View style={styles.empty}>
-            <MaterialCommunityIcons name="account-question-outline" size={40} color="#AEB6B7" />
+            <MaterialCommunityIcons name="account-question-outline" size={40} color={c.textGhost} />
             <Text style={styles.emptyText}>
               No days tagged with {name ?? 'this person'} yet. Open a day in your Timeline and
               add them under People.
@@ -500,7 +503,7 @@ function PersonProfile() {
               ))}
               {nickDraft === null ? (
                 <Pressable style={[styles.nickChip, styles.nickAdd]} onPress={() => setNickDraft('')} hitSlop={6}>
-                  <Ionicons name="add" size={14} color={colors.teal} />
+                  <Ionicons name="add" size={14} color={c.brandSoft} />
                   <Text style={styles.nickAddText}>{(meta?.aliases ?? []).length ? 'Add' : 'Add a nickname'}</Text>
                 </Pressable>
               ) : (
@@ -509,7 +512,7 @@ function PersonProfile() {
                   value={nickDraft}
                   onChangeText={setNickDraft}
                   placeholder="Nickname"
-                  placeholderTextColor="#9AA4A5"
+                  placeholderTextColor={c.textGhost}
                   autoFocus
                   autoCorrect={false}
                   returnKeyType="done"
@@ -545,7 +548,7 @@ function PersonProfile() {
             {/* AI-created and not confirmed yet — ask the user to verify */}
             {meta && meta.verified === false && (
               <View style={styles.verifyCard}>
-                <MaterialCommunityIcons name="auto-fix" size={18} color={colors.teal} />
+                <MaterialCommunityIcons name="auto-fix" size={18} color={c.brandSoft} />
                 <Text style={styles.verifyText}>
                   Recall added {person.name} from something you logged. Does this look right?
                 </Text>
@@ -567,11 +570,11 @@ function PersonProfile() {
             {(scanning || suggestions.length > 0 || scanNote) && (
               <View style={styles.suggestBlock}>
                 <View style={styles.suggestHeader}>
-                  <MaterialCommunityIcons name="account-search-outline" size={17} color={colors.slate} />
+                  <MaterialCommunityIcons name="account-search-outline" size={17} color={c.brandMuted} />
                   <Text style={styles.suggestTitle}>
                     {scanning ? `Looking for ${firstName} in your photos…` : `Is this ${firstName}?`}
                   </Text>
-                  {scanning && <ActivityIndicator size="small" color={colors.slate} />}
+                  {scanning && <ActivityIndicator size="small" color={c.brandMuted} />}
                 </View>
 
                 {/* Real progress, not just a spinner — a scan takes the best
@@ -615,7 +618,7 @@ function PersonProfile() {
                         either finishing or not starting. */}
                     {suggestions.length > 1 && (
                       <Pressable onPress={confirmAllDays} style={styles.confirmAll}>
-                        <Ionicons name="checkmark-done" size={16} color={colors.ink} />
+                        <Ionicons name="checkmark-done" size={16} color={c.ink} />
                         <Text style={styles.confirmAllText}>
                           Yes to all {suggestions.length} days
                         </Text>
@@ -652,7 +655,7 @@ function PersonProfile() {
                               ]}
                               onPress={() => confirmDay(s.day)}
                             >
-                              <Ionicons name="checkmark" size={17} color={colors.white} />
+                              <Ionicons name="checkmark" size={17} color={c.onTile} />
                               <Text style={styles.answerYesText}>Yes</Text>
                             </Pressable>
                             <Pressable
@@ -663,7 +666,7 @@ function PersonProfile() {
                               ]}
                               onPress={() => rejectDay(s.day)}
                             >
-                              <Ionicons name="close" size={17} color="#5B6364" />
+                              <Ionicons name="close" size={17} color={c.textMuted} />
                               <Text style={styles.answerNoText}>No</Text>
                             </Pressable>
                           </View>
@@ -692,7 +695,7 @@ function PersonProfile() {
                       ) : (
                         // A day they only wrote about still belongs here.
                         <View style={[styles.railTile, styles.railTileEmpty]}>
-                          <MaterialCommunityIcons name="text-long" size={20} color="#A8B0B1" />
+                          <MaterialCommunityIcons name="text-long" size={20} color={c.textGhost} />
                         </View>
                       )}
                       <Text style={styles.railLabel}>{railLabel(tile.day)}</Text>
@@ -712,7 +715,7 @@ function PersonProfile() {
                     style={styles.mentionRow}
                     onPress={() => openDay(m.day)}
                   >
-                    <MaterialCommunityIcons name="text-long" size={15} color={colors.teal} />
+                    <MaterialCommunityIcons name="text-long" size={15} color={c.brandSoft} />
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.mentionText, rtlIfArabic(m.text)]}>{m.text}</Text>
                       <Text style={styles.mentionDay}>{longDay(m.day)}</Text>
@@ -754,30 +757,30 @@ function PersonProfile() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   confirmAll: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 6,
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
     marginTop: 10,
   },
-  confirmAllText: { color: colors.ink, fontFamily: fonts.medium, fontSize: 13 },
-  safe: { flex: 1, backgroundColor: colors.white },
+  confirmAllText: { color: c.ink, fontFamily: fonts.medium, fontSize: 13 },
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 16,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 16 },
   headerAction: { position: 'absolute', right: 20, top: 16 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.textBody },
   scroll: { paddingHorizontal: 24, paddingBottom: 140 },
 
   empty: { alignItems: 'center', paddingTop: 90, paddingHorizontal: 20, gap: 14 },
@@ -785,7 +788,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 22,
-    color: '#8B9394',
+    color: c.textFaint,
     textAlign: 'center',
   },
 
@@ -803,52 +806,52 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.35)',
+    backgroundColor: c.backdrop,
   },
-  heroInitials: { fontFamily: fonts.semiBold, fontSize: 64, color: colors.white },
+  heroInitials: { fontFamily: fonts.semiBold, fontSize: 64, color: c.onTile },
   heroHint: { fontFamily: fonts.medium, fontSize: 13, color: 'rgba(255,255,255,0.9)' },
 
-  name: { fontFamily: fonts.bold, fontSize: 38, color: '#1B1B1B', marginTop: 18 },
-  descriptor: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B', marginTop: 4 },
+  name: { fontFamily: fonts.bold, fontSize: 38, color: c.text, marginTop: 18 },
+  descriptor: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text, marginTop: 4 },
   nickRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginTop: 10 },
-  nickLabel: { fontFamily: fonts.regular, fontSize: 13, color: '#8B9394', marginRight: 2 },
+  nickLabel: { fontFamily: fonts.regular, fontSize: 13, color: c.textFaint, marginRight: 2 },
   nickChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 999,
     paddingVertical: 5,
     paddingHorizontal: 11,
   },
-  nickText: { fontFamily: fonts.medium, fontSize: 13, color: colors.primary },
-  nickAdd: { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.soft, borderStyle: 'dashed' },
-  nickAddText: { fontFamily: fonts.medium, fontSize: 13, color: colors.teal },
+  nickText: { fontFamily: fonts.medium, fontSize: 13, color: c.brand },
+  nickAdd: { backgroundColor: 'transparent', borderWidth: 1, borderColor: c.brandFaint, borderStyle: 'dashed' },
+  nickAddText: { fontFamily: fonts.medium, fontSize: 13, color: c.brandSoft },
   nickInput: {
     minWidth: 120,
     borderWidth: 1.5,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     borderRadius: 999,
     paddingVertical: 5,
     paddingHorizontal: 12,
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: '#1B1B1B',
+    color: c.text,
   },
 
   chipScroll: { marginTop: 16, marginHorizontal: -24 },
   chipRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 24 },
   chip: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 20,
   },
-  chipText: { fontFamily: fonts.semiBold, fontSize: 15, color: colors.white },
+  chipText: { fontFamily: fonts.semiBold, fontSize: 15, color: c.onTile },
 
   verifyCard: {
     borderWidth: 2,
-    borderColor: colors.accent,
+    borderColor: c.accent,
     borderRadius: 20,
     padding: 16,
     marginTop: 22,
@@ -859,19 +862,19 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 13,
     lineHeight: 20,
-    color: '#3E4647',
+    color: c.textSoft,
     textAlign: 'center',
   },
   verifyRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
   verifyBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 22,
   },
-  verifyBtnText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  verifyBtnText: { fontFamily: fonts.semiBold, fontSize: 14, color: c.onTile },
   verifyRemove: { paddingVertical: 10 },
-  verifyRemoveText: { fontFamily: fonts.medium, fontSize: 13, color: '#B24545' },
+  verifyRemoveText: { fontFamily: fonts.medium, fontSize: 13, color: c.danger },
 
   mentionRow: {
     flexDirection: 'row',
@@ -879,30 +882,30 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#EDF1F1',
+    borderBottomColor: c.divider,
   },
-  mentionText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: '#3E4647' },
-  mentionDay: { fontFamily: fonts.regular, fontSize: 12, color: '#9AA4A5', marginTop: 2 },
+  mentionText: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 21, color: c.textSoft },
+  mentionDay: { fontFamily: fonts.regular, fontSize: 12, color: c.textGhost, marginTop: 2 },
 
   // Unconfirmed guesses. Same teal family as the rest of the app but a stop
   // lighter, on a tinted panel with a dashed edge — recognisably Recall,
   // recognisably not settled.
   suggestBlock: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 18,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.muted,
+    borderColor: c.brandLine,
     padding: 16,
     marginTop: 26,
   },
   suggestHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  suggestTitle: { flex: 1, fontFamily: fonts.semiBold, fontSize: 15, color: colors.primary },
+  suggestTitle: { flex: 1, fontFamily: fonts.semiBold, fontSize: 15, color: c.brand },
   suggestSub: {
     fontFamily: fonts.regular,
     fontSize: 12,
     lineHeight: 18,
-    color: '#5B7377',
+    color: c.textMuted,
     marginTop: 6,
     marginBottom: 12,
   },
@@ -912,7 +915,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.regular,
     fontSize: 11,
     lineHeight: 15,
-    color: '#5B7377',
+    color: c.textMuted,
     textAlign: 'center',
     marginTop: 4,
   },
@@ -923,7 +926,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 14,
   },
-  progressFill: { height: '100%', borderRadius: 3, backgroundColor: colors.teal },
+  progressFill: { height: '100%', borderRadius: 3, backgroundColor: c.tileAlt },
 
   // Comfortable touch targets with words on them — see the call site.
   answerBtn: {
@@ -937,28 +940,28 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   answerPressed: { opacity: 0.65 },
-  answerYes: { backgroundColor: colors.teal },
-  answerYesText: { fontFamily: fonts.semiBold, fontSize: 13, color: colors.white },
-  answerNo: { backgroundColor: colors.white, borderWidth: 1, borderColor: '#C6CDCD' },
-  answerNoText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#5B6364' },
+  answerYes: { backgroundColor: c.tileAlt },
+  answerYesText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.onTile },
+  answerNo: { backgroundColor: c.surface, borderWidth: 1, borderColor: c.border },
+  answerNoText: { fontFamily: fonts.semiBold, fontSize: 13, color: c.textMuted },
   suggestTile: { opacity: 0.85 },
   suggestActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
 
-  sectionTitle: { fontFamily: fonts.bold, fontSize: 20, color: '#1B1B1B', marginTop: 26, marginBottom: 12 },
+  sectionTitle: { fontFamily: fonts.bold, fontSize: 20, color: c.text, marginTop: 26, marginBottom: 12 },
 
   // Bleeds to both screen edges so the rail reads as scrollable rather than
   // as a row that happens to be clipped.
   railRow: { flexDirection: 'row', gap: 12, paddingRight: 24 },
   railTile: { width: 116, height: 116, borderRadius: 14, overflow: 'hidden' },
-  railTileEmpty: { backgroundColor: '#EDF1F1', alignItems: 'center', justifyContent: 'center' },
+  railTileEmpty: { backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' },
   railLabel: {
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: '#3E4647',
+    color: c.textSoft,
     marginTop: 8,
     textAlign: 'center',
   },
-});
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(PersonProfile);

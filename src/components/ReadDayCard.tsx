@@ -3,6 +3,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import PhotoImage from './PhotoImage';
 import { PHOTO_READER } from '../photoReading';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // In place of a day's story, when the user hasn't allowed this day's photos
 // to be read: the day's own photos, a question, and one button. See
@@ -18,6 +19,8 @@ export default function ReadDayCard({
   onRead: () => void;
   style?: StyleProp<ViewStyle>;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   const count = photoUris.length;
   const shown = photoUris.slice(0, 3);
   return (
@@ -41,28 +44,28 @@ export default function ReadDayCard({
 
       <Pressable style={styles.button} onPress={onRead} disabled={reading}>
         {reading ? (
-          <ActivityIndicator size="small" color={colors.white} />
+          <ActivityIndicator size="small" color={c.onTile} />
         ) : (
-          <MaterialCommunityIcons name="auto-fix" size={16} color={colors.white} />
+          <MaterialCommunityIcons name="auto-fix" size={16} color={c.onTile} />
         )}
         <Text style={styles.buttonText}>{reading ? 'Reading…' : 'Tell me about this day'}</Text>
       </Pressable>
 
       <View style={styles.noteRow}>
-        <MaterialCommunityIcons name="earth" size={12} color="#8B9394" />
+        <MaterialCommunityIcons name="earth" size={12} color={c.textFaint} />
         <Text style={styles.note}>Read by {PHOTO_READER.name}</Text>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   card: {
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
     borderRadius: 22,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.muted,
+    borderColor: c.brandLine,
     padding: 16,
   },
   top: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -73,24 +76,24 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.white,
+    borderColor: c.surface,
     overflow: 'hidden',
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
   },
   thumb: { width: '100%', height: '100%' },
-  title: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B' },
-  count: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394', marginTop: 1 },
+  title: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text },
+  count: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint, marginTop: 1 },
   button: {
     marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 11,
   },
-  buttonText: { fontFamily: fonts.semiBold, fontSize: 14, color: colors.white },
+  buttonText: { fontFamily: fonts.semiBold, fontSize: 14, color: c.onTile },
   noteRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 8 },
-  note: { fontFamily: fonts.regular, fontSize: 11, color: '#8B9394' },
-});
+  note: { fontFamily: fonts.regular, fontSize: 11, color: c.textFaint },
+}));

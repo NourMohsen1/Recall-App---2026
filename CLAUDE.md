@@ -271,6 +271,23 @@ and dropping the changed days' stories to be rewritten. Anything that
 files a photo on a day must use the night's day, never `dateKey` of the
 capture time.
 
+**Light and dark** (`src/appearance.ts`, `src/theme.ts`, Oct 2026). Profile
+→ Appearance; light until the user picks. Dark is a redesign, not an
+inversion (Nour): never pure black (the page is a dark teal-grey,
+`#0E1718`), depth from lighter surfaces instead of shadows (`shadow` is
+transparent in dark, raised things get a faint `edge`), soft off-white text
+(`#E3EBEB`), teal you read lifted to aqua (`brand`), teal you press kept
+deep (`tile`). **Never write a colour in a screen**: take it by role from
+the palette — `const useStyles = makeStyles((c) => ({ … c.surface … }))`
+and `const styles = useStyles()` in each component, `useColors()` for
+icon and text props. Light values are exactly the old ones. The choice
+also sets iOS's own mode (`Appearance.setColorScheme`), so the keyboard,
+alerts and the time wheel follow — verified on build 2's light-only
+Info.plist. "Match iPhone" needs `userInterfaceStyle: "automatic"` in
+`app.json`, which changes the fingerprint, so it waits for the next
+native build and then appears by itself (`canMatchPhone`). Ask, live
+voice and setup were always dark and stay the same in both modes.
+
 **The top bar has one owner** (`StatusBarKeeper`, `src/statusBar.ts`).
 Dark screens call `useLightStatusBar()`, which only claims white while
 focused; never mount a `<StatusBar>` or call `setStatusBarStyle` anywhere

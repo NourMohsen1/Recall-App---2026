@@ -5,7 +5,7 @@ import { LogBox } from 'react-native';
 if (__DEV__) LogBox.ignoreLogs(['[expo-notifications] Error reading persisted server registration']);
 import { useEffect, useState } from 'react';
 import { AppState } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import * as Notifications from 'expo-notifications';
 import { StatusBarKeeper } from '../src/statusBar';
@@ -28,6 +28,7 @@ import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImpo
 import { notificationTarget, startNotifications } from '../src/recapNotifications';
 import { loadAccount } from '../src/account';
 import { loadAiConsent } from '../src/aiConsent';
+import { loadAppearance, useColors } from '../src/appearance';
 import { startInstallPass } from '../src/install';
 import { startCrashReporting, wrapWithCrashReporting } from '../src/crashReporting';
 
@@ -120,15 +121,26 @@ function AppRoot() {
       .catch((e) => console.warn('[faces] not available:', e));
   }, []);
 
+  // Light or dark (src/appearance.ts): the navigation frame takes the
+  // page colour too, so nothing flashes white between screens or behind a
+  // sheet.
+  const c = useColors();
+  const base = c.scheme === 'dark' ? DarkTheme : DefaultTheme;
+  const navTheme = {
+    ...base,
+    colors: { ...base.colors, background: c.bg, card: c.bg, text: c.text, border: c.divider, primary: c.brand },
+  };
+
   if (!fontsLoaded) {
     return null;
   }
 
   return (
     // Gestures anywhere in the app — the + button's hold-and-drag needs it.
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: c.bg }}>
+      <ThemeProvider value={navTheme}>
       <StatusBarKeeper />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
         <Stack.Screen name="(tabs)" />
         {/* Presented as an ordinary pushed screen, like Ask and Day.
             'fullScreenModal' read better in theory and broke in practice: on
@@ -146,6 +158,7 @@ function AppRoot() {
         <Stack.Screen name="peek/place/[name]" options={{ presentation: 'modal' }} />
         <Stack.Screen name="peek/person/[name]" options={{ presentation: 'modal' }} />
       </Stack>
+      </ThemeProvider>
     </GestureHandlerRootView>
   );
 }
@@ -156,7 +169,8 @@ function AppRoot() {
 function RootLayout() {
   const [ready, setReady] = useState(false);
   useEffect(() => {
-    loadAiConsent().finally(() => setReady(true));
+    // And light or dark, so the first screen is drawn in the right one.
+    Promise.allSettled([loadAiConsent(), loadAppearance()]).finally(() => setReady(true));
   }, []);
   // This install's pass to the server (App Attest) — at launch and on
   // every return to the app.

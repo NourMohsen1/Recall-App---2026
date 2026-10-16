@@ -7,6 +7,7 @@ import { PlaceCover } from './PlaceTile';
 import { getAllPersonMeta } from '../peopleTags';
 import { recapCompany, type RecapPerson, type RecapPlace } from '../recap';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // Who and where, inside one day of a weekly recap — so each person and
 // place sits with the day it belongs to, instead of the whole week's
@@ -19,6 +20,8 @@ const MAX_FACES = 4;
 const MAX_PLACES = 2;
 
 export default function DayCompany({ day }: { day: string }) {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const [people, setPeople] = useState<RecapPerson[]>([]);
   const [places, setPlaces] = useState<RecapPlace[]>([]);
@@ -87,7 +90,7 @@ export default function DayCompany({ day }: { day: string }) {
               {p.cover ? (
                 <PlaceCover cover={p.cover} kind={p.kind} size={22} radius={11} style={styles.placeCover} />
               ) : (
-                <MaterialCommunityIcons name="map-marker-outline" size={14} color={colors.teal} />
+                <MaterialCommunityIcons name="map-marker-outline" size={14} color={c.brandSoft} />
               )}
               <Text numberOfLines={1} style={styles.placeText}>
                 {p.label}
@@ -105,21 +108,21 @@ export default function DayCompany({ day }: { day: string }) {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   wrap: { marginTop: 14, gap: 12 },
   peopleRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   stack: { flexDirection: 'row' },
   // A white edge between overlapping faces, like a contact list.
-  face: { borderRadius: FACE / 2 + 2, borderWidth: 2, borderColor: colors.white, backgroundColor: colors.white },
+  face: { borderRadius: FACE / 2 + 2, borderWidth: 2, borderColor: c.surface, backgroundColor: c.surface },
   faceOverlap: { marginLeft: -8 },
-  names: { flex: 1, fontFamily: fonts.medium, fontSize: 14, color: '#4A5253' },
+  names: { flex: 1, fontFamily: fonts.medium, fontSize: 14, color: c.textSoft },
   placesRow: { flexDirection: 'row', gap: 8 },
   placeChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
     maxWidth: 118,
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 999,
     paddingVertical: 5,
     paddingLeft: 5,
@@ -127,5 +130,5 @@ const styles = StyleSheet.create({
   },
   placeCover: { borderWidth: 0 },
   moreChip: { paddingLeft: 10 },
-  placeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 13, color: colors.ink },
-});
+  placeText: { flexShrink: 1, fontFamily: fonts.regular, fontSize: 13, color: c.ink },
+}));

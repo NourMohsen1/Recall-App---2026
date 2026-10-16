@@ -25,12 +25,15 @@ import {
 } from '../../src/attachments';
 import { colors, fonts } from '../../src/theme';
 import { useReturnTo } from '../../src/useReturnTo';
+import { makeStyles, useColors } from '../../src/appearance';
 
 // Save a screenshot or file — an appointment, a ticket, a bill. The phone
 // reads it; anything coming up becomes a task with its details. See
 // src/attachments.ts.
 
 export default function LogAttachment() {
+  const c = useColors();
+  const styles = useStyles();
   const returnTo = useReturnTo();
   const [file, setFile] = useState<PickedFile | null>(null);
   const [note, setNote] = useState('');
@@ -96,7 +99,7 @@ export default function LogAttachment() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => returnTo()} hitSlop={12} style={styles.back}>
-          <Ionicons name="close" size={26} color={colors.primary} />
+          <Ionicons name="close" size={26} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>Screenshot or File</Text>
       </View>
@@ -109,7 +112,7 @@ export default function LogAttachment() {
         keyboardDismissMode="interactive"
       >
         <View style={styles.intro}>
-          <MaterialCommunityIcons name="shield-lock-outline" size={20} color={colors.teal} />
+          <MaterialCommunityIcons name="shield-lock-outline" size={20} color={c.brandSoft} />
           <Text style={styles.introText}>
             An appointment, a ticket, a bill. Recall reads it on your phone and puts anything
             coming up in Tasks, with its details and a reminder. The file never leaves your phone.
@@ -126,11 +129,11 @@ export default function LogAttachment() {
 
         <View style={styles.sourceRow}>
           <Pressable style={styles.sourceBtn} onPress={pickImage} disabled={!textReaderAvailable}>
-            <MaterialCommunityIcons name="cellphone-screenshot" size={28} color={colors.white} />
+            <MaterialCommunityIcons name="cellphone-screenshot" size={28} color={c.onTile} />
             <Text style={styles.sourceLabel}>Screenshot</Text>
           </Pressable>
           <Pressable style={styles.sourceBtn} onPress={pickFile} disabled={!textReaderAvailable}>
-            <MaterialCommunityIcons name="file-document-outline" size={28} color={colors.white} />
+            <MaterialCommunityIcons name="file-document-outline" size={28} color={c.onTile} />
             <Text style={styles.sourceLabel}>File (PDF)</Text>
           </Pressable>
         </View>
@@ -140,7 +143,7 @@ export default function LogAttachment() {
             <View style={styles.chosen}>
               {isPdf(file) ? (
                 <View style={styles.pdfCard}>
-                  <MaterialCommunityIcons name="file-pdf-box" size={40} color={colors.teal} />
+                  <MaterialCommunityIcons name="file-pdf-box" size={40} color={c.brandSoft} />
                   <Text numberOfLines={2} style={styles.pdfName}>
                     {file.name ?? 'Document.pdf'}
                   </Text>
@@ -149,7 +152,7 @@ export default function LogAttachment() {
                 <Image source={{ uri: file.uri }} style={styles.shot} resizeMode="contain" />
               )}
               <Pressable style={styles.removeBtn} onPress={() => setFile(null)} hitSlop={8}>
-                <Ionicons name="close" size={14} color={colors.white} />
+                <Ionicons name="close" size={14} color={c.onTile} />
               </Pressable>
             </View>
 
@@ -159,7 +162,7 @@ export default function LogAttachment() {
               value={note}
               onChangeText={setNote}
               placeholder="e.g. Mum's check-up, I'm taking her"
-              placeholderTextColor="#9AA4A5"
+              placeholderTextColor={c.textGhost}
               multiline
             />
           </>
@@ -169,7 +172,7 @@ export default function LogAttachment() {
       <View style={styles.footer}>
         {saving ? (
           <View style={styles.reading}>
-            <ActivityIndicator color={colors.teal} />
+            <ActivityIndicator color={c.brandSoft} />
             <Text style={styles.readingText}>Reading it on your phone…</Text>
           </View>
         ) : (
@@ -181,40 +184,40 @@ export default function LogAttachment() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 18,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 14 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: c.textBody },
   scroll: { padding: 24, paddingBottom: 40 },
 
   intro: {
     flexDirection: 'row',
     gap: 10,
-    backgroundColor: '#F1F6F6',
+    backgroundColor: c.fill,
     borderRadius: 16,
     padding: 14,
   },
-  introText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#3A4243' },
-  warn: { marginTop: 14, backgroundColor: '#FFF4E5', borderRadius: 12, padding: 12 },
-  warnText: { fontFamily: fonts.medium, fontSize: 13, color: '#8A5A00' },
+  introText: { flex: 1, fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: c.textSoft },
+  warn: { marginTop: 14, backgroundColor: c.warnWash, borderRadius: 12, padding: 12 },
+  warnText: { fontFamily: fonts.medium, fontSize: 13, color: c.warn },
 
   sourceRow: { flexDirection: 'row', gap: 14, marginTop: 20 },
   sourceBtn: {
     flex: 1,
-    backgroundColor: colors.teal,
+    backgroundColor: c.tileAlt,
     borderRadius: 18,
     paddingVertical: 20,
     alignItems: 'center',
     gap: 8,
   },
-  sourceLabel: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
+  sourceLabel: { fontFamily: fonts.medium, fontSize: 14, color: c.onTile },
 
   chosen: { marginTop: 22, alignSelf: 'center' },
   shot: { width: 220, height: 360, borderRadius: 16 },
@@ -225,9 +228,9 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 16,
     borderRadius: 16,
-    backgroundColor: '#F1F6F6',
+    backgroundColor: c.fill,
   },
-  pdfName: { flex: 1, fontFamily: fonts.medium, fontSize: 14, color: '#2B2B2B' },
+  pdfName: { flex: 1, fontFamily: fonts.medium, fontSize: 14, color: c.textBody },
   removeBtn: {
     position: 'absolute',
     top: -8,
@@ -235,26 +238,26 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B', marginTop: 24, marginBottom: 10 },
+  sectionTitle: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text, marginTop: 24, marginBottom: 10 },
   noteInput: {
     minHeight: 80,
     borderWidth: 1,
-    borderColor: colors.soft,
+    borderColor: c.brandFaint,
     borderRadius: 14,
     padding: 14,
     fontFamily: fonts.regular,
     fontSize: 15,
-    color: '#1B1B1B',
+    color: c.text,
     textAlignVertical: 'top',
   },
 
   footer: { padding: 24, paddingBottom: 36 },
   saveDisabled: { opacity: 0.5 },
   reading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, height: 56 },
-  readingText: { fontFamily: fonts.medium, fontSize: 15, color: colors.teal },
-});
+  readingText: { fontFamily: fonts.medium, fontSize: 15, color: c.brandSoft },
+}));

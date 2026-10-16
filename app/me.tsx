@@ -22,6 +22,7 @@ import { adoptMyPhoto } from '../src/myFace';
 import { rtlIfArabic } from '../src/transcription';
 import { colors, fonts } from '../src/theme';
 import { withAppNav } from '../src/components/AppNav';
+import { makeStyles, useColors } from '../src/appearance';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -53,6 +54,8 @@ function railLabel(key: string): string {
 // The user's own profile — the same shape as everyone else's, because they
 // are a person in their own memory log, not a settings screen.
 function MyProfile() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile>({});
   const [byDay, setByDay] = useState<Map<string, LoggedMemory[]>>(new Map());
@@ -115,11 +118,11 @@ function MyProfile() {
     <SafeAreaView style={styles.safe} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => goBack(router, '/profile')} hitSlop={12} style={styles.back}>
-          <Ionicons name="arrow-back" size={28} color={colors.primary} />
+          <Ionicons name="arrow-back" size={28} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>Profile</Text>
         <Pressable onPress={() => setEditOpen(true)} hitSlop={12} style={styles.headerAction}>
-          <Ionicons name="create-outline" size={24} color={colors.primary} />
+          <Ionicons name="create-outline" size={24} color={c.brand} />
         </Pressable>
       </View>
 
@@ -129,7 +132,7 @@ function MyProfile() {
             <PhotoImage uri={profile.photoUri} style={styles.hero} />
           ) : (
             <View style={[styles.hero, styles.heroEmpty]}>
-              <MaterialCommunityIcons name="camera-plus-outline" size={40} color={colors.white} />
+              <MaterialCommunityIcons name="camera-plus-outline" size={40} color={c.onTile} />
               <Text style={styles.heroHint}>Tap to add your photo</Text>
             </View>
           )}
@@ -173,7 +176,7 @@ function MyProfile() {
                     <PhotoImage uri={d.uri} style={styles.railTile} />
                   ) : (
                     <View style={[styles.railTile, styles.railTileEmpty]}>
-                      <MaterialCommunityIcons name="text-long" size={20} color="#A8B0B1" />
+                      <MaterialCommunityIcons name="text-long" size={20} color={c.textGhost} />
                     </View>
                   )}
                   <Text style={styles.railLabel}>{railLabel(d.day)}</Text>
@@ -196,60 +199,60 @@ function MyProfile() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 16,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 16 },
   headerAction: { position: 'absolute', right: 20, top: 16 },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: '#2B2B2B' },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 24, color: c.textBody },
   scroll: { paddingHorizontal: 24, paddingBottom: 140 },
 
   heroWrap: { marginTop: 18 },
   hero: { width: '100%', aspectRatio: 0.92, borderRadius: 20, overflow: 'hidden' },
   heroEmpty: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 10,
   },
   heroHint: { fontFamily: fonts.medium, fontSize: 13, color: 'rgba(255,255,255,0.9)' },
 
-  name: { fontFamily: fonts.bold, fontSize: 38, color: '#1B1B1B', marginTop: 18 },
-  namePlaceholder: { fontFamily: fonts.bold, fontSize: 32, color: '#B4BBBB', marginTop: 18 },
-  you: { fontFamily: fonts.semiBold, fontSize: 15, color: '#1B1B1B', marginTop: 4 },
+  name: { fontFamily: fonts.bold, fontSize: 38, color: c.text, marginTop: 18 },
+  namePlaceholder: { fontFamily: fonts.bold, fontSize: 32, color: c.textGhost, marginTop: 18 },
+  you: { fontFamily: fonts.semiBold, fontSize: 15, color: c.text, marginTop: 4 },
   bio: {
     fontFamily: fonts.regular,
     fontSize: 16,
     lineHeight: 25,
-    color: '#3E4647',
+    color: c.textSoft,
     marginTop: 14,
   },
   bioPlaceholder: {
     fontFamily: fonts.regular,
     fontSize: 15,
     lineHeight: 23,
-    color: '#9AA4A5',
+    color: c.textGhost,
     marginTop: 14,
   },
 
-  sectionTitle: { fontFamily: fonts.bold, fontSize: 20, color: '#1B1B1B', marginTop: 26, marginBottom: 12 },
+  sectionTitle: { fontFamily: fonts.bold, fontSize: 20, color: c.text, marginTop: 26, marginBottom: 12 },
   railRow: { flexDirection: 'row', gap: 12, paddingRight: 24 },
   railTile: { width: 116, height: 116, borderRadius: 14, overflow: 'hidden' },
-  railTileEmpty: { backgroundColor: '#EDF1F1', alignItems: 'center', justifyContent: 'center' },
+  railTileEmpty: { backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' },
   railLabel: {
     fontFamily: fonts.medium,
     fontSize: 13,
-    color: '#3E4647',
+    color: c.textSoft,
     marginTop: 8,
     textAlign: 'center',
   },
-});
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(MyProfile);

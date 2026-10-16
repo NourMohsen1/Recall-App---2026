@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { topicIcon, type Topic } from '../onThisDay';
 import { colors, fonts } from '../theme';
+import { makeStyles, useColors } from '../appearance';
 
 // One day of On This Day, shrunk to tiles while the user arranges the
 // topics: the day's own tile first and fixed, then a tile per topic. Slide
@@ -23,6 +24,8 @@ type Props = {
 };
 
 export default function TopicArrangeRow({ topics, width, gap, onReorder }: Props) {
+  const c = useColors();
+  const styles = useStyles();
   const [order, setOrder] = useState(topics);
   useEffect(() => setOrder(topics), [topics]);
 
@@ -66,7 +69,7 @@ export default function TopicArrangeRow({ topics, width, gap, onReorder }: Props
   return (
     <View style={[styles.row, { gap }]}>
       <View style={[styles.tile, styles.dayTile, { width: tileW }]}>
-        <MaterialCommunityIcons name="notebook-heart-outline" size={20} color="#9AA4A5" />
+        <MaterialCommunityIcons name="notebook-heart-outline" size={20} color={c.textGhost} />
         <Text numberOfLines={1} style={[styles.label, styles.dayLabel]}>
           Your day
         </Text>
@@ -113,6 +116,8 @@ function Tile({
   onHover: () => void;
   onDrop: (from: number, to: number) => void;
 }) {
+  const c = useColors();
+  const styles = useStyles();
   // Sideways drags move the tile; an up-or-down swipe is left to the page.
   const pan = Gesture.Pan()
     .activeOffsetX([-8, 8])
@@ -153,7 +158,7 @@ function Tile({
   return (
     <GestureDetector gesture={pan}>
       <Animated.View style={[styles.tile, styles.topicTile, { width }, style]}>
-        <MaterialCommunityIcons name={topicIcon(topic.key) as any} size={20} color={colors.white} />
+        <MaterialCommunityIcons name={topicIcon(topic.key) as any} size={20} color={c.onTile} />
         <Text numberOfLines={1} style={styles.label}>
           {topic.label}
         </Text>
@@ -162,7 +167,7 @@ function Tile({
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles((c) => ({
   row: { flexDirection: 'row' },
   tile: {
     height: 84,
@@ -171,12 +176,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingHorizontal: 4,
-    shadowColor: colors.ink,
+    shadowColor: c.shadow,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
   },
-  dayTile: { backgroundColor: '#E4EBEB' },
-  topicTile: { backgroundColor: colors.primary },
-  label: { fontFamily: fonts.medium, fontSize: 11, color: colors.white },
-  dayLabel: { color: '#8B9394' },
-});
+  dayTile: { backgroundColor: c.fill },
+  topicTile: { backgroundColor: c.tile },
+  label: { fontFamily: fonts.medium, fontSize: 11, color: c.onTile },
+  dayLabel: { color: c.textFaint },
+}));

@@ -69,8 +69,11 @@ import { DayPlace, getPlacesForDay, hidePlaceOnDay, setDayPlaceOrder } from '../
 import { rtlIfArabic } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
 import { withAppNav } from '../../../src/components/AppNav';
+import { makeStyles, useColors } from '../../../src/appearance';
 
 function DayDetailScreen() {
+  const c = useColors();
+  const styles = useStyles();
   const router = useRouter();
   const { offset } = useLocalSearchParams<{ offset: string }>();
   const offsetNum = Number(offset ?? 0);
@@ -397,7 +400,7 @@ function DayDetailScreen() {
       <View style={styles.header}>
         {/* Back to wherever the day was opened from (src/navigation.ts). */}
         <Pressable onPress={() => goBack(router, '/timeline')} hitSlop={12} style={styles.back}>
-          <Ionicons name="arrow-back" size={28} color={colors.primary} />
+          <Ionicons name="arrow-back" size={28} color={c.brand} />
         </Pressable>
         <Text style={styles.headerTitle}>
           {WEEKDAYS[date.getDay()]}, {shortDate(date)}
@@ -409,7 +412,7 @@ function DayDetailScreen() {
           {editing ? (
             <Text style={styles.headerDone}>Done</Text>
           ) : (
-            <Ionicons name="create-outline" size={24} color={colors.primary} />
+            <Ionicons name="create-outline" size={24} color={c.brand} />
           )}
         </Pressable>
       </View>
@@ -463,7 +466,7 @@ function DayDetailScreen() {
                     </View>
                     {editing && (
                       <Pressable onPress={() => setEditTarget(m)} hitSlop={10} style={styles.editDot}>
-                        <Ionicons name="create-outline" size={17} color={colors.teal} />
+                        <Ionicons name="create-outline" size={17} color={c.brandSoft} />
                       </Pressable>
                     )}
                   </View>
@@ -495,7 +498,7 @@ function DayDetailScreen() {
                         })
                       }
                     >
-                      <MaterialCommunityIcons name="microphone-outline" size={14} color="#8B9394" />
+                      <MaterialCommunityIcons name="microphone-outline" size={14} color={c.textFaint} />
                       <Text style={styles.sourceLinkText}>Recorded by voice. Tap to listen</Text>
                     </Pressable>
                   )}
@@ -509,7 +512,7 @@ function DayDetailScreen() {
         {/* Adding a note to the day, always in reach. It used to appear only
             in edit mode, where Nour never found it. */}
         <Pressable style={styles.addRow} onPress={() => setAdding(true)}>
-          <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
+          <Ionicons name="add-circle-outline" size={20} color={c.brandSoft} />
           <Text style={styles.addText}>Add a note</Text>
         </Pressable>
 
@@ -569,10 +572,10 @@ function DayDetailScreen() {
                       {place.label}
                     </Text>
                     <Pressable onPress={() => removeDayPlace(place)} hitSlop={10} style={styles.placeRowBtn}>
-                      <Ionicons name="close-circle" size={24} color="#B24545" />
+                      <Ionicons name="close-circle" size={24} color={c.danger} />
                     </Pressable>
                     {places.length > 1 && (
-                      <MaterialCommunityIcons name="drag-horizontal-variant" size={24} color="#A3ABAC" />
+                      <MaterialCommunityIcons name="drag-horizontal-variant" size={24} color={c.textGhost} />
                     )}
                   </View>
                 )}
@@ -594,7 +597,7 @@ function DayDetailScreen() {
               {offsetNum <= 0 && !editing && (
                 <Pressable style={{ width: 100, alignItems: 'center' }} onPress={() => setAddingPlace(true)}>
                   <View style={[styles.addPlaceTile, { width: 100, height: 100 }]}>
-                    <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={colors.teal} />
+                    <MaterialCommunityIcons name="map-marker-plus-outline" size={30} color={c.brandSoft} />
                   </View>
                   <Text style={styles.addPlaceLabel}>Add</Text>
                 </Pressable>
@@ -602,7 +605,7 @@ function DayDetailScreen() {
             </View>
             {offsetNum <= 0 && editing && (
               <Pressable style={styles.addRow} onPress={() => setAddingPlace(true)}>
-                <Ionicons name="add-circle-outline" size={20} color={colors.teal} />
+                <Ionicons name="add-circle-outline" size={20} color={c.brandSoft} />
                 <Text style={styles.addText}>Add a place</Text>
               </Pressable>
             )}
@@ -649,11 +652,11 @@ function DayDetailScreen() {
             <View style={styles.assumedCard}>
               <View style={styles.assumedHeaderRow}>
                 <View style={styles.assumedTitleRow}>
-                  <Ionicons name="sparkles-outline" size={18} color={colors.teal} />
+                  <Ionicons name="sparkles-outline" size={18} color={c.brandSoft} />
                   <Text style={styles.assumedTitle}>Assumed Memory</Text>
                 </View>
                 <Pressable hitSlop={10} onPress={dismissAssumed}>
-                  <Ionicons name="close" size={18} color="#9AA4A5" />
+                  <Ionicons name="close" size={18} color={c.textGhost} />
                 </Pressable>
               </View>
               <Text style={styles.assumedSub}>The AI's best guess from this day's photos</Text>
@@ -672,7 +675,7 @@ function DayDetailScreen() {
                 onPress={toggleAssumedLang}
                 disabled={translating}
               >
-                <Ionicons name="language-outline" size={14} color={colors.teal} />
+                <Ionicons name="language-outline" size={14} color={c.brandSoft} />
                 <Text style={styles.assumedTranslateText}>
                   {translating ? 'Translating…' : assumedLang === 'ar' ? 'Show original' : 'Translate to Arabic'}
                 </Text>
@@ -696,7 +699,7 @@ function DayDetailScreen() {
               onPress={retryAssumed}
             >
               <View style={styles.assumedTitleRow}>
-                <Ionicons name="refresh" size={18} color="#8B9394" />
+                <Ionicons name="refresh" size={18} color={c.textFaint} />
                 <Text style={styles.assumedTitle}>Assumed Memory</Text>
               </View>
               <Text style={styles.assumedSub}>
@@ -739,18 +742,18 @@ function DayDetailScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.white },
+const useStyles = makeStyles((c) => ({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     paddingTop: 12,
     paddingBottom: 20,
     alignItems: 'center',
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E8E8',
+    borderBottomColor: c.divider,
   },
   back: { position: 'absolute', left: 20, top: 16 },
   headerAction: { position: 'absolute', right: 20, top: 18 },
-  headerDone: { fontFamily: fonts.semiBold, fontSize: 16, color: colors.teal },
+  headerDone: { fontFamily: fonts.semiBold, fontSize: 16, color: c.brandSoft },
   editDot: { padding: 2 },
   addRow: {
     flexDirection: 'row',
@@ -760,8 +763,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginTop: 4,
   },
-  addText: { fontFamily: fonts.medium, fontSize: 15, color: colors.teal },
-  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: '#2B2B2B' },
+  addText: { fontFamily: fonts.medium, fontSize: 15, color: c.brandSoft },
+  headerTitle: { fontFamily: fonts.medium, fontSize: 22, color: c.textBody },
   scroll: { padding: 24, paddingBottom: 140 },
 
   segments: { position: 'relative', marginBottom: 10 },
@@ -772,14 +775,14 @@ const styles = StyleSheet.create({
     bottom: 30,
     width: 10,
     borderRadius: 5,
-    backgroundColor: '#8FA6A9',
+    backgroundColor: c.brandLine,
   },
   segment: { flexDirection: 'row', gap: 18, marginBottom: 34 },
   spineDot: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     marginTop: 2,
   },
   segmentHeader: {
@@ -788,31 +791,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
-  segmentTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111' },
+  segmentTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text },
   timePill: {
-    backgroundColor: colors.primary,
+    backgroundColor: c.tile,
     borderRadius: 999,
     paddingVertical: 5,
     paddingHorizontal: 10,
   },
-  timePillText: { fontFamily: fonts.regular, fontSize: 12, color: colors.white },
+  timePillText: { fontFamily: fonts.regular, fontSize: 12, color: c.onTile },
   segmentText: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#5B6364',
+    color: c.textMuted,
     marginTop: 6,
   },
 
   sourceBtn: {
     alignSelf: 'flex-end',
-    backgroundColor: colors.accent,
+    backgroundColor: c.accent,
     borderRadius: 999,
     paddingVertical: 10,
     paddingHorizontal: 24,
   },
-  sourceBtnText: { fontFamily: fonts.regular, fontSize: 14, color: '#0E1B1C' },
-  divider: { height: 1, backgroundColor: '#C6CCCC', marginVertical: 20 },
+  sourceBtnText: { fontFamily: fonts.regular, fontSize: 14, color: c.ink },
+  divider: { height: 1, backgroundColor: c.border, marginVertical: 20 },
   photoRow: { flexDirection: 'row', gap: 12 },
   photo: {
     width: 170,
@@ -822,59 +825,59 @@ const styles = StyleSheet.create({
   },
 
   sourceLink: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  sourceLinkText: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
-  noteText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: '#7C8586', marginTop: 6 },
+  sourceLinkText: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
+  noteText: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 20, color: c.textFaint, marginTop: 6 },
 
   peopleHeader: {
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
   },
-  peopleReading: { fontFamily: fonts.regular, fontSize: 12, color: '#8B9394' },
-  placesTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: '#111', marginBottom: 14 },
+  peopleReading: { fontFamily: fonts.regular, fontSize: 12, color: c.textFaint },
+  placesTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text, marginBottom: 14 },
   addPlaceTile: {
     borderRadius: 16,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.muted,
+    borderColor: c.brandLine,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: '#2B2B2B', marginTop: 6, textAlign: 'center' },
+  addPlaceLabel: { fontFamily: fonts.regular, fontSize: 12, color: c.textBody, marginTop: 6, textAlign: 'center' },
   placeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     paddingVertical: 8,
-    backgroundColor: colors.white,
+    backgroundColor: c.surface,
   },
-  placeRowName: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: colors.ink },
+  placeRowName: { flex: 1, fontFamily: fonts.medium, fontSize: 15, color: c.ink },
   placeRowBtn: { padding: 2 },
   placeGrid: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 14, rowGap: 12 },
 
   empty: { paddingTop: 80, alignItems: 'center' },
-  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: '#8B9394' },
+  emptyText: { fontFamily: fonts.regular, fontSize: 14, color: c.textFaint },
 
   // Assumed Memory — same dashed/tinted treatment as the Timeline mini
   // card, so it reads as the same feature, just maximized.
   assumedCard: {
-    backgroundColor: colors.pale,
+    backgroundColor: c.chip,
     borderRadius: 20,
     borderWidth: 1.5,
     borderStyle: 'dashed',
-    borderColor: colors.slate,
+    borderColor: c.brandMuted,
     padding: 18,
   },
-  assumedCardFailed: { backgroundColor: '#F5F5F5', borderColor: '#D5DBDB' },
+  assumedCardFailed: { backgroundColor: c.fillSoft, borderColor: c.border },
   assumedHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   assumedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  assumedTitle: { fontFamily: fonts.medium, fontSize: 16, color: colors.primary },
-  assumedSub: { fontFamily: fonts.regular, fontSize: 12, color: '#5B7377', marginTop: 2 },
+  assumedTitle: { fontFamily: fonts.medium, fontSize: 16, color: c.brand },
+  assumedSub: { fontFamily: fonts.regular, fontSize: 12, color: c.textMuted, marginTop: 2 },
   assumedText: {
     fontFamily: fonts.regular,
     fontSize: 14,
     lineHeight: 21,
-    color: '#324547',
+    color: c.textSoft,
     marginTop: 12,
   },
   assumedTranslateBtn: {
@@ -885,10 +888,10 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#C7D6D8',
+    borderTopColor: c.border,
   },
-  assumedTranslateText: { fontFamily: fonts.medium, fontSize: 12, color: colors.teal },
-});
+  assumedTranslateText: { fontFamily: fonts.medium, fontSize: 12, color: c.brandSoft },
+}));
 
 // The app's bottom menu over this screen, like the main tabs.
 export default withAppNav(DayDetailScreen);
