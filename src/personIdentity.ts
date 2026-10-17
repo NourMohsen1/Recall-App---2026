@@ -225,3 +225,35 @@ export function findDuplicatePeople(
 
   return out.sort((a, b) => b.score - a.score);
 }
+
+// Whether a sentence names a person, in any of the ways they're written:
+// "ناير جه من الشغل" names Nayer; "وروحت مع بودي وأحمد ربيع" names Ahmed
+// Rabie through the attached "و". Used to tell what a note says WITH someone
+// from what merely happened the same day (askContext.ts, realtimeTools.ts).
+const ATTACHED = /^(و|ف|ب|ل|ك)(?=\S{2,})/;
+
+function wordSkeletons(text: string): string[][] {
+  // Each word, and the word without an attached و/ف/ب/ل/ك or "ال".
+  return text
+    .split(/[\s،,.!?؟:;()"'«»\-–—]+/)
+    .filter(Boolean)
+    .map((w) => {
+      const forms = new Set<string>([w]);
+      const bare = w.replace(ATTACHED, '');
+      forms.add(bare);
+      forms.add(bare.replace(/^ال(?=\S{2,})/, ''));
+      return [...forms].map((f) => nameSkeleton(f)).filter(Boolean);
+    });
+}
+
+export function mentionsPerson(text: string, names: string[]): boolean {
+  const words = wordSkeletons(text);
+  for (const name of names) {
+    const want = nameSkeleton(name).split(' ').filter(Boolean);
+    if (want.length === 0) continue;
+    for (let i = 0; i + want.length <= words.length; i++) {
+      if (want.every((w, j) => words[i + j].includes(w))) return true;
+    }
+  }
+  return false;
+}

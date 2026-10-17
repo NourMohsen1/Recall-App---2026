@@ -9,6 +9,7 @@ import { getAllPersonMeta, getPeopleSummaries } from './peopleTags';
 import { getAllDayPlaces, getPlaces, usualWeekday } from './places';
 import { getTasks, taskTimeLabel } from './tasks';
 import { getUserProfile, identityForPrompt } from './userProfile';
+import { mentionsPerson } from './personIdentity';
 import { ResolvedEvent, daysOfEvent } from './worldEvents';
 
 // Builds the text the AI reads before answering.
@@ -388,9 +389,32 @@ async function placesBlock(): Promise<string> {
 
 // Everything about one day, written out in full and clearly delimited so
 // the model can't blur it into a neighbouring day.
-function fullDayBlock(key: string, rec: DayRecord, matched?: string[]): string {
+// The people a question is about, with every way they are written.
+export type AskedPerson = { name: string; names: string[] };
+
+function fullDayBlock(key: string, rec: DayRecord, matched?: string[], asked: AskedPerson[] = []): string {
   const lines = [`=== ${dayLabel(key)} ===${matched?.length ? ` (found by: ${matched.join(', ')})` : ''}`];
-  if (rec.logged.length > 0) {
+  // Being on the same day is not being together (Nour, Oct 2026): asked
+  // what a friend did with him, it put the friend at every place and with
+  // every person of that day, because the day was written in one paragraph
+  // and handed over as one list. When the question is about someone, the
+  // day's parts go in order, each marked with whether it names them.
+  const here = asked.filter((p) => rec.people.includes(p.name) || rec.logged.some((t) => mentionsPerson(t, p.names)));
+  if (rec.logged.length > 0 && here.length > 0) {
+    lines.push('What the user logged themselves, part by part, in order:');
+    rec.logged.forEach((t, i) => {
+      const named = here.filter((p) => mentionsPerson(t, p.names)).map((p) => p.name);
+      lines.push(`  ${i + 1}. ${named.length ? `[names ${named.join(', ')}] ` : ''}${t}`);
+    });
+    for (const p of here) {
+      const parts = rec.logged.map((t, i) => (mentionsPerson(t, p.names) ? i + 1 : 0)).filter(Boolean);
+      lines.push(
+        parts.length
+          ? `WITH ${p.name} THAT DAY: only part(s) ${parts.join(', ')} name them. Those are what you did together. A part right after one of those that says "we" (روحنا، خلصنا، رحنا، we) without naming anyone is PROBABLY still with them: say "probably". Every other part, place and person of the day is NOT said to be with them: never put ${p.name} there.`
+          : `WITH ${p.name} THAT DAY: they are on this day, but no part of the notes names them, so it is not written what you did together or where. Say you saw them that day and that the notes don't say what you did; never put them at the day's places or with its other people.`,
+      );
+    }
+  } else if (rec.logged.length > 0) {
     lines.push(`What the user logged themselves: ${rec.logged.join(' | ')}`);
   }
   if (rec.assumed) {
@@ -400,7 +424,9 @@ function fullDayBlock(key: string, rec: DayRecord, matched?: string[]): string {
       `${rec.photoCount} photo(s) exist for this day but haven't been read by the photo analysis yet — so what's IN them is genuinely unknown right now. Don't guess at their content; say the photos are there but not read yet.`,
     );
   }
-  if (rec.people.length > 0) lines.push(`People tagged that day: ${rec.people.join(', ')}`);
+  if (rec.people.length > 0) {
+    lines.push(`People tagged that day${here.length ? ' (anyone mentioned that day: not all together)' : ''}: ${rec.people.join(', ')}`);
+  }
   if (rec.guessed.length > 0) {
     lines.push(
       `Faces RECOGNISED in that day's photos, NOT confirmed by the user: ${rec.guessed.join(', ')}. ` +
@@ -408,7 +434,9 @@ function fullDayBlock(key: string, rec: DayRecord, matched?: string[]): string {
         `never "you saw X". If the user asks whether that is certain, say plainly that the app matched a face and they have not confirmed it.`,
     );
   }
-  if (rec.places.length > 0) lines.push(`Places that day: ${rec.places.join(', ')}`);
+  if (rec.places.length > 0) {
+    lines.push(`Places that day${here.length ? ' (the whole day: not necessarily with the person asked about)' : ''}: ${rec.places.join(', ')}`);
+  }
   if (rec.novel.length > 0) {
     lines.push(`NEW THAT DAY (not their routine): ${rec.novel.join('; ')}`);
   }
@@ -665,6 +693,14 @@ export async function buildMemoryContext(
     }
   }
 
+  // The people the question is about, by every name they go by, so each
+  // day can say what was done WITH them (fullDayBlock).
+  const metaAll = await getAllPersonMeta();
+  const asked: AskedPerson[] = (plan?.people ?? []).map((p) => ({
+    name: p.name,
+    names: [...new Set([p.name, p.said, ...(metaAll[p.name]?.aliases ?? [])].filter((n): n is string => !!n))],
+  }));
+
   const askedAbout = focusOrder.filter((k) => days.has(k));
   const rangeBlocks = [...rangeFull].sort();
   const primary = [...askedAbout, ...rangeBlocks];
@@ -672,7 +708,7 @@ export async function buildMemoryContext(
   if (primary.length > 0) {
     sections.push(
       `THE DAY(S) THE USER IS ASKING ABOUT — answer from these first:\n\n${primary
-        .map((k) => fullDayBlock(k, days.get(k)!, matchedBy.get(k)))
+        .map((k) => fullDayBlock(k, days.get(k)!, matchedBy.get(k), asked))
         .join('\n\n')}`,
     );
   } else if ((plan?.dates?.length ?? 0) > 0 || rangeAll.length > 0) {
@@ -693,7 +729,7 @@ export async function buildMemoryContext(
   if (keywordKeys.length > 0) {
     sections.push(
       `DAYS THE SEARCH FOUND FOR WHAT THEY ASKED — best match first; "found by" lists which of the question's words that day has. The first one is usually the answer; if it only partly fits, offer it as the closest:\n\n${keywordKeys
-        .map((k) => fullDayBlock(k, days.get(k)!, matchedBy.get(k)))
+        .map((k) => fullDayBlock(k, days.get(k)!, matchedBy.get(k), asked))
         .join('\n\n')}`,
     );
   } else if ((plan?.keywords?.length ?? 0) > 0 && primary.length === 0) {

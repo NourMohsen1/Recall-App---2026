@@ -198,9 +198,9 @@ streams recorded speech to OpenAI with the app's own code:
   words cut it (`output_audio_buffer.clear`) and answer. Measured: 6/6
   overlaps right, cut 1.1–1.3 s after the user starts. **Known limit:** a
   TV saying real words cuts it too; the API can't tell voices apart.
-- **Voices:** Female `marin` (default, OpenAI's recommendation), Male `ash`
-  — chosen by measured pitch (202 / 138 Hz) and clarity of Egyptian (2.4% /
-  1.3% transcription error). Recall speaks of itself in its voice's gender;
+- **Voices:** Female `marin` (default), Male `cedar` (Nour disliked `ash`
+  and asked for ChatGPT's Ember, which the API refuses; cedar is OpenAI's
+  most natural male-sounding voice, 1.3% Egyptian transcription error). Recall speaks of itself in its voice's gender;
   the user is addressed in theirs, masculine until shown. A voice can't
   change after audio, so switching mid-call reconnects with the turns.
 - **How they like to talk** (`src/voicePrefs.ts`, Profile → Live voice):

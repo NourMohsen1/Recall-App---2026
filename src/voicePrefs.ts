@@ -19,11 +19,13 @@ import type { VoiceTurn } from './voiceSession';
 
 export type VoiceChoice = 'female' | 'male';
 
-/** OpenAI's voice for each choice, picked by measurement (Oct 2026): the
- *  clearest Egyptian of the voices whose pitch is plainly female or male.
- *  marin 202 Hz, 2.4% transcription error; ash 138 Hz, 1.3%. marin was
- *  already Recall's voice and is OpenAI's recommended one. */
-export const VOICE_ID: Record<VoiceChoice, string> = { female: 'marin', male: 'ash' };
+/** OpenAI's voice for each choice. marin (female) was already Recall's
+ *  voice and is OpenAI's recommended one. Male was ash (138 Hz, the
+ *  plainest male pitch); Nour found it unpleasant and asked for ChatGPT's
+ *  "Ember", which the API doesn't offer (it refuses it; ten voices only,
+ *  Oct 2026). cedar is the nearest: OpenAI's newest, recommended alongside
+ *  marin as the most natural, and as clear in Egyptian (1.3% error). */
+export const VOICE_ID: Record<VoiceChoice, string> = { female: 'marin', male: 'cedar' };
 
 /** How Recall speaks of itself in Arabic, which marks gender: a woman's
  *  voice saying "مش متأكد" sounds wrong to anyone who speaks it. */
