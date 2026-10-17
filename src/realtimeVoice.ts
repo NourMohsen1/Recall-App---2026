@@ -9,6 +9,8 @@ import { setAudioModeAsync } from 'expo-audio';
 
 import { backendToken, backendUrl } from './backend';
 import type { VoiceTurn } from './voiceSession';
+import { createTurnTaker } from './turnTaking';
+import { VOICE_ID, VOICE_PERSONA, type VoiceChoice } from './voicePrefs';
 import {
   REALTIME_TOOLS,
   VOICE_INSTRUCTIONS,
@@ -95,18 +97,24 @@ const TURN_DETECTION = {
   threshold: 0.5,
   prefix_padding_ms: 300,
   silence_duration_ms: 800,
-  create_response: true,
-  // Talking over Recall cuts it off; the server drops the audio not yet
-  // played, so what it remembers saying is what the user heard.
-  interrupt_response: true,
+  // The app starts every answer itself (src/turnTaking.ts): an "آه" over
+  // Recall must get none, and two starters raced.
+  create_response: false,
+  // Off: OpenAI's own interruption stopped Recall at any sound — a "آه", a
+  // cough, the TV. The app decides instead, from the words
+  // (src/turnTaking.ts), and cuts Recall off itself when they are real.
+  interrupt_response: false,
 } as const;
 
 /** The session as the model gets it. Exported for the test harness. */
-export function sessionSettings(language: LiveLanguage, bootstrap: string) {
+export function sessionSettings(language: LiveLanguage, bootstrap: string, voice: VoiceChoice = 'female') {
   return {
     type: 'realtime',
-    instructions: `${VOICE_INSTRUCTIONS}\n\n${LANGUAGE_RULE[language]}\n\n${bootstrap}`,
+    instructions: `${VOICE_INSTRUCTIONS}\n\n${VOICE_PERSONA[voice]}\n\n${LANGUAGE_RULE[language]}\n\n${bootstrap}`,
     audio: {
+      // Set before Recall says a word: OpenAI can't change a voice after
+      // that, so a new choice mid-call reconnects (app/live.tsx).
+      output: { voice: VOICE_ID[voice] },
       input: {
         turn_detection: TURN_DETECTION,
         // The phone is on the loudspeaker, held away (routeToSpeaker), so
@@ -123,7 +131,11 @@ export function sessionSettings(language: LiveLanguage, bootstrap: string) {
           model: 'gpt-live-transcribe',
           // What it will hear, so a mixed sentence isn't forced into one
           // language on screen. Only a hint; the model hears the audio.
-          prompt: 'Often Egyptian Arabic and English mixed in one sentence; any other language is possible.',
+          // Measured on 9 recordings (Egyptian, mixed, English, French):
+          // 7.6% of characters wrong with no hint, 6.9% with "Egyptian and
+          // English mixed", 5.7% with this one, English and French unharmed.
+          prompt:
+            'The speaker is usually Egyptian and speaks Egyptian Arabic, written in Arabic script, with some English words such as gym, meeting or project written in English. They may also speak English or another language.',
           ...(language === 'auto' ? {} : { language }),
         },
       },
@@ -209,6 +221,7 @@ export async function startLiveVoice(
   onEvent: (e: LiveEvent) => void,
   initialLanguage: LiveLanguage = 'auto',
   resume?: Resume,
+  voice: VoiceChoice = 'female',
 ): Promise<LiveSession> {
   let language = initialLanguage;
   onEvent({ type: 'connecting' });
@@ -225,7 +238,23 @@ export async function startLiveVoice(
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
   let dropTimer: ReturnType<typeof setTimeout> | undefined;
-  const state = { responding: false, speaking: false };
+  const state = { responding: false, speaking: false, userTookTurn: () => false };
+  // Recall's voice, as the phone receives it: turned down while the user
+  // starts to speak over it (src/turnTaking.ts).
+  let voiceTrack: { _setVolume?: (v: number) => void } | null = null;
+  let send: (event: Record<string, unknown>) => void = () => {};
+  const turns = createTurnTaker({
+    send: (e) => send(e),
+    setVolume: (v) => {
+      try {
+        voiceTrack?._setVolume?.(v);
+      } catch (err) {
+        console.warn('[live] could not set the voice volume:', err);
+      }
+    },
+    log: (line) => console.log(line),
+  });
+  state.userTookTurn = () => turns.userTookTurn();
 
   const cleanup = (reason: 'user' | 'time' | 'error' | 'dropped', detail?: string) => {
     if (ended) return;
@@ -257,7 +286,8 @@ export async function startLiveVoice(
     // talks: "speaking" comes from output_audio_buffer.started instead.
     // Taken from here, the screen showed "speaking" while it listened, and
     // a tap meant to cut it off hung up.)
-    (pc as unknown as { ontrack: (e: unknown) => void }).ontrack = () => {
+    (pc as unknown as { ontrack: (e: { track?: unknown }) => void }).ontrack = (e) => {
+      if (e?.track) voiceTrack = e.track as typeof voiceTrack;
       if (!voiceRouted) {
         voiceRouted = true;
         void routeToSpeaker('voice arrived');
@@ -285,6 +315,9 @@ export async function startLiveVoice(
     };
 
     const channel = pc.createDataChannel('oai-events');
+    send = (e) => {
+      if (!ended) channel.send(JSON.stringify(e));
+    };
 
     channel.onopen = () => {
       // Everything the model needs to know, sent once. The instructions and
@@ -292,7 +325,7 @@ export async function startLiveVoice(
       channel.send(
         JSON.stringify({
           type: 'session.update',
-          session: { ...sessionSettings(language, bootstrap), tools: REALTIME_TOOLS, tool_choice: 'auto' },
+          session: { ...sessionSettings(language, bootstrap, voice), tools: REALTIME_TOOLS, tool_choice: 'auto' },
         }),
       );
       // Picking up a dropped call: the conversation so far, as plain text
@@ -324,6 +357,7 @@ export async function startLiveVoice(
       } catch {
         return;
       }
+      turns.onEvent(msg);
       void handleEvent(msg, channel, onEvent, state);
     };
 
@@ -361,6 +395,7 @@ export async function startLiveVoice(
       end: () => cleanup('user'),
       interrupt: () => {
         if (ended) return;
+        turns.reset();
         // Stop thinking, and stop the sound already on its way: over
         // WebRTC the model sends audio ahead of playback, and cancelling
         // alone let a second or two of it play on.
@@ -370,7 +405,9 @@ export async function startLiveVoice(
       setLanguage: (next) => {
         if (ended || next === language) return;
         language = next;
-        channel.send(JSON.stringify({ type: 'session.update', session: sessionSettings(next, bootstrap) }));
+        // Everything but the voice, which can't change once Recall has spoken.
+        const { audio, ...rest } = sessionSettings(next, bootstrap, voice);
+        channel.send(JSON.stringify({ type: 'session.update', session: { ...rest, audio: { input: audio.input } } }));
         console.log(`[live] language now ${next}`);
       },
     };
@@ -380,12 +417,27 @@ export async function startLiveVoice(
   }
 }
 
+// What each lookup is called on screen ("It searched your memories, then
+// opened the day."). The tool names themselves used to show.
+const TOOL_WORDS: Record<string, string> = {
+  search_memories: 'searched your memories',
+  get_day: 'opened the day',
+  find_person: 'looked them up',
+  find_place: 'looked up the place',
+  list_people: 'went through your people',
+  list_tasks: 'checked your tasks',
+  recent_days: 'went through your recent days',
+  days_with_person: 'found your days together',
+  remember_preference: 'noted how you like to talk',
+  forget_preference: 'forgot that',
+};
+
 // One message from the model. Only a few of them matter to a screen.
 async function handleEvent(
   msg: Record<string, unknown>,
   channel: { send: (data: string) => void },
   onEvent: (e: LiveEvent) => void,
-  state: { responding: boolean; speaking: boolean },
+  state: { responding: boolean; speaking: boolean; userTookTurn: () => boolean },
 ): Promise<void> {
   const type = String(msg.type ?? '');
 
@@ -444,7 +496,9 @@ async function handleEvent(
   }
 
   if (type === 'input_audio_buffer.speech_started') {
-    state.speaking = false;
+    // Over Recall's voice it may only be an "آه" (src/turnTaking.ts): the
+    // screen changes only if Recall is actually cut off.
+    if (state.speaking) return;
     onEvent({ type: 'listening' });
     return;
   }
@@ -470,7 +524,7 @@ async function handleEvent(
         // an empty object lets the tool answer "nothing found" rather than
         // the conversation stalling in silence.
       }
-      onEvent({ type: 'looked-up', label: call.name });
+      onEvent({ type: 'looked-up', label: TOOL_WORDS[call.name] ?? 'looked something up' });
 
       let output: unknown;
       try {
@@ -497,7 +551,7 @@ async function handleEvent(
     // Now that it has what it asked for, let it answer: unless the user
     // has already started something new, which the answer under way will
     // cover. Asking for a second one then was refused, or answered twice.
-    if (state.responding) {
+    if (state.responding || state.userTookTurn()) {
       console.log('[live] the user moved on during the lookup; not answering the old question');
       return;
     }

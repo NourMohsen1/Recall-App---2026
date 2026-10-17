@@ -1,0 +1,11 @@
+[
+ {"label": "6. تقدري تساعديني إزاي", "audio": "help.pcm"},
+ {"label": "Egyptian: don't know where to start", "audio": "start.pcm"},
+ {"label": "4. Fast Egyptian", "audio": "fast.pcm"},
+ {"label": "5. Egyptian with English words", "audio": "mix.pcm"},
+ {"label": "Asked for short answers", "audio": "short.pcm"},
+ {"label": "Then a question", "audio": "omar.pcm"},
+ {"label": "Who is Ali", "audio": "ali.pcm"},
+ {"label": "13. Correction: not that one", "audio": "notthat.pcm"},
+ {"label": "Asks if it's sure (self-reference)", "audio": "sure.pcm"}
+]

@@ -1,0 +1,13 @@
+[
+ {"label": "1. Egyptian Arabic", "audio": "eg1.pcm"},
+ {"label": "2. Egyptian with English words", "audio": "mix.pcm"},
+ {"label": "2b. Switch to English", "text": "And who was I with most of the time?"},
+ {"label": "3/10. Pauses, change of direction", "audio": "t10.pcm"},
+ {"label": "Hesitation and a vague question", "audio": "hes.pcm"},
+ {"label": "5. Self-correction", "audio": "corr.pcm"},
+ {"label": "6. Reference to earlier", "audio": "ref.pcm"},
+ {"label": "7. Simple question", "text": "Who's Omar?"},
+ {"label": "4. Interrupted mid-answer", "audio": "long.pcm", "interrupt": "cut.pcm"},
+ {"label": "Who made Recall", "audio": "who.pcm"},
+ {"label": "Another language (French)", "audio": "fr.pcm"}
+]

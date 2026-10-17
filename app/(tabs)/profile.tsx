@@ -18,6 +18,7 @@ import { AI_COMPANIES, getAiConsent, onAiConsentChanged, type AiConsent } from '
 import { getPositiveFocus, setPositiveFocus } from '../../src/positiveFocus';
 import Toggle from '../../src/components/Toggle';
 import AppearancePicker from '../../src/components/AppearancePicker';
+import VoicePrefsCard from '../../src/components/VoicePrefsCard';
 import { PERSON_PLACEHOLDER } from '../../src/images';
 import { UserProfile, getUserProfile, joinedDate, memoryCount } from '../../src/userProfile';
 import { colors, fonts } from '../../src/theme';
@@ -242,6 +243,10 @@ export default function Profile() {
             />
           </View>
         </View>
+
+        {/* The voice, and how Recall has learned the user likes to be
+            talked to (src/voicePrefs.ts). */}
+        <VoicePrefsCard />
 
         {/* Reading photos for faces: once, in the background. Placed under
             Memories because that is what it is — the same photos, read for

@@ -1,0 +1,7 @@
+[
+ {"label": "2. Egyptian with English words", "audio": "mix.pcm"},
+ {"label": "2b. Switch to English", "text": "And who was I with most of the time?"},
+ {"label": "Nothing logged", "audio": "t10.pcm"},
+ {"label": "5. Self-correction", "audio": "corr.pcm"},
+ {"label": "7. Simple question", "text": "Who's Omar?"}
+]

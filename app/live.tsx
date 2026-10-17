@@ -11,6 +11,7 @@ import { rtlIfArabic } from '../src/transcription';
 import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession } from '../src/chatSessions';
 import { liveVoiceAvailable, startLiveVoice, type LiveLanguage, type LiveSession, type Resume } from '../src/realtimeVoice';
+import { getVoicePrefs, learnFromCall, setVoiceChoice, type VoiceChoice } from '../src/voicePrefs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '../src/theme';
@@ -76,6 +77,11 @@ export default function LiveConversation() {
   // switching mid-call takes effect from the next thing said.
   const [language, setLanguage] = useState<LiveLanguage>('auto');
   const [langOpen, setLangOpen] = useState(false);
+  // Female or male (src/voicePrefs.ts), remembered between calls.
+  const [voice, setVoice] = useState<VoiceChoice>('female');
+  useEffect(() => {
+    getVoicePrefs().then((p) => setVoice(p.voice)).catch(() => {});
+  }, []);
   useEffect(() => {
     AsyncStorage.getItem(LANGUAGE_KEY)
       .then((v) => {
@@ -90,6 +96,26 @@ export default function LiveConversation() {
     session.current?.setLanguage(next);
     AsyncStorage.setItem(LANGUAGE_KEY, next).catch(() => {});
     console.log(`[live] language picked: ${next}`);
+  };
+  // A new voice mid-call: OpenAI can't change a voice once it has spoken,
+  // so the call is picked up again in the new voice, conversation and all.
+  const switching = useRef(false);
+  const pickVoice = (next: VoiceChoice) => {
+    Haptics.selectionAsync().catch(() => {});
+    setLangOpen(false);
+    if (next === voice) return;
+    setVoice(next);
+    void setVoiceChoice(next);
+    const live = session.current;
+    if (live) {
+      switching.current = true;
+      session.current = null;
+      live.end();
+      switching.current = false;
+      const remainingMs = 10 * 60 * 1000 - (Date.now() - callStarted.current);
+      console.log(`[live] voice now ${next}; picking the call up again`);
+      void start({ turns: turnsRef.current.slice(callTurnStart.current), remainingMs }, next);
+    }
   };
   const scroller = useRef<ScrollView | null>(null);
 
@@ -148,6 +174,9 @@ export default function LiveConversation() {
   // reconnect, and how many times it has reconnected.
   const callStarted = useRef(0);
   const reconnects = useRef(0);
+  // Where this call's turns begin in the list (earlier calls from the same
+  // visit stay on screen), so a call is learned from once.
+  const callTurnStart = useRef(0);
 
   const push = useCallback((turn: VoiceTurn) => {
     setTurns((prev) => [...prev, turn]);
@@ -171,7 +200,7 @@ export default function LiveConversation() {
   // Start talking. Everything after this is driven by events from the
   // model rather than by taps: it decides when the user has finished
   // speaking, and it can be interrupted by them starting again.
-  const start = async (resume?: Resume) => {
+  const start = async (resume?: Resume, withVoice: VoiceChoice = voice) => {
     setError(null);
     setPhase('opening');
     if (!resume) {
@@ -186,6 +215,7 @@ export default function LiveConversation() {
       setCards([]);
       callStarted.current = Date.now();
       reconnects.current = 0;
+      callTurnStart.current = turnsRef.current.length;
     }
     try {
       session.current = await startLiveVoice((e) => {
@@ -233,6 +263,8 @@ export default function LiveConversation() {
             setLookedUp((prev) => (prev.includes(e.label) ? prev : [...prev, e.label]));
             break;
           case 'ended':
+            // Switching voice ends this connection, not the call.
+            if (switching.current) break;
             session.current = null;
             // The line dropped: pick the same call up again, twice at most,
             // with what has been said so far. Signal comes and goes; a call
@@ -246,6 +278,9 @@ export default function LiveConversation() {
               break;
             }
             setPhase('idle');
+            // How they talk, learned from this call (counts only; nothing
+            // they said is kept). Off in Profile → Live voice.
+            void learnFromCall(turnsRef.current.slice(callTurnStart.current));
             if (e.reason === 'dropped') {
               setError('The connection dropped. Tap to start again.');
             } else if (e.reason === 'time') {
@@ -255,7 +290,7 @@ export default function LiveConversation() {
             }
             break;
         }
-      }, language, resume);
+      }, language, resume, withVoice);
     } catch (e) {
       session.current = null;
       setPhase('idle');
@@ -397,6 +432,8 @@ export default function LiveConversation() {
       <LanguageMenu
         visible={langOpen}
         value={language}
+        voice={voice}
+        onPickVoice={pickVoice}
         top={insets.top + 58}
         onPick={pickLanguage}
         onClose={() => setLangOpen(false)}
@@ -408,7 +445,7 @@ export default function LiveConversation() {
 const LANGUAGE_KEY = 'liveLanguage';
 
 const LANGUAGES: { key: LiveLanguage; badge: string; label: string; hint: string }[] = [
-  { key: 'auto', badge: 'A', label: 'Auto', hint: 'Follows you' },
+  { key: 'auto', badge: 'A', label: 'Auto', hint: 'Any language, follows you' },
   { key: 'ar', badge: 'ع', label: 'عربي', hint: 'Egyptian Arabic' },
   { key: 'en', badge: 'EN', label: 'English', hint: 'English only' },
 ];
@@ -434,15 +471,24 @@ function LanguageButton({ value, open, onToggle }: { value: LiveLanguage; open: 
 }
 
 // Drops down from the button: three rows, the chosen one ticked.
+const VOICES: { key: VoiceChoice; label: string }[] = [
+  { key: 'female', label: 'Female' },
+  { key: 'male', label: 'Male' },
+];
+
 function LanguageMenu({
   visible,
   value,
+  voice,
+  onPickVoice,
   top,
   onPick,
   onClose,
 }: {
   visible: boolean;
   value: LiveLanguage;
+  voice: VoiceChoice;
+  onPickVoice: (v: VoiceChoice) => void;
   top: number;
   onPick: (l: LiveLanguage) => void;
   onClose: () => void;
@@ -492,6 +538,26 @@ function LanguageMenu({
             </Pressable>
           );
         })}
+        {/* The voice, as a two-way switch under the languages. */}
+        <Text style={[styles.langMenuTitle, styles.voiceTitle]}>Voice</Text>
+        <View style={styles.voiceSwitch}>
+          {VOICES.map((v) => {
+            const on = v.key === voice;
+            return (
+              <Pressable
+                key={v.key}
+                onPress={() => onPickVoice(v.key)}
+                style={[styles.voiceOption, on && styles.voiceOptionOn]}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: on }}
+                accessibilityLabel={`${v.label} voice`}
+              >
+                <Ionicons name={v.key === 'female' ? 'woman-outline' : 'man-outline'} size={15} color={on ? colors.ink : colors.white} />
+                <Text style={[styles.voiceLabel, on && styles.voiceLabelOn]}>{v.label}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </Animated.View>
     </View>
   );
@@ -611,6 +677,19 @@ const styles = StyleSheet.create({
   },
   langRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 9, paddingHorizontal: 10, borderRadius: 14 },
   langRowOn: { backgroundColor: 'rgba(99,188,198,0.14)' },
+  voiceTitle: { marginTop: 10 },
+  voiceSwitch: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    padding: 3,
+    marginHorizontal: 6,
+    marginBottom: 6,
+  },
+  voiceOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, borderRadius: 11 },
+  voiceOptionOn: { backgroundColor: colors.accent },
+  voiceLabel: { fontFamily: fonts.medium, fontSize: 14, color: colors.white },
+  voiceLabelOn: { color: colors.ink },
   langRowBadge: {
     width: 32,
     height: 32,

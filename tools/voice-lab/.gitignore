@@ -1,0 +1,4 @@
+# Recordings are made by tts.mjs; built tests hold the app token from .env.
+audio/*.pcm
+out-*.js
+samples/

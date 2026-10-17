@@ -1,0 +1,5 @@
+[
+ {"label": "Male voice: help", "audio": "help.pcm"},
+ {"label": "Correction setup", "audio": "ali.pcm"},
+ {"label": "Male voice: are you sure", "audio": "sure.pcm"}
+]

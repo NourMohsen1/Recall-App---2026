@@ -178,28 +178,42 @@ who never saw that. A spot known only from where the phone was when a log
 was written stays off the Places page until a second day (`listed`).
 Tavily searches are cached on the server (a month for settled days).
 
-**Live voice: how it takes turns** (`src/realtimeVoice.ts`, Oct 2026).
-WebRTC, `gpt-realtime-2.1`, voice `marin` (OpenAI's own recommendation
-for both). Turn detection is `server_vad` with **800 ms** of silence —
-measured, not assumed: recordings of Egyptian, English and mixed
-questions with natural 0.6–0.9 s pauses, streamed in real time, gave 9
-mid-sentence false starts on OpenAI's default (500 ms), 8 on
-`semantic_vad` medium (twice no answer at all), and 0 at 800 ms,
-answering 1.1–1.4 s after the end. A false start is heard as Recall
-starting to talk and going quiet. Don't switch to semantic VAD without
-re-measuring (`scratchpad/rt/vad.mjs` pattern). `far_field` noise
-reduction (it's on the loudspeaker). The orb's "speaking" comes from
-`output_audio_buffer.started/stopped`, never from the audio track
-arriving (that once made a tap meant to interrupt hang up). The stop tap
-sends `response.cancel` and `output_audio_buffer.clear`. A dropped line
-reconnects by itself twice, handing the last 20 turns to the new session
-as text items. After a lookup a system note says the filler was already
-said (it said a second one about half the time). The instructions add
-personality, listening (half sentences, self-corrections, change of
-direction), interruptions, keeping the thread, Egyptian Arabic with
-English words kept, and "talk about their life, not their data".
-Measured end to end on a test phone (11 spoken scenarios, real tools):
-all answered right, in the language asked, including French.
+**Live voice: how it takes turns** (`src/realtimeVoice.ts`,
+`src/turnTaking.ts`, Oct 2026). WebRTC, `gpt-realtime-2.1`. Measure
+before changing any of this — `tools/voice-lab/` (README in each script)
+streams recorded speech to OpenAI with the app's own code:
+`node tools/voice-lab/run.mjs rtlive s1.json` (conversations),
+`… overlap ah,mmok,nowait,hold,cut,cough` (talking over Recall),
+`… latency eg1,mix` (timings), `node tools/voice-lab/vad.mjs` (turn ends),
+`voices.mjs`, `transcribe.mjs`.
+- **End of a turn:** `server_vad`, 800 ms of silence. 9 mid-sentence false
+  starts at OpenAI's 500 ms default, 8 on `semantic_vad`, 0 at 800 ms.
+- **The app starts every answer and decides every interruption**
+  (`create_response: false`, `interrupt_response: false`). OpenAI's own
+  interruption stopped Recall at any sound ("آه", a cough); two answer
+  starters raced and turned answers into "nothing found". Now: speech over
+  Recall ducks it to 30% at once, the live transcriber's words (~1.1 s
+  after they start) decide — backchannels ("آه"، "ممم تمام"، "yeah") let
+  it carry on and leave the conversation; "لا"، "استنى"، "wait" or real
+  words cut it (`output_audio_buffer.clear`) and answer. Measured: 6/6
+  overlaps right, cut 1.1–1.3 s after the user starts. **Known limit:** a
+  TV saying real words cuts it too; the API can't tell voices apart.
+- **Voices:** Female `marin` (default, OpenAI's recommendation), Male `ash`
+  — chosen by measured pitch (202 / 138 Hz) and clarity of Egyptian (2.4% /
+  1.3% transcription error). Recall speaks of itself in its voice's gender;
+  the user is addressed in theirs, masculine until shown. A voice can't
+  change after audio, so switching mid-call reconnects with the turns.
+- **How they like to talk** (`src/voicePrefs.ts`, Profile → Live voice):
+  on the phone only, like every memory. Explicit wishes via the
+  `remember_preference` tool (how to talk only, never life facts); a style
+  learned from counts after ~3 calls, older calls fading. View, delete,
+  forget all, off. **Not per Apple ID on a server** — Recall's server stores
+  nothing by design; a server memory would be its first personal data and
+  is Nour's call.
+- Latency: ~1.45 s from the last word to Recall's first sound; answers
+  needing a lookup 3.1–4.5 s, with "ثانية…" at ~1.5 s.
+- Transcription hint "Egyptian, Arabic script, English words in English":
+  5.7% character error vs 7.6% without.
 
 **+ saves, Ask answers** (Oct 2026). A tester thought live voice would
 save what he said and make tasks. It never does: only the + (talk, type,
