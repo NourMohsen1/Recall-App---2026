@@ -175,6 +175,10 @@ export async function syncPhotosWithLibrary(): Promise<void> {
         }
         if (moved.length > 0) {
           await setPhotoMetaBatch(moved);
+          // The new ids count as imported, or the next import would file
+          // the same photos again as new ones.
+          const { markAssetsImported } = await import('./photoImport');
+          await markAssetsImported(moved.map(([, m]) => m.assetId));
           console.log(`[photos] found ${moved.length} photos again under new ids`);
         }
         missing = missing.filter(([, m]) => !still.has(m.assetId!));

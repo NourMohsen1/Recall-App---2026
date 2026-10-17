@@ -346,7 +346,7 @@ goes and the intake never moves it again.
 install two ran together, filing each photo two or three times (testers,
 Oct 2026). A second caller joins the running import; filing skips a photo
 already on a day by path or Photos id; `removeDuplicatePhotos` cleaned
-existing copies once (`photoDuplicatesRemoved:v1`), never photos added by
+existing copies once (`photoDuplicatesRemoved:v2`, which also deletes a day's second photo memory once emptied), never photos added by
 hand. Face reading has no card in Profile any more: it is background work.
 
 **The day page edits in place** (`app/day/[offset]/index.tsx`): "Add a

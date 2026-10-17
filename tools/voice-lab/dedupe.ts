@@ -11,10 +11,16 @@ import { removeDuplicatePhotos } from '@app/photoImport';
     ['ph://B', { takenAt: +day(3), assetId: 'B' }],            // B again, another path
     ['file:///DCIM/C.jpg', { takenAt: +day(6), assetId: 'C' }],
     ['file:///Recall/mine.jpg', { takenAt: +day(6) }],          // hand-added copy
+    ['file:///DCIM/D.jpg', { takenAt: +day(9), assetId: 'D' }],
   ] as any);
   await saveMemory({ kind: 'photo', photoUris: ['file:///DCIM/A.jpg', 'file:///DCIM/B.jpg', 'file:///DCIM/A.jpg', 'ph://B'], takenAt: day(3) } as any);
   await saveMemory({ kind: 'photo', photoUris: ['file:///DCIM/C.jpg', 'file:///DCIM/C.jpg', 'file:///DCIM/C.jpg'], takenAt: day(6) } as any);
   await saveMemory({ kind: 'photo', manual: true, photoUris: ['file:///Recall/mine.jpg'], takenAt: day(6) } as any);
+  // The tester's case: two imports at once, each making its own memory for
+  // a day that had none, both holding the one photo in his library.
+  await saveMemory({ kind: 'photo', photoUris: ['file:///DCIM/D.jpg'], takenAt: day(9) } as any);
+  await saveMemory({ kind: 'photo', photoUris: ['file:///DCIM/D.jpg'], takenAt: day(9) } as any);
+  await saveMemory({ kind: 'photo', photoUris: ['file:///DCIM/D.jpg'], takenAt: day(9) } as any);
   const show = async (when: string) => {
     for (const m of await getLoggedMemories()) console.log(`  ${when} ${new Date(m.takenAt).getDate()} Oct${m.manual ? ' (added by hand)' : ''}: ${(m.photoUris ?? []).map((u) => u.split('/').pop()).join(', ')}`);
   };

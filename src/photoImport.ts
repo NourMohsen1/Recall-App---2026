@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // same arrangement as expo-file-system/legacy elsewhere in the project —
 // and it binds to the module that does have a web shim.
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { dateKey, getLoggedMemories, isManualLog, saveMemory, updateMemory } from './memoryLog';
+import { dateKey, deleteMemory, getLoggedMemories, isManualLog, saveMemory, updateMemory } from './memoryLog';
 import { logDayKey, logTakenAt } from './logicalDay';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
@@ -239,6 +239,15 @@ export async function backfillPhotoMeta(
   }
 }
 
+/** Photos ids that are already in Recall under another id (found again
+ *  on a restored phone, src/photoGuard.ts): never imported again. */
+export async function markAssetsImported(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const known = await getImportedIds();
+  for (const id of ids) known.add(id);
+  await saveImportedIds(known);
+}
+
 // One import at a time, whoever starts it. Three callers used to start
 // their own — the quiet sync, the one-time recovery pass and the Import
 // Photos screen — and on a new install the first two ran together: both
@@ -462,7 +471,11 @@ async function fileDayPhotos(
 // hand is their own copy and is never touched. A photo counts as a copy
 // when the same path, or the same Photos id under another path, is already
 // on a day; the first one stays. Logged with what it removed.
-const DEDUPE_KEY = 'photoDuplicatesRemoved:v1';
+// (Nour, Oct 2026: the tester's library had ONE copy of each photo; the
+// copies were Recall's own, made by the overlapping imports above.)
+// v2: v1 (one update earlier) could leave the second of two photo
+// memories for a day empty; this one deletes those too.
+const DEDUPE_KEY = 'photoDuplicatesRemoved:v2';
 
 export async function removeDuplicatePhotos(): Promise<void> {
   if (await AsyncStorage.getItem(DEDUPE_KEY)) return;
@@ -483,6 +496,12 @@ export async function removeDuplicatePhotos(): Promise<void> {
       if (m.kind !== 'photo') continue;
       const uris = m.photoUris ?? [];
       const manual = isManualLog(m);
+      // Emptied by v1: an imported photo memory with no photos is nothing.
+      if (!manual && uris.length === 0) {
+        days += 1;
+        await deleteMemory(m.id);
+        continue;
+      }
       const keep: string[] = [];
       for (const u of uris) {
         const id = meta[u]?.assetId;
@@ -501,7 +520,11 @@ export async function removeDuplicatePhotos(): Promise<void> {
       }
       if (keep.length !== uris.length) {
         days += 1;
-        await updateMemory(m.id, { photoUris: keep });
+        // Two imports at once each made their own photo memory for a day
+        // with none: the second, emptied, goes rather than showing as an
+        // empty "Photos" row.
+        if (keep.length === 0) await deleteMemory(m.id);
+        else await updateMemory(m.id, { photoUris: keep });
       }
     }
     if (otherPath.size) {

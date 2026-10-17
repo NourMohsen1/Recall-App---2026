@@ -99,7 +99,8 @@ export function planLateNightMoves(
     );
     if (home) {
       const i = next.indexOf(home);
-      next[i] = { ...home, photoUris: [...(home.photoUris ?? []), ...bucket.uris] };
+      // Never twice: a photo already there stays listed once.
+      next[i] = { ...home, photoUris: [...new Set([...(home.photoUris ?? []), ...bucket.uris])] };
     } else {
       next.push({
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
