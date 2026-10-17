@@ -105,7 +105,7 @@ export async function isPrivateFile(uri: string): Promise<boolean> {
 }
 
 /** Takes photos out of Recall with everything that came from them. */
-export async function removePhotos(uris: string[], why: 'deleted' | 'private'): Promise<void> {
+export async function removePhotos(uris: string[], why: 'deleted' | 'private' | 'duplicate'): Promise<void> {
   if (uris.length === 0) return;
   const set = new Set(uris);
   const days = await removePhotosFromMemories(set);
@@ -122,7 +122,7 @@ export async function removePhotos(uris: string[], why: 'deleted' | 'private'): 
     if (!isLibraryPhoto(uri)) await FileSystem.deleteAsync(localFile(uri), { idempotent: true }).catch(() => {});
   }
   console.log(
-    `[privacy] removed ${uris.length} ${why === 'deleted' ? 'photos deleted from Photos' : 'private photos'}` +
+    `[privacy] removed ${uris.length} ${why === 'deleted' ? 'photos deleted from Photos' : why === 'duplicate' ? 'second copies of photos' : 'private photos'}` +
       ` from ${days.length} days (${guesses} face guesses with them)`,
   );
   // Guesses come back from the day's other photos, if there are any.

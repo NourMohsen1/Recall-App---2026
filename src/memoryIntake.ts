@@ -1,4 +1,4 @@
-import { LATE_NIGHT_ENDS, isLateNight, logicalToday } from './logicalDay';
+import { LATE_NIGHT_ENDS, isLateNight, logicalToday, onDayAt } from './logicalDay';
 import { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -65,10 +65,11 @@ POLISH, DON'T REWRITE. Change as little as needed: fix spelling, fillers and rep
 "moments" — when the entry tells about SEVERAL separate parts of the day ("in the morning I went to the café… then the doctor… at night football"), split "polished" into those parts, in the order they happened: each "text" is one part, polished by the same rules (same language and script, nothing reworded, nothing left out — together they say everything "polished" says), and each "time" is when that part started, by the same rules as "happened.time" below — use "then"/"after that" to keep later parts later. Return an empty list when the entry is about one moment, or when the parts have no order in the day. Never more than 8.
 
 "happened" — WHEN this entry's events took place, only from what the entry itself says. date: only when the entry says the events were on a different day than ENTRY DAY below ("yesterday", "on Friday", "last night" written the next morning) — resolve it against TODAY, the day the entry was written; otherwise null. time: when the events started, in this order of preference —
-  1. an explicit time ("at 9", "el sa3a 2", "2:00 pm"); for an hour without am/pm, judge from what was done ("played football at 9, then went out" → 21:00);
-  2. a day part, in any language (الصبح, بالليل, b3d el dohr, "in the morning"): early morning 07:00, morning 09:00, noon 12:00, afternoon 15:00, evening 19:00, night 21:00, late night 23:30;
-  3. no time words at all: the time the activity itself usually happens — breakfast 08:00, lunch 13:00, dinner 20:00, class or work in the day, a party or a movie out at night;
-  4. nothing to go on: null (the app keeps it where it is — midday for a day it was added to later). Never a future date or time — plans are tasks. When "happened.date" moves the entry to another day, "polished" must read right ON that day: drop the word that pointed there ("Yesterday afternoon I met Dave" → "In the afternoon I met Dave").
+  1. an explicit time ("at 9", "el sa3a 2", "2:00 pm", "9 pm" inside Arabic text); a range ("من 9 pm لـ 12 am", "from 3 to 5") → its start. A clock time the entry gives ALWAYS wins over day-part words and over what else that part mentions first ("روحت جبت حاجتي وبعدين لعبنا كورة من 9 pm لـ 12" → 21:00, not "evening"). For an hour without am/pm, judge from what was done ("played football at 9, then went out" → 21:00). After midnight (until 4 am) is still the same night: give the real time ("00:30"), never move it to another day;
+  2. an activity with its own fixed time, which beats a loose day-part word: Friday prayer (صلاة الجمعة) 12:30 even when the entry says "الصبح" (people say "الجمعة الصبح" for the whole Friday morning-to-noon); iftar at sunset;
+  3. a day part, in any language (الصبح, بالليل, b3d el dohr, "in the morning"): early morning 07:00, morning 09:00, noon 12:00, afternoon 15:00, evening 19:00, night 21:00, late night 23:30;
+  4. no time words at all: the time the activity itself usually happens — breakfast 08:00, lunch 13:00, dinner 20:00, class or work in the day, a party or a movie out at night;
+  5. nothing to go on: null (the app keeps it where it is — midday for a day it was added to later). Never a future date or time — plans are tasks. When "happened.date" moves the entry to another day, "polished" must read right ON that day: drop the word that pointed there ("Yesterday afternoon I met Dave" → "In the afternoon I met Dave").
 
 SPOKEN ENTRY — when the entry is marked SPOKEN ENTRY, it is a raw speech-to-text transcript, never something to show as it is. Speech recognition mishears words, especially names, places and English words inside Arabic speech ("إيميل من غير إس" is an email from the IRS; "المشرفين" may be "the refund"). Work out what the person most likely said from the rest of the entry and the SAME-DAY CONTEXT, and write that. Then ALWAYS rewrite it as a short, clean written memory: complete sentences, no fillers or thinking aloud ("يعني", "تمام، مش مشكلة", "um", "like"), no repetition. Keep the language the person spoke (Arabic stays Arabic, mixed stays mixed), with Arabic in Arabic script and English words in English — never Franco. Where a word or part truly can't be worked out, leave it out rather than guess.
 
@@ -514,11 +515,16 @@ export async function processMemoryIntake(
 /** Each moment's time on the day: its own when it has one; between its
  *  neighbours when it doesn't; always in order, never in the future. A log
  *  with no times at all keeps its parts together around its own time. */
-function momentTimes(moments: { time?: string; text: string }[], dayKey: string, fallbackIso: string): { text: string; takenAt: string }[] {
+export function momentTimes(moments: { time?: string; text: string }[], dayKey: string, fallbackIso: string): { text: string; takenAt: string }[] {
   const [y, mo, d] = dayKey.split('-').map(Number);
+  // A part after midnight ("خلصنا وروحنا جبنا أكل" after a 9 to 12 match)
+  // is the end of the same night, never the start of the day: it used to
+  // land at 12:30 am, before everything, and be pushed to a minute after
+  // the part before it (Nour's Friday showed football at "7:00", dinner at
+  // "7:01"). Kept as logTakenAt keeps a late log (src/logicalDay.ts).
   const at = (hhmm: string) => {
     const [h, m] = hhmm.split(':').map(Number);
-    return new Date(y, mo - 1, d, h, m).getTime();
+    return onDayAt(new Date(y, mo - 1, d), h, m).getTime();
   };
   const t: (number | undefined)[] = moments.map((m) => (m.time ? at(m.time) : undefined));
   const base = new Date(fallbackIso).getTime();
@@ -539,11 +545,17 @@ function momentTimes(moments: { time?: string; text: string }[], dayKey: string,
   const dayEnd = Math.min(dayStart + 86400000 - 60000, Date.now());
   const out: number[] = [];
   for (let i = 0; i < t.length; i++) {
-    let v = Math.min(dayEnd, Math.max(dayStart, t[i]!));
-    if (i > 0 && v <= out[i - 1]) v = out[i - 1] + 60000;
+    // Never in the future, unless it is the night's own after-midnight
+    // (kept inside 11:59 pm, so it is never past the day's end).
+    const lateNight = new Date(t[i]!).getHours() === 23 && new Date(t[i]!).getMinutes() === 59;
+    let v = Math.max(dayStart, lateNight ? Math.min(t[i]!, dayStart + 86400000 - 1) : Math.min(dayEnd, t[i]!));
+    if (i > 0 && v <= out[i - 1]) v = out[i - 1] + (out[i - 1] >= dayStart + 86340000 ? 240 : 60000);
     out.push(v);
   }
-  return moments.map((m, i) => ({ text: m.text, takenAt: new Date(Math.round(out[i] / 60000) * 60000).toISOString() }));
+  return moments.map((m, i) => {
+    const v = out[i] >= dayStart + 86340000 ? out[i] : Math.round(out[i] / 60000) * 60000;
+    return { text: m.text, takenAt: new Date(v).toISOString() };
+  });
 }
 
 /** The new day and time a memory belongs at, or null to leave it. Never

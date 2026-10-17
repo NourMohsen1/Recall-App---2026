@@ -24,7 +24,7 @@ import { startBackgroundIndexing } from '../src/faceIndexing';
 import { startPlaceIndexing } from '../src/places';
 import { refreshTaskReminders } from '../src/tasks';
 import { syncPhotosWithLibrary } from '../src/photoGuard';
-import { recoverWronglyRemovedPhotos, syncNewPhotosIfOn } from '../src/photoImport';
+import { recoverWronglyRemovedPhotos, removeDuplicatePhotos, syncNewPhotosIfOn } from '../src/photoImport';
 import { notificationTarget, startNotifications } from '../src/recapNotifications';
 import { loadAccount } from '../src/account';
 import { loadAiConsent } from '../src/aiConsent';
@@ -101,6 +101,8 @@ function AppRoot() {
     const sync = () =>
       fileLateNightPhotos()
         .then(() => syncPhotosWithLibrary())
+        // The copies overlapping imports made, once (src/photoImport.ts).
+        .then(() => removeDuplicatePhotos())
         .then(() => recoverWronglyRemovedPhotos())
         .then(() => syncNewPhotosIfOn());
     sync();

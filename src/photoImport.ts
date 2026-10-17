@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // same arrangement as expo-file-system/legacy elsewhere in the project —
 // and it binds to the module that does have a web shim.
 import * as MediaLibrary from 'expo-media-library/legacy';
-import { dateKey, getLoggedMemories, saveMemory, updateMemory } from './memoryLog';
+import { dateKey, getLoggedMemories, isManualLog, saveMemory, updateMemory } from './memoryLog';
 import { logDayKey, logTakenAt } from './logicalDay';
 import { PhotoMeta, getAllPhotoMeta, setPhotoMetaBatch } from './photoMeta';
 import { detectPhotoSource } from './photoSource';
@@ -239,7 +239,32 @@ export async function backfillPhotoMeta(
   }
 }
 
-export async function importRecentPhotos(
+// One import at a time, whoever starts it. Three callers used to start
+// their own — the quiet sync, the one-time recovery pass and the Import
+// Photos screen — and on a new install the first two ran together: both
+// read the same "already imported" list (empty) and both filed every
+// photo, so testers saw each photo two or three times on a day (Oct 2026).
+// A second caller now joins the import already running.
+let importing: Promise<ImportResult> | null = null;
+const importWatchers = new Set<(p: ImportProgress) => void>();
+
+export function importRecentPhotos(
+  days: number,
+  onProgress?: (p: ImportProgress) => void,
+): Promise<ImportResult> {
+  if (onProgress) importWatchers.add(onProgress);
+  if (importing) {
+    console.log('[photos] an import is already running; joining it');
+    return importing.finally(() => onProgress && importWatchers.delete(onProgress));
+  }
+  importing = importRecentPhotosNow(days, (p) => importWatchers.forEach((fn) => fn(p))).finally(() => {
+    importing = null;
+    importWatchers.clear();
+  });
+  return importing;
+}
+
+async function importRecentPhotosNow(
   days: number,
   onProgress?: (p: ImportProgress) => void,
 ): Promise<ImportResult> {
@@ -388,8 +413,28 @@ async function fileDayPhotos(
 ): Promise<number> {
   if (byDay.size === 0) return 0;
   const existing = await getLoggedMemories();
+  // A photo already on a day is never filed again, by its path or by its
+  // Photos id — whatever ran before, or alongside.
+  const meta = await getAllPhotoMeta();
+  const haveUri = new Set<string>();
+  const haveAsset = new Set<string>();
+  for (const m of existing) {
+    if (m.kind !== 'photo') continue;
+    for (const u of m.photoUris ?? []) {
+      haveUri.add(u);
+      const id = meta[u]?.assetId;
+      if (id) haveAsset.add(id);
+    }
+  }
   let count = 0;
-  for (const [key, items] of byDay) {
+  for (const [key, all] of byDay) {
+    const items = all.filter((i) => {
+      if (haveUri.has(i.uri) || haveAsset.has(i.id)) return false;
+      haveUri.add(i.uri);
+      haveAsset.add(i.id);
+      return true;
+    });
+    if (items.length === 0) continue;
     const earliest = items.reduce((a, b) => (a.creationTime <= b.creationTime ? a : b));
     const uris = items.map((i) => i.uri);
     const existingPhotoMemory = existing.find(
@@ -409,4 +454,63 @@ async function fileDayPhotos(
     count += uris.length;
   }
   return count;
+}
+
+
+// Takes out the copies the overlapping imports made (above), once per
+// install. Only photos Recall imported by itself: a photo the user added by
+// hand is their own copy and is never touched. A photo counts as a copy
+// when the same path, or the same Photos id under another path, is already
+// on a day; the first one stays. Logged with what it removed.
+const DEDUPE_KEY = 'photoDuplicatesRemoved:v1';
+
+export async function removeDuplicatePhotos(): Promise<void> {
+  if (await AsyncStorage.getItem(DEDUPE_KEY)) return;
+  try {
+    const [memories, meta] = await Promise.all([getLoggedMemories(), getAllPhotoMeta()]);
+    const seenUri = new Set<string>();
+    const seenAsset = new Set<string>();
+    // A second copy under another path is a photo of its own as far as the
+    // app knows (its details, faces, place): it leaves everywhere, with
+    // all of that (removePhotos). The same path twice on a day is one photo
+    // listed twice: only the extra listing goes.
+    const otherPath = new Set<string>();
+    let listedTwice = 0;
+    let days = 0;
+    // Hand-added photos first, so they always win over an imported copy.
+    const ordered = [...memories].sort((a, b) => Number(!isManualLog(a)) - Number(!isManualLog(b)));
+    for (const m of ordered) {
+      if (m.kind !== 'photo') continue;
+      const uris = m.photoUris ?? [];
+      const manual = isManualLog(m);
+      const keep: string[] = [];
+      for (const u of uris) {
+        const id = meta[u]?.assetId;
+        if (!manual && seenUri.has(u)) {
+          listedTwice += 1;
+          continue;
+        }
+        if (!manual && id && seenAsset.has(id)) {
+          otherPath.add(u);
+          keep.push(u);
+          continue;
+        }
+        seenUri.add(u);
+        if (id) seenAsset.add(id);
+        keep.push(u);
+      }
+      if (keep.length !== uris.length) {
+        days += 1;
+        await updateMemory(m.id, { photoUris: keep });
+      }
+    }
+    if (otherPath.size) {
+      const { removePhotos } = await import('./photoGuard');
+      await removePhotos([...otherPath], 'duplicate');
+    }
+    await AsyncStorage.setItem(DEDUPE_KEY, new Date().toISOString());
+    console.log(`[photos] duplicates: ${listedTwice} listed twice on ${days} days, ${otherPath.size} second copies`);
+  } catch (e) {
+    console.warn('[photos] could not remove duplicates, trying again next launch:', e);
+  }
 }

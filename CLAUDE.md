@@ -331,6 +331,24 @@ focused; never mount a `<StatusBar>` or call `setStatusBarStyle` anywhere
 else. Two writers (the root and per-screen focus/blur) made it white on
 white and dark on dark across the app.
 
+**Times on a day** (`momentTimes` in `src/memoryIntake.ts`, Oct 2026). A
+clock time the user wrote always wins over day-part words ("من 9 pm لـ 12
+am" → 9 pm), an event with a fixed time beats a loose word (Friday prayer
+12:30 even with "الصبح"), and a part after midnight stays at the end of
+that night (kept at 11:59 pm with the real minutes in the seconds,
+`onDayAt`; shown as itself by `realClock`). Measured on Nour's Friday: it
+had football at "7:00" and dinner at "7:01"; now 9:00 pm and 12:00 am. A
+tap on a time sets it by hand (`TimeEditSheet`, `setMemoryTime`); the "≈"
+goes and the intake never moves it again.
+
+**Photo imports run one at a time** (`importRecentPhotos` in
+`src/photoImport.ts`). Three callers used to start their own, and on a new
+install two ran together, filing each photo two or three times (testers,
+Oct 2026). A second caller joins the running import; filing skips a photo
+already on a day by path or Photos id; `removeDuplicatePhotos` cleaned
+existing copies once (`photoDuplicatesRemoved:v1`), never photos added by
+hand. Face reading has no card in Profile any more: it is background work.
+
 **The day page edits in place** (`app/day/[offset]/index.tsx`): "Add a
 note" is always there and a tap on a note edits it; the pencil turns
 places into a list to drag into order or take off the day

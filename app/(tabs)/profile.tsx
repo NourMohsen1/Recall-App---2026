@@ -3,7 +3,6 @@ import { Alert, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } 
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import FaceIndexCard from '../../src/components/FaceIndexCard';
 import { deleteAccount, getAccount, onAccountChanged, signInWithApple, signOut } from '../../src/account';
 import { localFile } from '../../src/memoryLog';
 import { crashReportingOn, sendTestCrashReport } from '../../src/crashReporting';
@@ -248,10 +247,10 @@ export default function Profile() {
             talked to (src/voicePrefs.ts). */}
         <VoicePrefsCard />
 
-        {/* Reading photos for faces: once, in the background. Placed under
-            Memories because that is what it is — the same photos, read for
-            who is in them. */}
-        <FaceIndexCard />
+        {/* Reading photos for faces happens in the background, unseen:
+            a counter here only worried people (a tester saw it running
+            and thought the app was doing something he hadn't asked).
+            The Faces card was removed, Oct 2026. */}
 
         {/* Development builds only: confirms crash reports reach Sentry. */}
         {__DEV__ && crashReportingOn && (

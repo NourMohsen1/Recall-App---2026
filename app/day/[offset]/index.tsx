@@ -42,6 +42,7 @@ import {
   memoryDisplayText,
   reorderDay,
   saveMemory,
+  setMemoryTime,
   updateMemory,
 } from '../../../src/memoryLog';
 import {
@@ -70,6 +71,8 @@ import { rtlIfArabic } from '../../../src/transcription';
 import { colors, fonts } from '../../../src/theme';
 import { withAppNav } from '../../../src/components/AppNav';
 import { makeStyles, useColors } from '../../../src/appearance';
+import TimeEditSheet from '../../../src/components/TimeEditSheet';
+import { realClock } from '../../../src/logicalDay';
 
 function DayDetailScreen() {
   const c = useColors();
@@ -92,6 +95,8 @@ function DayDetailScreen() {
   const peopleY = useRef(0);
   const [addingPlace, setAddingPlace] = useState(false);
   const [editTarget, setEditTarget] = useState<LoggedMemory | null>(null);
+  // A moment whose time is being set (tap on its time).
+  const [timeTarget, setTimeTarget] = useState<LoggedMemory | null>(null);
   const [adding, setAdding] = useState(false);
   const [personPhotos, setPersonPhotos] = useState<Record<string, string | undefined>>({});
   // Only the name is needed to draw a guess; the old type carried the LLM
@@ -459,11 +464,21 @@ function DayDetailScreen() {
                             : 'From a screenshot'
                           : 'Note'}
                     </Text>
-                    <View style={styles.timePill}>
+                    {/* When it happened: the AI's guess (≈) until the user
+                        sets it with a tap. After midnight shows its real
+                        time, not the 11:59 pm it is kept at. */}
+                    <Pressable
+                      style={styles.timePill}
+                      onPress={() => setTimeTarget(m)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Time ${formatClockTime(realClock(new Date(m.takenAt)))}, change`}
+                    >
                       <Text style={styles.timePillText}>
-                        ≈ {formatClockTime(new Date(m.takenAt))}
+                        {m.placedByUser ? '' : '≈ '}
+                        {formatClockTime(realClock(new Date(m.takenAt)))}
                       </Text>
-                    </View>
+                    </Pressable>
                     {editing && (
                       <Pressable onPress={() => setEditTarget(m)} hitSlop={10} style={styles.editDot}>
                         <Ionicons name="create-outline" size={17} color={c.brandSoft} />
@@ -726,6 +741,18 @@ function DayDetailScreen() {
         }}
       />
 
+      <TimeEditSheet
+        visible={!!timeTarget}
+        value={timeTarget ? realClock(new Date(timeTarget.takenAt)) : new Date()}
+        onCancel={() => setTimeTarget(null)}
+        onSave={async (h, min) => {
+          const t = timeTarget;
+          setTimeTarget(null);
+          if (!t) return;
+          await setMemoryTime(t.id, h, min);
+          reload();
+        }}
+      />
       <MemoryEditSheet
         visible={!!editTarget || adding}
         mode={editTarget ? 'edit' : 'add'}
@@ -794,7 +821,7 @@ const useStyles = makeStyles((c) => ({
   segmentTitle: { fontFamily: fonts.semiBold, fontSize: 16, color: c.text },
   timePill: {
     backgroundColor: c.tile,
-    borderRadius: 999,
+    borderRadius: 8,
     paddingVertical: 5,
     paddingHorizontal: 10,
   },

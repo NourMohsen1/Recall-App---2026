@@ -36,5 +36,25 @@ export function logTakenAt(now = new Date()): Date {
   if (!isLateNight(now)) return now;
   const d = logicalToday(now);
   const minutes = now.getHours() * 60 + now.getMinutes();
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 0, minutes * 240);
+  // +1 ms so that midnight itself still reads as after midnight (realClock).
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 0, minutes * 240 + 1);
+}
+
+/** A clock time on a day, the way the app keeps it: before LATE_NIGHT_ENDS
+ *  it is that night's after-midnight (kept at 11:59 pm, the real minutes in
+ *  the seconds, as logTakenAt does), so it stays at the end of the day. */
+export function onDayAt(day: Date, hours: number, minutes: number): Date {
+  if (hours < LATE_NIGHT_ENDS) {
+    return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 0, (hours * 60 + minutes) * 240 + 1);
+  }
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hours, minutes);
+}
+
+/** The time to show for a memory: the real one for an after-midnight log
+ *  kept at 11:59 pm (12:40 am, not 11:59 pm). */
+export function realClock(takenAt: Date): Date {
+  const extra = takenAt.getSeconds() * 1000 + takenAt.getMilliseconds();
+  if (takenAt.getHours() !== 23 || takenAt.getMinutes() !== 59 || extra === 0) return takenAt;
+  const minutes = Math.round(extra / 240);
+  return new Date(takenAt.getFullYear(), takenAt.getMonth(), takenAt.getDate() + 1, Math.floor(minutes / 60), minutes % 60);
 }

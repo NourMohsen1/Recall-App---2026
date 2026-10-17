@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import { logTakenAt } from './logicalDay';
+import { logTakenAt, onDayAt } from './logicalDay';
 
 // Local-first store for memories the user logs from the "+" button.
 // Every memory carries two timestamps: `createdAt` (when it was logged) and
@@ -211,6 +211,19 @@ export async function updateMemory(id: string, patch: Partial<LoggedMemory>): Pr
   const existing = await getLoggedMemories();
   const next = existing.map((m) => (m.id === id ? { ...m, ...patch } : m));
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+}
+
+/** The user set when a memory happened (tap on its time, day page). It
+ *  stays on its day — a time before 4 am is that night's end — and is
+ *  theirs from now on: the intake never moves it again (placedByUser). */
+export async function setMemoryTime(id: string, hours: number, minutes: number): Promise<void> {
+  const m = (await getLoggedMemories()).find((x) => x.id === id);
+  if (!m) return;
+  const at = new Date(m.takenAt);
+  const day = new Date(at.getFullYear(), at.getMonth(), at.getDate());
+  const next = onDayAt(day, hours, minutes);
+  await updateMemory(id, { takenAt: next.toISOString(), placedByUser: true });
+  console.log(`[day] ${id} set to ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} by the user`);
 }
 
 export async function deleteMemory(id: string): Promise<void> {
