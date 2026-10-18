@@ -108,6 +108,9 @@ export function createTurnTaker(io: TurnTakingIO) {
   let answerOwed = false;
   /** A real user turn is waiting for its answer (an "آه" never is). */
   let userTurnWaiting = false;
+  /** An answer was cancelled because the user went on talking before it
+   *  played (the yield below): any lookup it asked for is dropped too. */
+  let yielded = false;
 
   // The app starts every answer (create_response: false in
   // realtimeVoice.ts). With OpenAI also starting them, an "آه" said during
@@ -165,6 +168,9 @@ export function createTurnTaker(io: TurnTakingIO) {
           trace('state responding', { from: responding, to: true });
           responding = true;
           userTurnWaiting = false;
+          // A yield whose answer finished before the cancel landed leaves
+          // nothing to drop; it must not mark a later answer.
+          yielded = false;
           return;
         }
         case 'response.done':
@@ -180,6 +186,19 @@ export function createTurnTaker(io: TurnTakingIO) {
           if (!audible) {
             trace('speech start: ordinary turn (not audible, no duck)', { item: itemId, responding });
             overlap = null; // An ordinary turn: Recall is quiet.
+            // The user went on talking after a pause, and an answer to the
+            // first half is already being written but not yet playing. Left
+            // alone, it started playing over them: OpenAI only cuts audio
+            // that is already playing (measured on Nour's phone, Oct 2026:
+            // twice in one call, ~2 s each). The half-written answer goes,
+            // with anything of it already on its way; the turn they are now
+            // finishing is answered when it ends, as every turn is.
+            if (responding) {
+              trace('yield: cancel the answer not yet playing (user resumed)', { item: itemId });
+              yielded = true;
+              io.send({ type: 'response.cancel' });
+              io.send({ type: 'output_audio_buffer.clear' });
+            }
             return;
           }
           overlap = { itemId, text: '', verdict: 'unsure', startedAt: Date.now() };
@@ -236,6 +255,13 @@ export function createTurnTaker(io: TurnTakingIO) {
      *  running for the previous question shouldn't answer that one too. */
     userTookTurn(): boolean {
       return userTurnWaiting;
+    },
+    /** True once per yield: the cancelled answer's lookups must not run (and
+     *  then answer the old question over the user). Reading it clears it. */
+    takeYielded(): boolean {
+      const was = yielded;
+      yielded = false;
+      return was;
     },
     /** Recall is about to be cut off by a tap: the same as words. */
     reset() {

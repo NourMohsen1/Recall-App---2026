@@ -241,7 +241,7 @@ export async function startLiveVoice(
   let endTimer: ReturnType<typeof setTimeout> | undefined;
   let dropTimer: ReturnType<typeof setTimeout> | undefined;
   let levelTimer: ReturnType<typeof setInterval> | undefined;
-  const state = { responding: false, speaking: false, userTookTurn: () => false };
+  const state = { responding: false, speaking: false, userTookTurn: () => false, takeYielded: () => false };
   // Recall's voice, as the phone receives it: turned down while the user
   // starts to speak over it (src/turnTaking.ts).
   let voiceTrack: { _setVolume?: (v: number) => void } | null = null;
@@ -267,6 +267,7 @@ export async function startLiveVoice(
     trace: (event, data) => diag('APP', event, data),
   });
   state.userTookTurn = () => turns.userTookTurn();
+  state.takeYielded = () => turns.takeYielded();
 
   const cleanup = (reason: 'user' | 'time' | 'error' | 'dropped', detail?: string) => {
     if (ended) return;
@@ -595,7 +596,7 @@ async function handleEvent(
   msg: Record<string, unknown>,
   channel: { send: (data: string) => void },
   onEvent: (e: LiveEvent) => void,
-  state: { responding: boolean; speaking: boolean; userTookTurn: () => boolean },
+  state: { responding: boolean; speaking: boolean; userTookTurn: () => boolean; takeYielded: () => boolean },
 ): Promise<void> {
   const type = String(msg.type ?? '');
 
@@ -666,6 +667,14 @@ async function handleEvent(
     state.responding = false;
     const response = msg.response as { output?: unknown[]; status?: string } | undefined;
     if (response?.status === 'cancelled') console.log('[live] answer cut off (the user spoke)');
+    // Cancelled because the user went on talking before it played (Fix 2,
+    // src/turnTaking.ts): its lookups are dropped, or their answer to the
+    // old question would play over them. Their finished turn is answered
+    // when it ends.
+    if (response?.status === 'cancelled' && state.takeYielded()) {
+      diag('APP', 'yield: lookups of the cancelled answer dropped');
+      return;
+    }
     const calls = (response?.output ?? []).filter(
       (o): o is { type: string; name: string; arguments: string; call_id: string } =>
         !!o && typeof o === 'object' && (o as { type?: string }).type === 'function_call',
