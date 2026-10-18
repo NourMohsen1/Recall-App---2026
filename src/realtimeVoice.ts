@@ -10,6 +10,7 @@ import { setAudioModeAsync } from 'expo-audio';
 import { backendToken, backendUrl } from './backend';
 import type { VoiceTurn } from './voiceSession';
 import { createTurnTaker } from './turnTaking';
+import { diag, diagCallStart, diagNow, diagText } from './liveDiag';
 import { VOICE_ID, VOICE_PERSONA, type VoiceChoice } from './voicePrefs';
 import {
   REALTIME_TOOLS,
@@ -225,6 +226,7 @@ export async function startLiveVoice(
 ): Promise<LiveSession> {
   let language = initialLanguage;
   onEvent({ type: 'connecting' });
+  diagCallStart({ transport: 'webrtc', voice, language, resumed: !!resume, turn_detection: TURN_DETECTION.type, silence_ms: TURN_DETECTION.silence_duration_ms, create_response: TURN_DETECTION.create_response, interrupt_response: TURN_DETECTION.interrupt_response });
 
   const key = await mintToken();
   const bootstrap = await buildVoiceBootstrap();
@@ -238,6 +240,7 @@ export async function startLiveVoice(
   let warnTimer: ReturnType<typeof setTimeout> | undefined;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
   let dropTimer: ReturnType<typeof setTimeout> | undefined;
+  let levelTimer: ReturnType<typeof setInterval> | undefined;
   const state = { responding: false, speaking: false, userTookTurn: () => false };
   // Recall's voice, as the phone receives it: turned down while the user
   // starts to speak over it (src/turnTaking.ts).
@@ -246,13 +249,22 @@ export async function startLiveVoice(
   const turns = createTurnTaker({
     send: (e) => send(e),
     setVolume: (v) => {
+      // Diagnostics: the app ASKED for this volume. Whether the sound changed
+      // is not shown by this line (see the "level" lines).
+      const track = voiceTrack as { id?: string; _setVolume?: unknown } | null;
+      let result = 'no track';
       try {
+        if (track && typeof track._setVolume === 'function') result = 'called';
+        else if (track) result = 'track has no _setVolume';
         voiceTrack?._setVolume?.(v);
       } catch (err) {
+        result = `threw ${String(err).slice(0, 80)}`;
         console.warn('[live] could not set the voice volume:', err);
       }
+      diag('APP', 'volume set', { value: v, track_present: !!track, track_id: track?.id, result });
     },
     log: (line) => console.log(line),
+    trace: (event, data) => diag('APP', event, data),
   });
   state.userTookTurn = () => turns.userTookTurn();
 
@@ -262,6 +274,8 @@ export async function startLiveVoice(
     clearTimeout(warnTimer);
     clearTimeout(endTimer);
     clearTimeout(dropTimer);
+    clearInterval(levelTimer);
+    diag('APP', 'call ended', { reason });
     mic?.getTracks().forEach((t) => t.stop());
     try {
       pc.close();
@@ -287,6 +301,8 @@ export async function startLiveVoice(
     // Taken from here, the screen showed "speaking" while it listened, and
     // a tap meant to cut it off hung up.)
     (pc as unknown as { ontrack: (e: { track?: unknown }) => void }).ontrack = (e) => {
+      const t = e?.track as { id?: string; kind?: string; remote?: boolean } | undefined;
+      diag('OBS', 'webrtc track', { present: !!t, kind: t?.kind, id: t?.id, remote: t?.remote, replaces_previous: !!voiceTrack });
       if (e?.track) voiceTrack = e.track as typeof voiceTrack;
       if (!voiceRouted) {
         voiceRouted = true;
@@ -296,6 +312,7 @@ export async function startLiveVoice(
     (pc as unknown as { onconnectionstatechange: () => void }).onconnectionstatechange = () => {
       const now = (pc as unknown as { connectionState?: string }).connectionState;
       console.log(`[live] connection ${now}`);
+      diag('OBS', 'webrtc connection', { state: now });
       if (now === 'connected') {
         clearTimeout(dropTimer);
         void routeToSpeaker('connected');
@@ -315,6 +332,13 @@ export async function startLiveVoice(
     };
 
     const channel = pc.createDataChannel('oai-events');
+    // Diagnostics: every command leaves through here, from any part of the
+    // app (turn-taking, lookups, the orb). Logged, then sent as before.
+    const rawSend = channel.send.bind(channel);
+    (channel as { send: (data: string) => void }).send = (data: string) => {
+      diagCommand(data);
+      rawSend(data);
+    };
     send = (e) => {
       if (!ended) channel.send(JSON.stringify(e));
     };
@@ -357,6 +381,7 @@ export async function startLiveVoice(
       } catch {
         return;
       }
+      diagObserved(msg);
       turns.onEvent(msg);
       void handleEvent(msg, channel, onEvent, state);
     };
@@ -373,6 +398,7 @@ export async function startLiveVoice(
     await pc.setRemoteDescription(
       new RTCSessionDescription({ type: 'answer', sdp: await answer.text() }),
     );
+    levelTimer = startLevelSampling(pc, () => ended);
 
     // The cap. A spoken warning first, because a call that simply stops
     // feels like a fault rather than a limit.
@@ -415,6 +441,137 @@ export async function startLiveVoice(
     cleanup('error', e instanceof Error ? e.message : String(e));
     throw e;
   }
+}
+
+// ── Diagnostics (src/liveDiag.ts): observation only ───────────────────
+
+// The OpenAI events worth timing, with only what matters about each.
+let lastSpeechStartedAt = -1;
+let lastSpeechStoppedAt = -1;
+let firstWordsOfResponse = new Set<string>();
+let diagAudible = false;
+
+function diagObserved(msg: Record<string, unknown>): void {
+  const type = String(msg.type ?? '');
+  const t = diagNow();
+  const since = (at: number) => (at >= 0 ? t - at : undefined);
+  switch (type) {
+    case 'input_audio_buffer.speech_started':
+      lastSpeechStartedAt = t;
+      diag('OBS', type, { item: msg.item_id, audio_start_ms: msg.audio_start_ms, recall_audible: diagAudible });
+      return;
+    case 'input_audio_buffer.speech_stopped':
+      lastSpeechStoppedAt = t;
+      diag('OBS', type, { item: msg.item_id, audio_end_ms: msg.audio_end_ms, ms_since_speech_started: since(lastSpeechStartedAt) });
+      return;
+    case 'input_audio_buffer.committed':
+      diag('OBS', type, { item: msg.item_id, ms_since_speech_stopped: since(lastSpeechStoppedAt) });
+      return;
+    case 'conversation.item.input_audio_transcription.delta':
+      diag('OBS', 'transcript delta', { item: msg.item_id, chars: String(msg.delta ?? '').length, ms_since_speech_started: since(lastSpeechStartedAt) });
+      return;
+    case 'conversation.item.input_audio_transcription.completed':
+      diag('OBS', 'transcript completed', { item: msg.item_id, text: diagText(String(msg.transcript ?? ''), false), ms_since_speech_stopped: since(lastSpeechStoppedAt) });
+      return;
+    case 'output_audio_buffer.started':
+    case 'output_audio_buffer.stopped':
+    case 'output_audio_buffer.cleared':
+      diagAudible = type === 'output_audio_buffer.started';
+      diag('OBS', type, { response: msg.response_id });
+      return;
+    case 'response.created': {
+      const r = msg.response as { id?: string } | undefined;
+      diag('OBS', type, { response: r?.id });
+      return;
+    }
+    case 'response.done': {
+      const r = msg.response as { id?: string; status?: string; status_details?: { reason?: string } } | undefined;
+      diag('OBS', type, { response: r?.id, status: r?.status, reason: r?.status_details?.reason });
+      return;
+    }
+    case 'response.output_audio_transcript.delta': {
+      const id = String(msg.response_id ?? '');
+      if (firstWordsOfResponse.has(id)) return;
+      firstWordsOfResponse.add(id);
+      diag('OBS', 'first words of response (transcript)', { response: id, ms_since_speech_stopped: since(lastSpeechStoppedAt) });
+      return;
+    }
+    case 'conversation.item.deleted':
+    case 'conversation.item.truncated':
+      diag('OBS', type, { item: msg.item_id, audio_end_ms: msg.audio_end_ms });
+      return;
+    case 'error': {
+      const e = msg.error as { code?: string; type?: string } | undefined;
+      diag('OBS', 'error', { code: e?.code ?? e?.type });
+      return;
+    }
+  }
+}
+
+function diagCommand(data: string): void {
+  try {
+    const e = JSON.parse(data) as { type?: string; item?: { type?: string; role?: string }; item_id?: string; response?: { instructions?: string } };
+    if (e.type === 'input_audio_buffer.append') return;
+    diag('CMD', String(e.type), {
+      item: e.item?.type ? `${e.item.type}${e.item.role ? `/${e.item.role}` : ''}` : undefined,
+      item_id: e.item_id,
+      with_instructions: e.response?.instructions ? true : undefined,
+    });
+  } catch {
+    diag('CMD', 'unparsed');
+  }
+}
+
+// WebRTC's own measure of Recall's received audio (inbound-rtp audioLevel,
+// and the level worked out from totalAudioEnergy over each interval). Every
+// 100 ms for 3 s after the user starts speaking over Recall; every 500 ms
+// otherwise while Recall is audible. What it is NOT: the sound in the room.
+// It is the decoded stream inside WebRTC; whether the app's volume setting
+// is applied before this measure depends on WebRTC internals, and the
+// iPhone's own volume and speaker come after it. A drop here when the app
+// ducks is evidence the setting reached the stream; no drop is evidence it
+// didn't; neither proves what the ear heard.
+function startLevelSampling(pc: RTCPeerConnection, ended: () => boolean): ReturnType<typeof setInterval> {
+  let busy = false;
+  let tick = 0;
+  let lastEnergy: number | undefined;
+  let lastDuration: number | undefined;
+  firstWordsOfResponse = new Set();
+  lastSpeechStartedAt = -1;
+  lastSpeechStoppedAt = -1;
+  diagAudible = false;
+  return setInterval(() => {
+    tick += 1;
+    if (ended() || busy || !diagAudible) return;
+    const t = diagNow();
+    const nearOverlap = lastSpeechStartedAt >= 0 && t - lastSpeechStartedAt < 3000;
+    if (!nearOverlap && tick % 5 !== 0) return;
+    busy = true;
+    (pc as unknown as { getStats: () => Promise<Map<string, Record<string, unknown>>> })
+      .getStats()
+      .then((report) => {
+        report.forEach((s) => {
+          if (s.type !== 'inbound-rtp' || s.kind !== 'audio') return;
+          const energy = typeof s.totalAudioEnergy === 'number' ? s.totalAudioEnergy : undefined;
+          const duration = typeof s.totalSamplesDuration === 'number' ? s.totalSamplesDuration : undefined;
+          let interval: number | undefined;
+          if (energy !== undefined && duration !== undefined && lastEnergy !== undefined && lastDuration !== undefined && duration > lastDuration) {
+            interval = Math.sqrt((energy - lastEnergy) / (duration - lastDuration));
+          }
+          lastEnergy = energy;
+          lastDuration = duration;
+          diag('OBS', 'level', {
+            audioLevel: typeof s.audioLevel === 'number' ? Number(s.audioLevel.toFixed(3)) : undefined,
+            interval_level: interval !== undefined ? Number(interval.toFixed(3)) : undefined,
+            near_overlap: nearOverlap,
+          });
+        });
+      })
+      .catch(() => diag('OBS', 'level unavailable'))
+      .finally(() => {
+        busy = false;
+      });
+  }, 100);
 }
 
 // What each lookup is called on screen ("It searched your memories, then

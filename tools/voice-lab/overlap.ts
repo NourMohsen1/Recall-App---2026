@@ -5,6 +5,7 @@
 import { REALTIME_TOOLS, buildVoiceBootstrap, runRealtimeTool } from '@app/realtimeTools';
 import { sessionSettings } from '@app/realtimeVoice';
 import { createTurnTaker } from '@app/turnTaking';
+import { diag, diagCallStart } from '@app/liveDiag';
 const fs = require('fs');
 const LAB = process.env.VOICE_LAB_DIR + '/';
 const clips = (process.env.SCENARIO || 'ah').split(',');
@@ -15,6 +16,7 @@ async function trial(clip: string) {
   const key = ((await r.json()) as any).value;
   const ws = new (globalThis as any).WebSocket('wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1', ['realtime', 'openai-insecure-api-key.' + key]);
   const t0 = Date.now(); const at = () => Date.now() - t0;
+  if (process.env.TRACE) diagCallStart({ clip });
   const raw = (o: any) => ws.send(JSON.stringify(o));
   // Playback, as the phone would do it: audio plays at real speed from the
   // first chunk; output_audio_buffer.* are the events WebRTC would send.
@@ -35,6 +37,7 @@ async function trial(clip: string) {
     },
     setVolume: (v) => vol.push(`${(at() - (userStart || at())) }ms→${v}`),
     log: (l) => console.log('     ' + l),
+    trace: process.env.TRACE ? (e, d) => diag('APP', e, d) : undefined,
   });
   const done = new Promise<void>((res) => {
     ws.onmessage = async (m: any) => {

@@ -32,6 +32,9 @@ export type TurnTakingIO = {
   /** Recall's voice volume, 1 = normal. */
   setVolume: (volume: number) => void;
   log: (line: string) => void;
+  /** Diagnostics only (src/liveDiag.ts): reports decisions and state, and
+   *  must never change them. */
+  trace?: (event: string, data?: Record<string, unknown>) => void;
 };
 
 /** How quiet Recall gets while it works out what the user is doing. */
@@ -91,6 +94,7 @@ type Overlap = {
 };
 
 export function createTurnTaker(io: TurnTakingIO) {
+  const trace = io.trace ?? (() => {});
   /** Recall's voice is playing on the phone right now. */
   let audible = false;
   /** OpenAI is still writing an answer. */
@@ -113,8 +117,10 @@ export function createTurnTaker(io: TurnTakingIO) {
     userTurnWaiting = true;
     if (responding) {
       answerOwed = true;
+      trace('answer owed (a response is still active)');
       return;
     }
+    trace('answer now');
     io.send({ type: 'response.create' });
   };
 
@@ -122,6 +128,7 @@ export function createTurnTaker(io: TurnTakingIO) {
     if (!overlap || overlap.verdict === 'interrupt') return;
     overlap.verdict = 'interrupt';
     io.log(`[live] interrupted (${why}) after ${Date.now() - overlap.startedAt} ms`);
+    trace('cut', { why, ms_since_overlap_start: Date.now() - overlap.startedAt, responding, audible });
     if (responding) io.send({ type: 'response.cancel' });
     // Drops what was queued to play and trims the conversation to what was
     // heard (OpenAI docs: WebRTC output_audio_buffer.clear).
@@ -133,6 +140,7 @@ export function createTurnTaker(io: TurnTakingIO) {
     if (!overlap) return;
     overlap.verdict = 'backchannel';
     io.log(`[live] kept talking (${why}: "${overlap.text.trim()}")`);
+    trace('let go', { why, ms_since_overlap_start: Date.now() - overlap.startedAt });
     io.setVolume(1);
   };
 
@@ -144,19 +152,23 @@ export function createTurnTaker(io: TurnTakingIO) {
 
       switch (type) {
         case 'output_audio_buffer.started':
+          trace('state audible', { from: audible, to: true });
           audible = true;
           return;
         case 'output_audio_buffer.stopped':
         case 'output_audio_buffer.cleared':
+          trace('state audible', { from: audible, to: false, by: type });
           audible = false;
           io.setVolume(1);
           return;
         case 'response.created': {
+          trace('state responding', { from: responding, to: true });
           responding = true;
           userTurnWaiting = false;
           return;
         }
         case 'response.done':
+          trace('state responding', { from: responding, to: false, answer_owed: answerOwed });
           responding = false;
           if (answerOwed) {
             answerOwed = false;
@@ -166,25 +178,30 @@ export function createTurnTaker(io: TurnTakingIO) {
 
         case 'input_audio_buffer.speech_started':
           if (!audible) {
+            trace('speech start: ordinary turn (not audible, no duck)', { item: itemId, responding });
             overlap = null; // An ordinary turn: Recall is quiet.
             return;
           }
           overlap = { itemId, text: '', verdict: 'unsure', startedAt: Date.now() };
+          trace('speech start: overlap, duck', { item: itemId, responding });
           io.setVolume(DUCKED);
           return;
 
         case 'conversation.item.input_audio_transcription.delta':
           if (!overlap || overlap.itemId !== itemId || overlap.verdict !== 'unsure') return;
           overlap.text += String(msg.delta ?? '');
+          trace('overlap words so far', { words: overlap.text.trim().slice(0, 40), verdict: judge(overlap.text, false), ms_since_overlap_start: Date.now() - overlap.startedAt });
           if (judge(overlap.text, false) === 'interrupt') cut(`"${overlap.text.trim()}"`);
           return;
 
         case 'input_audio_buffer.committed': {
           // An ordinary turn, Recall quiet: answer it.
           if (!overlap || overlap.itemId !== itemId) {
+            trace('committed: ordinary turn', { item: itemId });
             answer();
             return;
           }
+          trace('committed: overlap turn', { item: itemId, verdict_before: overlap.verdict, words: overlap.text.trim().slice(0, 40), ms_since_overlap_start: Date.now() - overlap.startedAt });
           if (overlap.verdict === 'unsure') {
             if (judge(overlap.text, true) === 'interrupt') cut(`"${overlap.text.trim()}" at the end`);
             else letGo(overlap.text.trim() ? 'a backchannel' : 'no words');
@@ -201,6 +218,7 @@ export function createTurnTaker(io: TurnTakingIO) {
           // later reads "آه" as something it was asked.
           if (!overlap || overlap.itemId !== itemId || overlap.verdict !== 'backchannel') return;
           const text = String(msg.transcript ?? '');
+          trace('final words of a let-go turn', { words: text.trim().slice(0, 40), verdict: judge(text, true) });
           if (judge(text, true) === 'interrupt') {
             overlap.verdict = 'unsure';
             overlap.text = text;
@@ -221,6 +239,7 @@ export function createTurnTaker(io: TurnTakingIO) {
     },
     /** Recall is about to be cut off by a tap: the same as words. */
     reset() {
+      trace('reset (orb tapped)');
       overlap = null;
       answerOwed = false;
       userTurnWaiting = false;

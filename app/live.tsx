@@ -12,6 +12,7 @@ import type { VoiceTurn } from '../src/voiceSession';
 import { newSessionId, saveSession } from '../src/chatSessions';
 import { liveVoiceAvailable, startLiveVoice, type LiveLanguage, type LiveSession, type Resume } from '../src/realtimeVoice';
 import { getVoicePrefs, learnFromCall, setVoiceChoice, type VoiceChoice } from '../src/voicePrefs';
+import { shareDiagLog } from '../src/liveDiag';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import { colors, fonts } from '../src/theme';
@@ -362,7 +363,11 @@ export default function LiveConversation() {
           >
             <Ionicons name="arrow-back" size={28} color={colors.white} />
           </Pressable>
-          <Text style={styles.headerTitle}>Talk to Recall</Text>
+          {/* Diagnostics: a long press shares this session's voice log
+              (src/liveDiag.ts). Hidden on purpose: a testing tool. */}
+          <Pressable onLongPress={() => void shareDiagLog()} delayLongPress={800} hitSlop={8}>
+            <Text style={styles.headerTitle}>Talk to Recall</Text>
+          </Pressable>
           <LanguageButton value={language} open={langOpen} onToggle={() => setLangOpen((v) => !v)} />
         </View>
 
