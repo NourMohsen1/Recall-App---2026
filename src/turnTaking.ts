@@ -111,12 +111,24 @@ export function createTurnTaker(io: TurnTakingIO) {
   /** An answer was cancelled because the user went on talking before it
    *  played (the yield below): any lookup it asked for is dropped too. */
   let yielded = false;
+  /** An answer was asked for and OpenAI hasn't confirmed it yet. (Gap A:
+   *  speech in that ~100 ms window used to slip past the yield.) */
+  let requested = false;
+  /** The user spoke inside that window: cancel the answer as it arrives. */
+  let yieldOnCreate = false;
+  /** The user is speaking now (speech started, not yet stopped). */
+  let userSpeaking = false;
+  /** A waiting answer held back because the user was speaking (Gap B). If
+   *  their speech gets no answer of its own (an "آه", a cough), it is sent
+   *  when that speech ends, so the earlier question is never lost. */
+  let owedHeld = false;
 
   // The app starts every answer (create_response: false in
   // realtimeVoice.ts). With OpenAI also starting them, an "آه" said during
   // a lookup raced the lookup's own answer: the reply came back as "nothing
   // found", measured in 5 of 6 overlaps.
   const answer = () => {
+    owedHeld = false;
     userTurnWaiting = true;
     if (responding) {
       answerOwed = true;
@@ -124,6 +136,7 @@ export function createTurnTaker(io: TurnTakingIO) {
       return;
     }
     trace('answer now');
+    requested = true;
     io.send({ type: 'response.create' });
   };
 
@@ -168,9 +181,22 @@ export function createTurnTaker(io: TurnTakingIO) {
           trace('state responding', { from: responding, to: true });
           responding = true;
           userTurnWaiting = false;
+          requested = false;
           // A yield whose answer finished before the cancel landed leaves
           // nothing to drop; it must not mark a later answer.
           yielded = false;
+          // Gap A: the user started speaking after this answer was asked for
+          // but before OpenAI confirmed it (seen on Nour's phone: 15 ms
+          // after, and it then played over him for ~1.8 s). Cancelled now,
+          // as the yield does for an answer already confirmed.
+          if (yieldOnCreate) {
+            yieldOnCreate = false;
+      owedHeld = false;
+            trace('yield: cancel the answer as it is confirmed (user resumed before)');
+            yielded = true;
+            io.send({ type: 'response.cancel' });
+            io.send({ type: 'output_audio_buffer.clear' });
+          }
           return;
         }
         case 'response.done':
@@ -178,11 +204,26 @@ export function createTurnTaker(io: TurnTakingIO) {
           responding = false;
           if (answerOwed) {
             answerOwed = false;
+            // Gap B: never start the waiting answer while the user is
+            // speaking (seen on Nour's phone: it started 80 ms after his
+            // next sentence began). The end of that sentence answers, and
+            // the answer covers everything they said.
+            if (userSpeaking) {
+              trace('owed answer held: the user is speaking; their turn end answers it');
+              owedHeld = true;
+              return;
+            }
+            requested = true;
             io.send({ type: 'response.create' });
           }
           return;
 
+        case 'input_audio_buffer.speech_stopped':
+          userSpeaking = false;
+          return;
+
         case 'input_audio_buffer.speech_started':
+          userSpeaking = true;
           if (!audible) {
             trace('speech start: ordinary turn (not audible, no duck)', { item: itemId, responding });
             overlap = null; // An ordinary turn: Recall is quiet.
@@ -198,6 +239,9 @@ export function createTurnTaker(io: TurnTakingIO) {
               yielded = true;
               io.send({ type: 'response.cancel' });
               io.send({ type: 'output_audio_buffer.clear' });
+            } else if (requested) {
+              trace('yield pending: answer asked for, not yet confirmed (user resumed)', { item: itemId });
+              yieldOnCreate = true;
             }
             return;
           }
@@ -227,6 +271,10 @@ export function createTurnTaker(io: TurnTakingIO) {
           }
           // A backchannel gets no answer; real words do.
           if (overlap.verdict === 'interrupt') answer();
+          else if (owedHeld) {
+            trace('held answer sent: the speech that held it needed no answer of its own');
+            answer();
+          }
           return;
         }
 
@@ -256,6 +304,23 @@ export function createTurnTaker(io: TurnTakingIO) {
     userTookTurn(): boolean {
       return userTurnWaiting;
     },
+    /** The user is speaking right now: a lookup's reply must wait for the
+     *  end of their turn (Gap B, the same rule as a waiting answer). */
+    userSpeakingNow(): boolean {
+      return userSpeaking;
+    },
+    /** A lookup's reply held back because the user is speaking
+     *  (realtimeVoice.ts): sent when their speech ends if it needed no
+     *  answer of its own, like a held waiting answer (Gap B). */
+    holdAnswer(): void {
+      trace('lookup reply held: the user is speaking; their turn end answers it');
+      owedHeld = true;
+    },
+    /** A lookup's reply was asked for (realtimeVoice.ts): speech before
+     *  OpenAI confirms it cancels it, as for any answer (Gap A). */
+    noteAnswerRequested(): void {
+      requested = true;
+    },
     /** True once per yield: the cancelled answer's lookups must not run (and
      *  then answer the old question over the user). Reading it clears it. */
     takeYielded(): boolean {
@@ -269,6 +334,7 @@ export function createTurnTaker(io: TurnTakingIO) {
       overlap = null;
       answerOwed = false;
       userTurnWaiting = false;
+      yieldOnCreate = false;
       io.setVolume(1);
     },
   };

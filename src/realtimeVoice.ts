@@ -241,7 +241,15 @@ export async function startLiveVoice(
   let endTimer: ReturnType<typeof setTimeout> | undefined;
   let dropTimer: ReturnType<typeof setTimeout> | undefined;
   let levelTimer: ReturnType<typeof setInterval> | undefined;
-  const state = { responding: false, speaking: false, userTookTurn: () => false, takeYielded: () => false };
+  const state = {
+    responding: false,
+    speaking: false,
+    userTookTurn: () => false,
+    takeYielded: () => false,
+    userSpeakingNow: () => false,
+    noteAnswerRequested: () => {},
+    holdAnswer: () => {},
+  };
   // Recall's voice, as the phone receives it: turned down while the user
   // starts to speak over it (src/turnTaking.ts).
   let voiceTrack: { _setVolume?: (v: number) => void } | null = null;
@@ -268,6 +276,9 @@ export async function startLiveVoice(
   });
   state.userTookTurn = () => turns.userTookTurn();
   state.takeYielded = () => turns.takeYielded();
+  state.userSpeakingNow = () => turns.userSpeakingNow();
+  state.noteAnswerRequested = () => turns.noteAnswerRequested();
+  state.holdAnswer = () => turns.holdAnswer();
 
   const cleanup = (reason: 'user' | 'time' | 'error' | 'dropped', detail?: string) => {
     if (ended) return;
@@ -596,7 +607,15 @@ async function handleEvent(
   msg: Record<string, unknown>,
   channel: { send: (data: string) => void },
   onEvent: (e: LiveEvent) => void,
-  state: { responding: boolean; speaking: boolean; userTookTurn: () => boolean; takeYielded: () => boolean },
+  state: {
+    responding: boolean;
+    speaking: boolean;
+    userTookTurn: () => boolean;
+    takeYielded: () => boolean;
+    userSpeakingNow: () => boolean;
+    noteAnswerRequested: () => void;
+    holdAnswer: () => void;
+  },
 ): Promise<void> {
   const type = String(msg.type ?? '');
 
@@ -718,6 +737,12 @@ async function handleEvent(
     // Now that it has what it asked for, let it answer: unless the user
     // has already started something new, which the answer under way will
     // cover. Asking for a second one then was refused, or answered twice.
+    // Gap B: nor while the user is speaking; the end of their turn answers
+    // (and if that turn needs no answer of its own, this one is sent then).
+    if (!state.responding && !state.userTookTurn() && state.userSpeakingNow()) {
+      state.holdAnswer();
+      return;
+    }
     if (state.responding || state.userTookTurn()) {
       console.log('[live] the user moved on during the lookup; not answering the old question');
       return;
@@ -736,6 +761,7 @@ async function handleEvent(
         },
       }),
     );
+    state.noteAnswerRequested();
     channel.send(JSON.stringify({ type: 'response.create' }));
   }
 }

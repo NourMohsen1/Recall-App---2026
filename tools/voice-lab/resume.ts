@@ -29,6 +29,9 @@ async function trial(clip: string) {
   });
   ws.onmessage = async (m: any) => {
     const e = JSON.parse(m.data);
+    // DELAY_CREATED: deliver OpenAI's "answer confirmed" late, as it arrived
+    // on Nour's phone (after the user's resumed speech), to exercise Gap A.
+    if (e.type === 'response.created' && process.env.DELAY_CREATED) await new Promise((s) => setTimeout(s, Number(process.env.DELAY_CREATED)));
     turns.onEvent(e);
     if (e.type === 'input_audio_buffer.speech_started') userSpeaking = true;
     if (e.type === 'input_audio_buffer.speech_stopped') userSpeaking = false;
@@ -51,7 +54,9 @@ async function trial(clip: string) {
         const out = await runRealtimeTool(c.name, JSON.parse(c.arguments || '{}')).catch((x: any) => ({ error: String(x) }));
         raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.call_id, output: JSON.stringify(out) } });
       }
-      if (calls.length && !responding && !turns.userTookTurn()) raw({ type: 'response.create' });
+      // As the app does (realtimeVoice.ts): held while the user speaks.
+      if (calls.length && !responding && !turns.userTookTurn() && (turns as any).userSpeakingNow?.()) { (turns as any).holdAnswer?.(); return; }
+      if (calls.length && !responding && !turns.userTookTurn()) { (turns as any).noteAnswerRequested?.(); raw({ type: 'response.create' }); }
     }
   };
   await new Promise((s) => (ws.onopen = s));

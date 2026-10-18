@@ -61,7 +61,9 @@ async function trial(clip: string) {
           raw({ type: 'conversation.item.create', item: { type: 'function_call_output', call_id: c.call_id, output: JSON.stringify(out) } });
         }
         // As the app does (realtimeVoice.ts): not if the user has moved on.
-        if (calls.length && !responding && !turns.userTookTurn()) raw({ type: 'response.create' });
+        // As the app does (realtimeVoice.ts): held while the user speaks.
+      if (calls.length && !responding && !turns.userTookTurn() && (turns as any).userSpeakingNow?.()) { (turns as any).holdAnswer?.(); return; }
+      if (calls.length && !responding && !turns.userTookTurn()) { (turns as any).noteAnswerRequested?.(); raw({ type: 'response.create' }); }
       }
     };
     setTimeout(res, 34000);
