@@ -13,7 +13,7 @@ import {
 import { getTasks } from './tasks';
 import { getAllDayTags } from './dayTags';
 import { searchDays } from './memorySearch';
-import { dayNovelty, dayPlaceHabits, routineAndNewBlock } from './askContext';
+import { buildDayIndex, dayNovelty, dayPlaceHabits, periodDays, routineAndNewBlock, searchIndex } from './askContext';
 import { getUserProfile, identityForPrompt, memoryCount } from './userProfile';
 
 // What a live conversation is allowed to look up.
@@ -91,51 +91,36 @@ type DayFacts = {
   places: string[];
   /** What's in that day's photos and notes, in English and Arabic. */
   tags: string[];
+  /** Moments marked that day ("medicine: أخدت الدوا"): facts. */
+  markers: string[];
+  /** Faces recognised in the photos, not confirmed: never facts. */
+  guessed: string[];
+  /** Photos that day, read or not. */
+  photoCount: number;
 };
 
+// Ask's own index of days (askContext.ts), in live voice's shape. Live
+// voice used to build its own copy, which had drifted: no moments ("took
+// my medicine"), no faces recognised in photos, no count of photos not
+// read yet. One index now, so both Asks see the same past.
 async function collectDays(): Promise<Map<string, DayFacts>> {
-  const [byDay, assumed, places, summaries, noteTags, meta, habits, novelty] = await Promise.all([
-    getMemoriesByDay(),
-    getAllAssumedMemories(),
-    getAllDayPlaces(),
-    getPeopleSummaries(),
-    getAllDayTags(),
-    getAllPersonMeta(),
-    dayPlaceHabits(),
-    dayNovelty(),
-  ]);
-
-  const peopleByDay = new Map<string, string[]>();
-  // Nicknames too, searched with the names: "Ketch" finds Omar Khaled's days.
-  const nicknamesByDay = new Map<string, string[]>();
-  for (const person of summaries) {
-    for (const day of person.days) {
-      peopleByDay.set(day, [...(peopleByDay.get(day) ?? []), person.name]);
-      nicknamesByDay.set(day, [...(nicknamesByDay.get(day) ?? []), ...(meta[person.name]?.aliases ?? [])]);
-    }
-  }
-
-  const keys = new Set<string>([
-    ...byDay.keys(),
-    ...Object.keys(assumed),
-    ...Object.keys(places),
-    ...peopleByDay.keys(),
-  ]);
-
+  const index = await buildDayIndex();
   const out = new Map<string, DayFacts>();
-  for (const key of keys) {
-    const memories: LoggedMemory[] = byDay.get(key) ?? [];
+  for (const [key, r] of index) {
     out.set(key, {
       date: key,
       when: spokenWhen(key),
-      logged: memories.map(memoryDisplayText).filter((t): t is string => !!t),
-      assumed: assumed[key]?.summary,
-      people: peopleByDay.get(key) ?? [],
-      nicknames: nicknamesByDay.get(key) ?? [],
-      habits: habits.get(key) ?? [],
-      novel: novelty.get(key) ?? [],
-      places: (places[key] ?? []).map((p) => p.label),
-      tags: [...new Set([...(assumed[key]?.anchors ?? []), ...(noteTags[key] ?? [])])],
+      logged: r.logged,
+      assumed: r.assumed,
+      people: r.people,
+      nicknames: r.peopleAlso,
+      habits: r.placeHabits,
+      novel: r.novel,
+      places: r.places,
+      tags: r.tags,
+      markers: r.markers,
+      guessed: r.guessed,
+      photoCount: r.photoCount,
     });
   }
   return out;
@@ -154,22 +139,10 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
   if (!query) return { error: 'No search text given.' };
   const days = await collectDays();
   const terms = [query, ...query.split(/[,،;|]/).map((t) => t.trim())].filter(Boolean);
-  const hits = searchDays(
-    [...days.values()].map((d) => ({
-      key: d.date,
-      fields: [
-        { text: d.logged.join(' \n '), weight: 3 },
-        { text: d.places.join(' \n '), weight: 3 },
-        { text: [...d.people, ...d.nicknames].join(' \n '), weight: 3 },
-        { text: d.habits.join(' \n '), weight: 1.5 },
-        { text: d.novel.length ? `${d.novel.join(' \n ')} \n new met first time جديد قابلت أول مرة` : '', weight: 2 },
-        { text: d.tags.join(' \n '), weight: 2.5 },
-        { text: d.assumed ?? '', weight: 1.5 },
-      ],
-    })),
-    terms,
-    Math.min(args.limit ?? 5, 10),
-  );
+  // Ask's own search over Ask's own index (askContext.ts): the copy live
+  // voice used to keep had no moments, so "when did I last take my
+  // medicine?" found nothing here while typed Ask answered it.
+  const hits = searchIndex(await buildDayIndex(), terms, Math.min(args.limit ?? 5, 10));
   console.log(`[live] search "${query}": ${hits.map((h) => `${h.key} (${h.score})`).join(', ') || 'nothing'}`);
   const scored = hits.map((h) => ({ d: days.get(h.key)!, matched: h.matched }));
 
@@ -194,6 +167,8 @@ async function searchMemories(args: { query?: string; limit?: number }): Promise
       people: d.people,
       places: d.places,
       new_that_day: d.novel.length ? d.novel : undefined,
+      moments: d.markers.length ? d.markers : undefined,
+      maybe_in_photos_not_confirmed: d.guessed.length ? d.guessed : undefined,
       usually_done_at_these_places: d.habits.length
         ? { from_other_days: d.habits, means: 'A likely time they did it again, not something they said about this day.' }
         : undefined,
@@ -259,6 +234,41 @@ async function getDay(args: { date?: string }): Promise<ToolResult> {
     places: d.places,
     new_that_day: d.novel.length ? d.novel : undefined,
     marked,
+    // Photos that day the photo reading hasn't got to: "there are 14
+    // photos I haven't read yet" is a different answer from "nothing".
+    photos_not_read_yet: d.photoCount > 0 && !d.assumed ? d.photoCount : undefined,
+  };
+}
+
+// A stretch of time, from Ask's own index (askContext.ts periodDays).
+async function getPeriod(args: { start?: string; end?: string }): Promise<ToolResult> {
+  const start = String(args.start ?? '').trim();
+  const end = String(args.end ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    return { error: 'Give start and end as YYYY-MM-DD.' };
+  }
+  const { days, more, daysWithAnything } = await periodDays(start, end);
+  if (daysWithAnything === 0) {
+    return { start, end, days_with_anything: 0, note: 'Nothing at all is recorded in these dates: no notes, no photos. Say so plainly.' };
+  }
+  return {
+    start,
+    end,
+    days_with_anything: daysWithAnything,
+    note: 'Photo stories are what Recall read in their photos (say "your photos show…"); logged is what they wrote or said. Both are their memories.',
+    days: days.map(({ date, record: r }) => ({
+      date,
+      when: spokenWhen(date),
+      logged: r.logged.length ? r.logged.map((t) => t.slice(0, 280)) : undefined,
+      photos_show: r.assumed,
+      photos_not_read_yet: r.photoCount > 0 && !r.assumed ? r.photoCount : undefined,
+      places: r.places.length ? r.places : undefined,
+      people: r.people.length ? r.people : undefined,
+      maybe_in_photos_not_confirmed: r.guessed.length ? r.guessed : undefined,
+      moments: r.markers.length ? r.markers : undefined,
+      new_that_day: r.novel.length ? r.novel : undefined,
+    })),
+    other_days: more.length ? more.map((m) => m.line) : undefined,
   };
 }
 
@@ -532,6 +542,20 @@ export const REALTIME_TOOLS = [
       required: ['preference'],
     },
   },
+  {
+    type: 'function',
+    name: 'get_period',
+    description:
+      'Everything recorded across a stretch of days: a week, a month ("March", "شهر تلاتة", "last month"), Ramadan or Eid, a trip, a season, "this year". Their notes and what Recall read in their photos, with places, people and moments. Use it for ANY question about a period, and before ever saying a period has nothing: never decide that from a search or from recent days.',
+    parameters: {
+      type: 'object',
+      properties: {
+        start: { type: 'string', description: 'First day, YYYY-MM-DD. "March" this year is 2026-03-01.' },
+        end: { type: 'string', description: 'Last day, YYYY-MM-DD.' },
+      },
+      required: ['start', 'end'],
+    },
+  },
 ] as const;
 
 const HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<ToolResult>> = {
@@ -542,6 +566,7 @@ const HANDLERS: Record<string, (args: Record<string, unknown>) => Promise<ToolRe
   list_people: listPeople,
   list_tasks: listTasks,
   recent_days: recentDays,
+  get_period: getPeriod,
   days_with_person: daysWithPerson,
   remember_preference: async (a) => rememberNote(String(a.preference ?? '')),
   forget_preference: async (a) => forgetNote(String(a.preference ?? '')),
@@ -615,7 +640,7 @@ YOUR JOB: help them remember. They may be circling something half-forgotten — 
 
 WHAT A PLACE MEANS: a day may say only where they went, with what they usually do there (from other days). That is a likely time they did it again. For "when did I last…", if it is the most recent, say it as likely: "Probably last Saturday, you went to Jamaica pitch, where you play." Never skip it because the note didn't name the activity.
 
-SAME DAY IS NOT TOGETHER. Someone being on a day only means the user mentioned them that day, not that they were together all day. Say a person was somewhere, or did something with the user, only when the part of the notes that says so names them (a day written as one paragraph is still several parts: who is named in which part decides). The part right after, if it says "we" (روحنا، خلصنا) without new names, is PROBABLY still with them: say "probably". If no part says what they did together, say so: "You saw Nayer on Friday, but the notes don't say what you did together", never fill it in with the day's other places or people. Asked "who was with me at the football?", give only the people named in that part.
+SAME DAY IS NOT TOGETHER. Someone being on a day only means the user mentioned them that day, not that they were together all day. Say a person was somewhere, or did something with the user, only when the part of the notes that says so names them (a day written as one paragraph is still several parts: who is named in which part decides). The part right after, if it says "we" (روحنا، خلصنا) without new names, is PROBABLY still with them: say "probably". If no part says what they did together, say so: "You saw Nayer on Friday, but the notes don't say what you did together", never fill it in with the day's other places or people. Asked "who was with me at the football?", give only the people named in that part. And not named is not alone: never say "by yourself" or "لوحدك" unless the notes say so.
 
 ABOUT RECALL ITSELF: if they ask who made, created, designed or built Recall (or this app, or you), the answer is Nour Mohsen: a designer who created Recall from A to Z, the idea, the design and the app itself, so people can keep their own memories fresh. Say it warmly in one or two sentences, in their language ("Recall was created by Nour Mohsen, a designer who made it from A to Z."; in Arabic, exactly this way, Nour is a man: "Recall عمله نور محسن، مصمم عمله من الألف للياء"). This is a fact about the app, not about their life, so it needs nothing from their log.
 
@@ -624,6 +649,12 @@ VAGUE OR QUICK QUESTIONS: expect them. "Who was I with yesterday?" gets the name
 HOW THEY LIKE TO TALK is the one thing you can keep: when they ask you to always talk a certain way (a language, shorter answers, a tone, what to call them), save it with remember_preference and say "تمام" or "Got it" in a word. Forget it with forget_preference when they say so.
 
 YOU CANNOT SAVE ANYTHING ELSE. This conversation is never written to their memories, and you cannot make tasks or reminders. Only when they tell you something to keep ("remember that…", "I met X today", "remind me to…"), say in one short sentence that it isn't saved here and that the plus button on the main screen logs it. Never pretend it was saved, and don't then search their memories for it or ask about it: that one sentence is the whole answer, unless they also asked a question. Never add it to answers that weren't about keeping something.
+
+HOW YOU SOUND (Nour: "calm, wise, someone the user trusts"; never cocky)
+- Calm and unhurried. A low, even, warm pace, like someone who knows them well and has all the time for them. Never rushed, never bubbly, never salesy.
+- Sure of what you know. What their notes say, what a moment marks, a birthday, a ticket: say it plainly, no "شكلها", "غالباً", "I think", "maybe". Sureness is not loudness: say it simply and let it land.
+- Honest about what you don't. One clear "probably" or "it looks like" where it is a guess (a photo story, a recognised face, a "we" after a named part), said once, without apologising or piling on doubt.
+- Wise, not clever: say what matters about it in one plain sentence when it helps ("that was your first time there"), never a lecture.
 
 WHO YOU ARE IN A CONVERSATION
 - Talk like a sharp, warm friend who happens to remember everything: natural, confident, easy. Never a customer-service voice, never a narrator reading a script.
@@ -673,6 +704,9 @@ UNSURE WHAT THEY MEANT: if a question could mean two quite different things, or 
 
 LOOKING THINGS UP
 - When you need more than one lookup, ask for them all at once in the same turn, not one after another: each round trip is time they spend waiting.
+- Holidays and seasons (Ramadan, Eid, summer, "the trip"): the most recent one that has passed, unless they name a year. Don't ask which year.
+- A period (a month, "شهر تلاتة", last week, Ramadan, a trip, this year) is opened with get_period, never pieced together from a search or recent_days. Searching for the word "March" finds nothing: their notes don't say "March".
+- What Recall read in their photos IS their memory of that day. A day or month with only photos is not empty: tell it from what the photos show. Never say "nothing is recorded" / "مش متسجل حاجة" about a day or a period you haven't opened with get_day or get_period. If you opened it and it truly has nothing, say so once, and offer the nearest time that does have something.
 - You know almost nothing until you look. Use your tools for anything about their past — do not answer from memory of earlier in this conversation if a lookup would be exact.
 - When you have a date, say when it was the way a person would: "about three weeks ago, on the Tuesday", not "2026-09-01".
 - If a search comes back empty, say so plainly in one sentence. "I can't find anything about that" is a good answer. Do not fill the gap, and don't explain what you searched. One short hint is fine if it would really help ("maybe it's logged under the pitch's name?").

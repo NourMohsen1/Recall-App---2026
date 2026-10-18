@@ -428,6 +428,19 @@ face cropping never leave the device.
 
 Each of these cost real time once.
 
+- **One view of the past for Ask and live voice.** Live voice kept its own
+  copy of the day index and the search; it drifted (no moments, no
+  recognised faces, no unread-photo count, and no way to open a month), and
+  told Nour March had nothing in it while typed Ask described it. Live
+  voice's tools now read `buildDayIndex`, `searchIndex` and `periodDays`
+  from `src/askContext.ts`. Add a new kind of memory there, once, and both
+  see it. Check both with `tools/voice-lab` (`run.mjs exam exam2.txt
+  seed-full.json` for typed Ask, `run.mjs rtlive s12.json seed-full.json`
+  for live voice; `seed-full.json` has every kind of memory).
+- **macOS has no `timeout` command.** `timeout 300 npx tsc … | grep` printed
+  nothing and read as "no errors" for a week. Run `npx tsc --noEmit -p .`
+  and check its exit code.
+
 - **Read every stored file path through `localFile()`** (`src/memoryLog.ts`).
   `persistFile` stores absolute paths, and iOS changes the app container's UUID
   on every reinstall and App Store update — so recordings, photos and avatars

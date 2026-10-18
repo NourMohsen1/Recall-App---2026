@@ -87,7 +87,7 @@ function monthLabel(key: string) {
   return `${MONTHS[Number(month) - 1]} ${year}`;
 }
 
-type DayRecord = {
+export type DayRecord = {
   logged: string[];
   assumed?: string;
   people: string[];
@@ -126,7 +126,9 @@ type DayRecord = {
 // One question builds the index several times (search, context, the
 // routine block); one build serves them all for a few seconds.
 let dayIndexCache: { at: number; built: Promise<Map<string, DayRecord>> } | null = null;
-function buildDayIndex(): Promise<Map<string, DayRecord>> {
+/** Every day with anything on it, as Ask sees it. Live voice reads the
+ *  same index (realtimeTools.ts): one view of the past, never two. */
+export function buildDayIndex(): Promise<Map<string, DayRecord>> {
   if (dayIndexCache && Date.now() - dayIndexCache.at < 5000) return dayIndexCache.built;
   const built = buildDayIndexNow();
   dayIndexCache = { at: Date.now(), built };
@@ -512,7 +514,8 @@ function searchDoc(key: string, rec: DayRecord): SearchDoc {
   };
 }
 
-function searchIndex(days: Map<string, DayRecord>, keywords: string[], limit: number): SearchHit[] {
+/** The one search over days, for Ask and live voice alike. */
+export function searchIndex(days: Map<string, DayRecord>, keywords: string[], limit: number): SearchHit[] {
   return searchDays(
     [...days.entries()].map(([k, r]) => searchDoc(k, r)),
     keywords,
@@ -812,4 +815,30 @@ export async function buildMemoryContext(
   }
 
   return sections.join('\n\n');
+}
+
+
+// A stretch of days for live voice (realtimeTools.ts get_period): "March",
+// Ramadan, a trip, "this year". Live voice had no way to open a period and
+// told Nour March had nothing in it, three times, while typed Ask described
+// the month from its photo stories (Oct 2026). The richest days come in full;
+// any more as one line each, so a year still fits.
+const PERIOD_FULL_DAYS = 24;
+const PERIOD_LINE_DAYS = 60;
+
+export async function periodDays(start: string, end: string): Promise<{
+  days: { date: string; record: DayRecord }[];
+  more: { date: string; line: string }[];
+  daysWithAnything: number;
+}> {
+  const index = await buildDayIndex();
+  const inRange = [...index.entries()].filter(([k]) => k >= start && k <= end).sort(([a], [b]) => a.localeCompare(b));
+  const rich = new Set(
+    [...inRange].sort((a, b) => contentWeight(b[1]) - contentWeight(a[1])).slice(0, PERIOD_FULL_DAYS).map(([k]) => k),
+  );
+  return {
+    days: inRange.filter(([k]) => rich.has(k)).map(([date, record]) => ({ date, record })),
+    more: inRange.filter(([k]) => !rich.has(k)).slice(0, PERIOD_LINE_DAYS).map(([k, r]) => ({ date: k, line: indexLine(k, r) })),
+    daysWithAnything: inRange.length,
+  };
 }

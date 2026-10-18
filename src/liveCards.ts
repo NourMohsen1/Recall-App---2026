@@ -79,6 +79,9 @@ export async function cardsFromLookup(tool: string, output: unknown): Promise<Li
   try {
     if (tool === 'get_day' && !o.empty) {
       out.push(await dayCard(str(o.date) ?? ''));
+    } else if (tool === 'get_period' && Array.isArray(o.days)) {
+      // The period's fullest days, newest last as they came.
+      for (const d of (o.days as Output[]).slice(0, 3)) out.push(await dayCard(str(d.date) ?? ''));
     } else if (tool === 'search_memories' && Array.isArray(o.days)) {
       for (const d of (o.days as Output[]).slice(0, 2)) out.push(await dayCard(str(d.date) ?? ''));
     } else if (tool === 'find_place' && o.found) {

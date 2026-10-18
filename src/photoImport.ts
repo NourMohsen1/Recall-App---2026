@@ -61,6 +61,8 @@ async function mapWithConcurrency<T, R>(
 }
 
 type PhotoEntry = {
+  /** The Photos id: how a photo is recognised under another path. */
+  id: string;
   uri: string;
   creationTime: number;
   location?: { latitude: number; longitude: number } | null;

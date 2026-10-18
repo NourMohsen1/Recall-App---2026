@@ -427,6 +427,7 @@ const TOOL_WORDS: Record<string, string> = {
   list_people: 'went through your people',
   list_tasks: 'checked your tasks',
   recent_days: 'went through your recent days',
+  get_period: 'went through that time',
   days_with_person: 'found your days together',
   remember_preference: 'noted how you like to talk',
   forget_preference: 'forgot that',
